@@ -111,7 +111,7 @@ from kantorku.health import (
     AlertSystem,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     # Core
     "Office",
@@ -233,4 +233,15 @@ __all__ = [
     "ProviderHealthStatus",
     "Alert",
     "AlertSystem",
+
+    # P4: Office Communication Maturation
+    "GroupChannel",
+    "GroupMessage",
+    "MessageType",
+    "DiscussionRound",
+    "TodoReviewPhase",
+    "TodoReview",
+    "TodoReviewResult",
+    "SessionTranscript",
+    "TranscriptEntry",
 ]

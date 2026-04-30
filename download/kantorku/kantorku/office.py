@@ -53,6 +53,9 @@ from kantorku.layers.conductor import Conductor, Contract, ContractState, TodoIt
 from kantorku.layers.briefing_room import BriefingRoom
 from kantorku.layers.worker_hub import WorkerHub
 from kantorku.layers.intake import Intake
+from kantorku.layers.group_channel import GroupChannel, MessageType
+from kantorku.layers.todo_review import TodoReviewPhase, TodoReviewResult
+from kantorku.layers.session_transcript import SessionTranscript
 from kantorku.pool.context_pool import ContextPool
 from kantorku.memory.ring1 import Ring1Memory
 from kantorku.memory.ring2 import Ring2Memory
@@ -72,6 +75,9 @@ from kantorku.persistence import CheckpointManager, CrashRecovery, OfficeSnapsho
 from kantorku.task_queue import TaskQueue
 from kantorku.middleware import MiddlewarePipeline, MiddlewareContext
 from kantorku.health import HealthChecker
+
+# P4: Session transcripts (per-session context tracking)
+from kantorku.layers.session_transcript import SessionTranscript as _SessionTranscript
 
 logger = logging.getLogger("kantorku.office")
 
@@ -204,6 +210,19 @@ class Office:
         # P3: Health checker (initialized after office is ready)
         self._health: HealthChecker | None = None
         self._health_check_interval = health_check_interval
+
+        # P4: Session transcripts (per-session context tracking)
+        self._transcripts: dict[str, SessionTranscript] = {}
+
+        # P4: TodoReviewPhase (initialized after registry in initialize())
+        self._todo_review: TodoReviewPhase | None = None
+
+        # P4: GroupChannel per session
+        self._channels: dict[str, GroupChannel] = {}
+
+        # P4: BriefingRoom settings
+        self._briefing_max_rounds: int = 3
+        self._briefing_round_timeout: float = 90.0
 
         self._initialized = False
 
@@ -411,6 +430,8 @@ class Office:
                 pool=self.pool,
                 registry=self.registry,
                 bus=self.bus,
+                max_rounds=self._briefing_max_rounds,
+                round_timeout=self._briefing_round_timeout,
             )
             intake_worker_cfg = self.config.workers.get("intake")
             intake_model = intake_worker_cfg.model if intake_worker_cfg else "ollama/llama3"
@@ -418,6 +439,13 @@ class Office:
                 router=self.router,
                 bus=self.bus,
                 model=intake_model,
+            )
+
+            # P4: TodoReviewPhase
+            self._todo_review = TodoReviewPhase(
+                conductor=self.conductor,
+                registry=self.registry,
+                bus=self.bus,
             )
 
             # Start context pool
@@ -447,7 +475,7 @@ class Office:
             self.checkpoint.bus = self.bus
 
             self._initialized = True
-            logger.info("kantorku Office initialized (v0.3.0)")
+            logger.info("kantorku Office initialized (v0.4.0)")
 
     async def chat(
         self,
@@ -572,14 +600,44 @@ class Office:
         session_id: str,
         contract: Contract,
     ) -> dict[str, Any]:
-        """Full orchestration: brief → assign → execute → verify → done."""
+        """
+        Full orchestration with P4 communication flow.
+
+        P4 Flow (like a real office):
+        1. Conductor drafts plan
+        2. BriefingRoom — multi-round team discussion (shared context!)
+        3. TodoReviewPhase — team reviews TODOs before execution
+        4. Execute tasks (with workers having full context)
+        5. Verify output
+        6. Log lessons
+        """
         emitter = EventEmitter(self.bus, session_id)
+
+        # P4: Create session transcript for context tracking
+        transcript = self._get_or_create_transcript(session_id)
+        transcript.set_contract(contract)
+
+        # Record client discussion in transcript
+        for msg in contract.client_messages:
+            transcript.add_entry(
+                phase="client_discussion",
+                from_id=msg.get("role", "client"),
+                content=msg.get("content", ""),
+                entry_type="message",
+            )
 
         # 1. Conductor drafts plan
         plan = await self.conductor.draft_plan(contract)
         await emitter.plan_drafted(from_id="conductor", content=str(plan))
+        transcript.add_entry(
+            phase="team_briefing",
+            from_id="conductor",
+            content="Plan drafted for team review",
+            entry_type="decision",
+        )
 
-        # 2. Briefing room — workers discuss + prefetch starts
+        # 2. Briefing room — multi-round team discussion with shared context
+        await self.conductor.mark_team_review(session_id)
         briefing_result = await self.briefing_room.open(
             contract=contract,
             plan=plan,
@@ -587,7 +645,84 @@ class Office:
         )
         final_plan = briefing_result.plan
 
-        # 3. Execute tasks based on plan
+        # P4: Store the channel for continued context
+        if briefing_result.channel:
+            self._channels[session_id] = briefing_result.channel
+            transcript.set_channel(briefing_result.channel)
+
+        # Record briefing results in transcript
+        transcript.add_entry(
+            phase="team_briefing",
+            from_id="conductor",
+            content=f"Briefing complete. {briefing_result.rounds_completed} rounds. "
+                    f"Consensus: {briefing_result.consensus_reached}. "
+                    f"Concerns: {len(briefing_result.concerns)}",
+            entry_type="decision",
+            metadata={
+                "rounds": briefing_result.rounds_completed,
+                "consensus": briefing_result.consensus_reached,
+                "decisions": briefing_result.decisions,
+            },
+        )
+
+        # P4: If team has significant concerns, manager goes back to client
+        if briefing_result.concerns and not briefing_result.consensus_reached:
+            concerns = briefing_result.concerns
+            suggestions = [
+                {"worker_id": inp.get("worker_id", ""), "suggestion": inp.get("suggestion", "")}
+                for inp in briefing_result.worker_inputs
+                if inp.get("suggestion")
+            ]
+
+            # Manager brings feedback to client (iterative flow!)
+            # Note: In auto_accept mode, we skip this and proceed
+            # In interactive mode, client would see this and respond
+            transcript.add_entry(
+                phase="client_discussion",
+                from_id="conductor",
+                content=f"Team raised {len(concerns)} concerns. Proceeding with noted concerns for now.",
+                entry_type="concern",
+                metadata={"concerns": concerns},
+            )
+
+        # 3. P4: TodoReviewPhase — team reviews TODOs before execution
+        if self._todo_review and briefing_result.channel:
+            await self.conductor.mark_todo_review(session_id)
+            review_result = await self._todo_review.review(
+                contract=contract,
+                channel=briefing_result.channel,
+                session_id=session_id,
+            )
+
+            # Record review in transcript
+            transcript.add_entry(
+                phase="todo_review",
+                from_id="conductor",
+                content=f"TODO review complete. Approved: {review_result.approved}. "
+                        f"All understood: {review_result.all_understood}. "
+                        f"Blockers: {len(review_result.blockers)}",
+                entry_type="decision",
+                metadata={
+                    "approved": review_result.approved,
+                    "blockers": review_result.blockers,
+                    "reviews": [r.to_dict() for r in review_result.reviews],
+                },
+            )
+
+            # Refine contract based on team input
+            if review_result.refined_todos:
+                await self.conductor.refine_contract_with_team_input(
+                    session_id=session_id,
+                    refined_todos=review_result.refined_todos,
+                    review_decisions=review_result.channel.get_decisions() if review_result.channel else [],
+                )
+                contract = self.conductor.get_contract(session_id) or contract
+
+            # Mark team approval
+            if review_result.approved:
+                await self.conductor.approve_team(session_id)
+
+        # 4. Execute tasks based on plan — workers now have FULL context
         execution_order = final_plan.get("execution_order", [t.id for t in contract.todos])
         parallel_groups = final_plan.get("parallel_groups", [execution_order])
         results: dict[str, TaskResult] = {}
@@ -603,6 +738,10 @@ class Office:
                 worker = self.registry.hire(assigned_to) if assigned_to else None
 
                 if worker:
+                    # P4: Include session transcript context in the task
+                    # so the worker has full awareness of what's been discussed
+                    worker_context = transcript.get_context_for_worker(assigned_to)
+
                     task = Task(
                         instruction=todo.description,
                         session_id=session_id,
@@ -610,6 +749,8 @@ class Office:
                             "contract": contract.to_dict(),
                             "todo": todo.to_dict(),
                             "assigned_to": assigned_to,
+                            "session_context": worker_context,
+                            "team_decisions": transcript.get_decisions(),
                         },
                     )
 
@@ -748,6 +889,14 @@ class Office:
             "contract": contract.to_dict(),
             "results": {k: v.to_dict() if hasattr(v, 'to_dict') else {} for k, v in results.items()},
             "verification": {k: v.to_dict() if hasattr(v, 'to_dict') else {} for k, v in verification_results.items()},
+            # P4: Include communication metadata
+            "briefing": {
+                "rounds_completed": briefing_result.rounds_completed,
+                "consensus_reached": briefing_result.consensus_reached,
+                "concerns_count": len(briefing_result.concerns),
+                "decisions": briefing_result.decisions,
+            },
+            "transcript_summary": transcript.get_summary(),
         }
 
     async def _execute_task(
@@ -993,11 +1142,52 @@ class Office:
         """Access the health checker."""
         return self._health
 
+    # ── P4: Communication & Context ─────────────────────────────────
+
+    def _get_or_create_transcript(self, session_id: str) -> SessionTranscript:
+        """Get or create a SessionTranscript for a session."""
+        if session_id not in self._transcripts:
+            self._transcripts[session_id] = SessionTranscript(session_id=session_id)
+        return self._transcripts[session_id]
+
+    def get_channel(self, session_id: str) -> GroupChannel | None:
+        """Get the GroupChannel for a session (P4)."""
+        return self._channels.get(session_id)
+
+    def get_transcript(self, session_id: str) -> SessionTranscript | None:
+        """Get the SessionTranscript for a session (P4)."""
+        return self._transcripts.get(session_id)
+
+    def get_session_context(self, session_id: str, worker_id: str = "") -> str:
+        """
+        Get the full session context (P4).
+
+        Workers can use this to understand what has happened
+        in the session, like reading meeting minutes.
+
+        Args:
+            session_id: The session ID
+            worker_id: Optional worker ID for personalized context
+
+        Returns:
+            Formatted context text
+        """
+        transcript = self._transcripts.get(session_id)
+        if not transcript:
+            return "(No context available yet)"
+
+        if worker_id:
+            return transcript.get_context_for_worker(worker_id)
+        return transcript.get_summary()
+
     async def cleanup_session(self, session_id: str) -> None:
         """Clean up all session resources."""
         await self.conductor.cleanup_session(session_id)
         await self.bus.cleanup_session(session_id)
         await self.ring1.cleanup_session(session_id)
+        # P4: Clean up transcript and channel
+        self._transcripts.pop(session_id, None)
+        self._channels.pop(session_id, None)
 
     async def shutdown(self) -> None:
         """Gracefully shut down the office."""

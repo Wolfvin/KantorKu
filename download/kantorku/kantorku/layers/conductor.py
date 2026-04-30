@@ -6,8 +6,19 @@ The Conductor is the orchestrator:
 - Drafts contracts (structured todo lists)
 - Conducts work (briefing → assign → verify → done)
 - Recovers from failures
+- Facilitates iterative client↔manager↔team flow (P4)
 
-It uses the conductor_model (Claude Opus by default) for decision-making.
+P4 UPGRADE: The Conductor now supports a truly iterative flow:
+1. Client ↔ Manager discussion (understand requirements)
+2. Manager brings requirements to team (briefing)
+3. Team gives feedback → Manager goes back to client if needed
+4. This iterates until there's alignment
+5. Only THEN does the manager create the TODO
+6. TODO is reviewed by the team before execution starts
+
+This mirrors real office communication: the manager doesn't just
+receive requirements and assign tasks. They go back and forth
+between client and team until everyone is aligned.
 """
 
 from __future__ import annotations
@@ -25,11 +36,14 @@ from kantorku.worker.base import Task
 
 
 class ContractState(Enum):
-    """State machine for Panel 1 (client ↔ manager interaction)."""
+    """State machine for the full client ↔ manager ↔ team flow."""
     IDLE = "idle"
     MANAGER_THINKING = "manager_thinking"
     CLARIFYING = "clarifying"
     CONTRACT_PRESENTED = "contract_presented"
+    TEAM_REVIEW = "team_review"            # P4: Team is reviewing the plan
+    TODO_REVIEW = "todo_review"            # P4: Team is reviewing TODOs
+    CLIENT_FEEDBACK = "client_feedback"    # P4: Manager went back to client
     WORKING = "working"
     DONE = "done"
 
@@ -61,6 +75,10 @@ class Contract:
 
     Contains the structured todo list that the client agrees to.
     After acceptance, the Conductor orchestrates execution.
+
+    P4: Now also tracks team feedback iterations.
+    The contract can go through multiple rounds of
+    client ↔ manager ↔ team discussion before execution.
     """
 
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
@@ -71,6 +89,10 @@ class Contract:
     state: ContractState = ContractState.IDLE
     client_messages: list[dict[str, str]] = field(default_factory=list)
     manager_messages: list[dict[str, str]] = field(default_factory=list)
+    # P4: Team discussion history
+    team_feedback_rounds: list[dict[str, Any]] = field(default_factory=list)
+    # P4: Whether team has approved the TODO list
+    team_approved: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -80,6 +102,8 @@ class Contract:
             "description": self.description,
             "todos": [t.to_dict() for t in self.todos],
             "state": self.state.value,
+            "team_feedback_rounds": self.team_feedback_rounds,
+            "team_approved": self.team_approved,
         }
 
 
@@ -526,6 +550,155 @@ class Conductor:
             await emitter.manager_message(
                 content=f"Blocker detected: {strategy}. Conductor reviewing."
             )
+
+    # ── P4: Iterative Client↔Manager↔Team Flow ───────────────────
+
+    async def bring_team_feedback_to_client(
+        self,
+        session_id: str,
+        team_concerns: list[dict[str, Any]],
+        team_suggestions: list[dict[str, Any]],
+    ) -> AsyncIterator[dict[str, Any]]:
+        """
+        P4: Manager brings team feedback back to the client.
+
+        This is the key iterative step: after the team discusses,
+        the manager goes back to the client with concerns or
+        suggestions that need client input.
+
+        Like in a real office: "Tim, saya sudah diskusi dengan
+        tim kita. Mereka punya beberapa pertanyaan..."
+
+        Args:
+            session_id: The session ID
+            team_concerns: Concerns raised by the team
+            team_suggestions: Suggestions from the team
+
+        Yields:
+            Events for the client
+        """
+        session = self._get_or_create_session(session_id)
+        contract = session["contract"]
+        emitter = EventEmitter(self.bus, session_id)
+
+        session["state"] = ContractState.CLIENT_FEEDBACK
+
+        # Record this feedback round
+        contract.team_feedback_rounds.append({
+            "concerns": team_concerns,
+            "suggestions": team_suggestions,
+        })
+
+        # Compose message to client
+        concerns_text = "\n".join(
+            f"- [{c.get('worker_id', 'unknown')}] {c.get('concern', c.get('response', ''))}"
+            for c in team_concerns
+        )
+        suggestions_text = "\n".join(
+            f"- [{s.get('worker_id', 'unknown')}] {s.get('suggestion', '')}"
+            for s in team_suggestions
+        )
+
+        prompt = f"""
+        I discussed the project "{contract.title}" with the team. Here's their feedback:
+
+        CONCERNS:
+        {concerns_text if concerns_text else "(No concerns)"}
+
+        SUGGESTIONS:
+        {suggestions_text if suggestions_text else "(No suggestions)"}
+
+        Based on this feedback, I need to discuss some points with the client.
+        Please help me compose a message that:
+        1. Summarizes the team's feedback professionally
+        2. Asks the client for clarification on any concerns
+        3. Proposes any changes suggested by the team
+
+        Keep it conversational and professional. This is a real discussion, not just
+        forwarding the team's words. The client should understand WHY we're asking.
+        """
+        response = await self.router.complete(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a project manager communicating with a client about team feedback."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+        )
+
+        contract.manager_messages.append({"role": "assistant", "content": response})
+
+        yield {"type": "manager_message", "content": response, "source": "team_feedback"}
+        await emitter.manager_message(content=response)
+        await self.persist_session(session_id)
+
+    async def mark_team_review(self, session_id: str) -> None:
+        """Mark session as in TEAM_REVIEW state."""
+        session = self._sessions.get(session_id)
+        if session:
+            session["state"] = ContractState.TEAM_REVIEW
+            await self.persist_session(session_id)
+
+    async def mark_todo_review(self, session_id: str) -> None:
+        """Mark session as in TODO_REVIEW state."""
+        session = self._sessions.get(session_id)
+        if session:
+            session["state"] = ContractState.TODO_REVIEW
+            await self.persist_session(session_id)
+
+    async def approve_team(self, session_id: str) -> None:
+        """Mark that the team has approved the TODO list."""
+        session = self._sessions.get(session_id)
+        if session:
+            session["contract"].team_approved = True
+            await self.persist_session(session_id)
+
+    async def refine_contract_with_team_input(
+        self,
+        session_id: str,
+        refined_todos: list[dict[str, Any]],
+        review_decisions: list[str],
+    ) -> Contract:
+        """
+        Refine the contract based on team review feedback.
+
+        After the team reviews the TODO list, their feedback
+        is incorporated into the contract before execution.
+
+        Args:
+            session_id: The session ID
+            refined_todos: Refined TODO items from the review
+            review_decisions: Decisions made during review
+
+        Returns:
+            The updated Contract
+        """
+        session = self._sessions.get(session_id)
+        if not session:
+            raise ValueError(f"No session found: {session_id}")
+
+        contract = session["contract"]
+
+        # Update todos with refined versions
+        for refined in refined_todos:
+            todo_id = refined.get("id", "")
+            for todo in contract.todos:
+                if todo.id == todo_id:
+                    if "notes" in refined:
+                        todo.description = refined.get("notes", todo.description)
+                    if "identified_dependencies" in refined:
+                        todo.depends_on = refined["identified_dependencies"]
+                    break
+
+        # Record decisions
+        contract.team_feedback_rounds.append({
+            "phase": "todo_review",
+            "decisions": review_decisions,
+            "refined_todos": refined_todos,
+        })
+
+        await self.persist_session(session_id)
+        return contract
 
     async def cleanup_session(self, session_id: str) -> None:
         """Clean up session data."""
