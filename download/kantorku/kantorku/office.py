@@ -28,6 +28,7 @@ from typing import Any, AsyncIterator
 from kantorku.config.settings import KantorkuConfig
 from kantorku.events.bus import EventBus
 from kantorku.events.emitter import EventEmitter
+from kantorku.hooks import HookType, Hooks
 from kantorku.layers.conductor import Conductor, Contract, ContractState, TodoItem
 from kantorku.layers.briefing_room import BriefingRoom
 from kantorku.layers.worker_hub import WorkerHub
@@ -68,8 +69,10 @@ class Office:
         self,
         conductor_model: str = "anthropic/claude-opus-4-6",
         config: KantorkuConfig | None = None,
+        hooks: Hooks | None = None,
     ) -> None:
         self.config = config or KantorkuConfig(conductor_model=conductor_model)
+        self.hooks = hooks or Hooks()
 
         # Core infrastructure
         self.bus = EventBus()
@@ -194,6 +197,9 @@ class Office:
         # Set Ring1 on pool
         self.pool.ring1 = self.ring1
 
+        # Set Ring1 on conductor for session persistence
+        self.conductor.set_ring1(self.ring1)
+
         # Set Ring1 on all workers
         for worker_id in self.registry.all_worker_ids:
             worker = self.registry.hire(worker_id)
@@ -212,12 +218,13 @@ class Office:
             registry=self.registry,
             bus=self.bus,
         )
+        # Resolve intake model safely
+        intake_worker_cfg = self.config.workers.get("intake")
+        intake_model = intake_worker_cfg.model if intake_worker_cfg else "ollama/llama3"
         self.intake = Intake(
             router=self.router,
             bus=self.bus,
-            model=self.config.workers.get("intake", KantorkuConfig()).workers.get(
-                "intake", type("", (), {"model": "ollama/llama3"})()
-            ).model if "intake" in self.config.workers else "ollama/llama3",
+            model=intake_model,
         )
 
         # Start context pool
@@ -303,15 +310,18 @@ class Office:
             return {"error": "No contract found for this session"}
 
         # Mark as working
-        self.conductor.mark_working(session_id)
+        await self.conductor.mark_working(session_id)
         emitter = EventEmitter(self.bus, session_id)
         await emitter.contract_accepted()
+        await self.hooks.trigger(HookType.ON_CONTRACT_ACCEPTED, {
+            "session_id": session_id, "contract": contract.to_dict()
+        })
 
         # Run the full orchestration
         result = await self._conduct(session_id, contract)
 
         # Mark as done
-        self.conductor.mark_done(session_id)
+        await self.conductor.mark_done(session_id)
         return result
 
     async def run(
@@ -414,7 +424,7 @@ class Office:
 
                     await emitter.task_assigned(
                         from_id="conductor",
-                        to=assigned_to,
+                        to_id=assigned_to,
                         content=todo.description,
                     )
 
@@ -430,16 +440,33 @@ class Office:
                     return_exceptions=True,
                 )
 
-                for (todo_id, assigned_to, _, _), result in zip(group_tasks, parallel_results):
+                for (todo_id, assigned_to, _, task), result in zip(group_tasks, parallel_results):
                     if isinstance(result, Exception):
-                        results[todo_id] = TaskResult(
-                            task_id=todo_id,
-                            worker_id=assigned_to,
-                            status="failed",
+                        # Task threw an exception — attempt recovery
+                        recovered = await self._recover_task(
+                            session_id=session_id,
+                            todo_id=todo_id,
+                            task=task,
+                            assigned_to=assigned_to,
                             error=str(result),
+                            contract=contract,
+                            emitter=emitter,
                         )
+                        results[todo_id] = recovered
                     else:
                         results[todo_id] = result
+                        # If task returned failed status, attempt recovery
+                        if result.status == "failed":
+                            recovered = await self._recover_task(
+                                session_id=session_id,
+                                todo_id=todo_id,
+                                task=task,
+                                assigned_to=assigned_to,
+                                error=result.error,
+                                contract=contract,
+                                emitter=emitter,
+                            )
+                            results[todo_id] = recovered
 
                     # Store in Ring 1
                     await self.ring1.store_task_result(
@@ -459,6 +486,22 @@ class Office:
                             "status": results[todo_id].status,
                         },
                     )
+
+                    # Trigger hooks
+                    if results[todo_id].status == "done":
+                        await self.hooks.trigger(HookType.ON_TASK_COMPLETED, {
+                            "session_id": session_id,
+                            "task_id": todo_id,
+                            "worker_id": assigned_to,
+                            "result": results[todo_id].to_dict() if hasattr(results[todo_id], 'to_dict') else {},
+                        })
+                    else:
+                        await self.hooks.trigger(HookType.ON_TASK_FAILED, {
+                            "session_id": session_id,
+                            "task_id": todo_id,
+                            "worker_id": assigned_to,
+                            "error": results[todo_id].error,
+                        })
 
         # 4. Verification
         verification_needed = final_plan.get("verification_needed", [])
@@ -527,6 +570,116 @@ class Office:
     ) -> TaskResult:
         """Execute a single task with a worker."""
         return await worker.execute(task)
+
+    async def _recover_task(
+        self,
+        session_id: str,
+        todo_id: str,
+        task: Task,
+        assigned_to: str,
+        error: str,
+        contract: Contract,
+        emitter: EventEmitter,
+        max_retries: int = 1,
+    ) -> TaskResult:
+        """
+        Attempt to recover from a failed task using Conductor's recovery strategy.
+
+        Strategies: retry_same, reassign, simplify, abort.
+        Only retries once to avoid infinite loops.
+        """
+        await emitter.error_logged(lesson=f"Task {todo_id} failed: {error}. Attempting recovery...")
+
+        # Ask Conductor for recovery strategy
+        recovery = await self.conductor.recover_from_failure(session_id, task, error)
+        strategy = recovery.get("strategy", "retry_same")
+
+        if strategy == "retry_same":
+            # Retry with the same worker
+            try:
+                worker = self.registry.hire(assigned_to)
+                await emitter.task_assigned(
+                    from_id="conductor",
+                    to_id=assigned_to,
+                    content=f"[RETRY] {task.instruction}",
+                )
+                result = await worker.execute(task)
+                if result.status == "done":
+                    return result
+            except Exception as e:
+                return TaskResult(
+                    task_id=todo_id,
+                    worker_id=assigned_to,
+                    status="failed",
+                    error=f"Retry failed: {e}",
+                )
+
+        elif strategy == "reassign":
+            # Reassign to a different worker
+            new_worker_id = recovery.get("new_worker", "")
+            if new_worker_id and new_worker_id in self.registry.all_worker_ids:
+                try:
+                    worker = self.registry.hire(new_worker_id)
+                    await emitter.task_assigned(
+                        from_id="conductor",
+                        to_id=new_worker_id,
+                        content=f"[REASSIGNED] {task.instruction}",
+                    )
+                    result = await worker.execute(task)
+                    return result
+                except Exception as e:
+                    return TaskResult(
+                        task_id=todo_id,
+                        worker_id=new_worker_id,
+                        status="failed",
+                        error=f"Reassign failed: {e}",
+                    )
+
+        elif strategy == "simplify":
+            # Break into subtasks
+            subtasks = recovery.get("subtasks", [])
+            if subtasks:
+                sub_results = []
+                for i, sub_desc in enumerate(subtasks):
+                    sub_task = Task(
+                        instruction=sub_desc,
+                        session_id=session_id,
+                        context={
+                            "contract": contract.to_dict(),
+                            "parent_todo": todo_id,
+                            "subtask_index": i,
+                        },
+                    )
+                    try:
+                        worker = self.registry.hire(assigned_to)
+                        result = await worker.execute(sub_task)
+                        sub_results.append(result)
+                    except Exception:
+                        sub_results.append(TaskResult(
+                            task_id=f"{todo_id}_sub_{i}",
+                            worker_id=assigned_to,
+                            status="failed",
+                            error="Subtask failed",
+                        ))
+
+                # Combine subtask results
+                all_done = all(r.status == "done" for r in sub_results)
+                combined_output = "\n".join(r.output for r in sub_results if r.output)
+                return TaskResult(
+                    task_id=todo_id,
+                    worker_id=assigned_to,
+                    status="done" if all_done else "failed",
+                    output=combined_output,
+                    error="" if all_done else "Some subtasks failed",
+                )
+
+        # strategy == "abort" or fallback
+        return TaskResult(
+            task_id=todo_id,
+            worker_id=assigned_to,
+            status="failed",
+            error=f"Task aborted: {recovery.get('reason', error)}",
+        )
 
     def _assign_worker(self, todo: TodoItem, plan: dict[str, Any]) -> str:
         """Determine which worker should handle a todo."""

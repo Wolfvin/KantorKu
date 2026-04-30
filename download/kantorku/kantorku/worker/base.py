@@ -16,7 +16,7 @@ import enum
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 from kantorku.events.bus import EventBus
 from kantorku.events.emitter import EventEmitter
@@ -131,21 +131,38 @@ class BaseWorker:
         """Get or create an EventEmitter for a session."""
         return EventEmitter(self.bus, session_id)
 
-    async def execute(self, task: Task) -> TaskResult:
+    # Default timeout in seconds for task execution (0 = no timeout)
+    DEFAULT_TASK_TIMEOUT: int = 300  # 5 minutes
+
+    async def execute(self, task: Task, timeout: int | None = None) -> TaskResult:
         """
         Execute a task with full lifecycle management.
-        Handles status transitions and event emission.
+        Handles status transitions, event emission, and timeout.
+
+        Args:
+            task: The task to execute
+            timeout: Maximum seconds to wait (0 or None = DEFAULT_TASK_TIMEOUT)
+
+        Returns:
+            TaskResult with status, output, and optional files/error
         """
         emitter = self._get_emitter(task.session_id)
         self._status = WorkerStatus.THINKING
+        effective_timeout = timeout if timeout else self.DEFAULT_TASK_TIMEOUT
 
         try:
             # Emit task_started
             await emitter.task_started(from_id=self.id)
             self._status = WorkerStatus.ACTIVE
 
-            # Call subclass implementation
-            result = await self.handle(task)
+            # Call subclass implementation with timeout
+            if effective_timeout > 0:
+                result = await asyncio.wait_for(
+                    self.handle(task),
+                    timeout=effective_timeout,
+                )
+            else:
+                result = await self.handle(task)
 
             # Emit appropriate completion event
             if result.status == "done":
@@ -161,6 +178,17 @@ class BaseWorker:
             result.worker_id = self.id
             result.task_id = task.id
             return result
+
+        except asyncio.TimeoutError:
+            self._status = WorkerStatus.FAILED
+            error_msg = f"Task timed out after {effective_timeout}s"
+            await emitter.task_failed(from_id=self.id, error=error_msg)
+            return TaskResult(
+                task_id=task.id,
+                worker_id=self.id,
+                status="failed",
+                error=error_msg,
+            )
 
         except Exception as e:
             self._status = WorkerStatus.FAILED
@@ -212,6 +240,58 @@ class BaseWorker:
             messages=messages,
             **kwargs,
         )
+
+    async def llm_call_stream(
+        self,
+        prompt: str,
+        system: str | None = None,
+        model: str | None = None,
+        session_id: str = "",
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        """
+        Make a streaming LLM call — yields token chunks.
+        Also emits llm_stream_start, llm_stream_chunk, llm_stream_done
+        events to the session's EventBus channel.
+
+        Args:
+            prompt: User message content
+            system: Optional system prompt (defaults to skill_md)
+            model: Override model (defaults to worker's assigned model)
+            session_id: Session ID for event emission
+            **kwargs: Additional provider-specific parameters
+
+        Yields:
+            Token chunks as they arrive
+        """
+        messages: list[dict[str, str]] = []
+        sys = system or self.identity.skill_md
+        if sys:
+            messages.append({"role": "system", "content": sys})
+        messages.append({"role": "user", "content": prompt})
+
+        model_name = model or self.model
+        emitter = self._get_emitter(session_id) if session_id else None
+
+        if emitter:
+            await emitter.llm_stream_start(from_id=self.id, model=model_name)
+
+        full_text_parts: list[str] = []
+
+        async for chunk in self.router.complete_stream(
+            model=model_name,
+            messages=messages,
+            **kwargs,
+        ):
+            full_text_parts.append(chunk)
+            if emitter:
+                await emitter.llm_stream_chunk(from_id=self.id, chunk=chunk, model=model_name)
+            yield chunk
+
+        if emitter:
+            await emitter.llm_stream_done(
+                from_id=self.id, model=model_name, full_text="".join(full_text_parts)
+            )
 
     async def llm_call_structured(
         self,

@@ -144,3 +144,37 @@ class EventEmitter:
 
     async def manager_question(self, content: str) -> None:
         await self._emit(type="manager_question", **{"from": "conductor"}, content=content)
+
+    # ── Streaming events ───────────────────────────────────────────
+
+    async def llm_stream_start(
+        self, from_id: str, model: str = ""
+    ) -> None:
+        """Emit when an LLM streaming call begins."""
+        await self._emit(
+            type="llm_stream_start",
+            **{"from": from_id},
+            model=model,
+        )
+
+    async def llm_stream_chunk(
+        self, from_id: str, chunk: str, model: str = ""
+    ) -> None:
+        """Emit a single token chunk from an LLM streaming call."""
+        await self._emit(
+            type="llm_stream_chunk",
+            **{"from": from_id},
+            chunk=chunk,
+            model=model,
+        )
+
+    async def llm_stream_done(
+        self, from_id: str, model: str = "", full_text: str = ""
+    ) -> None:
+        """Emit when an LLM streaming call completes."""
+        await self._emit(
+            type="llm_stream_done",
+            **{"from": from_id},
+            model=model,
+            full_text=full_text,
+        )

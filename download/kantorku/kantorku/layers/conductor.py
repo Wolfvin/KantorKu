@@ -160,11 +160,17 @@ class Conductor:
         router: ProviderRouter,
         bus: EventBus,
         model: str = "anthropic/claude-opus-4-6",
+        ring1: Any = None,
     ) -> None:
         self.router = router
         self.bus = bus
         self.model = model
+        self.ring1 = ring1
         self._sessions: dict[str, dict[str, Any]] = {}
+
+    def set_ring1(self, ring1: Any) -> None:
+        """Set reference to Ring1 memory for session persistence."""
+        self.ring1 = ring1
 
     def _get_or_create_session(self, session_id: str) -> dict[str, Any]:
         if session_id not in self._sessions:
@@ -174,6 +180,69 @@ class Conductor:
                 "messages": [],
             }
         return self._sessions[session_id]
+
+    async def persist_session(self, session_id: str) -> None:
+        """Persist current session state to Ring1 for crash recovery."""
+        if not self.ring1:
+            return
+        session = self._sessions.get(session_id)
+        if not session:
+            return
+
+        contract = session["contract"]
+        await self.ring1.store_session(session_id, {
+            "contract": contract.to_dict(),
+            "state": session["state"].value,
+            "client_messages": contract.client_messages,
+            "manager_messages": contract.manager_messages,
+        })
+
+    async def restore_session(self, session_id: str) -> bool:
+        """
+        Restore session state from Ring1 after server restart.
+
+        Returns:
+            True if session was found and restored, False otherwise
+        """
+        if not self.ring1:
+            return False
+
+        state_data = await self.ring1.get_session(session_id)
+        if not state_data:
+            return False
+
+        contract_data = state_data.get("contract", {})
+        contract = Contract(
+            id=contract_data.get("id", ""),
+            session_id=session_id,
+            title=contract_data.get("title", ""),
+            description=contract_data.get("description", ""),
+            todos=[
+                TodoItem(
+                    id=t.get("id", ""),
+                    description=t.get("description", ""),
+                    assigned_to=t.get("assigned_to", ""),
+                    status=t.get("status", "pending"),
+                    depends_on=t.get("depends_on", []),
+                )
+                for t in contract_data.get("todos", [])
+            ],
+            client_messages=state_data.get("client_messages", []),
+            manager_messages=state_data.get("manager_messages", []),
+        )
+
+        state_value = state_data.get("state", "idle")
+        try:
+            contract_state = ContractState(state_value)
+        except ValueError:
+            contract_state = ContractState.IDLE
+
+        self._sessions[session_id] = {
+            "contract": contract,
+            "state": contract_state,
+            "messages": [],
+        }
+        return True
 
     async def understand_client(
         self,
@@ -226,6 +295,7 @@ class Conductor:
 
             yield {"type": "contract_ready", "contract": contract.to_dict()}
             await emitter.contract_ready(todos=[t.to_dict() for t in contract.todos])
+            await self.persist_session(session_id)
         else:
             # Clarification needed
             session["state"] = ContractState.CLARIFYING
@@ -233,6 +303,7 @@ class Conductor:
 
             yield {"type": "manager_message", "content": response}
             await emitter.manager_message(content=response)
+            await self.persist_session(session_id)
 
     async def revise_contract(
         self,
@@ -297,17 +368,19 @@ class Conductor:
         session = self._sessions.get(session_id)
         return session["state"] if session else ContractState.IDLE
 
-    def mark_working(self, session_id: str) -> None:
+    async def mark_working(self, session_id: str) -> None:
         """Mark session as WORKING after contract acceptance."""
         session = self._sessions.get(session_id)
         if session:
             session["state"] = ContractState.WORKING
+            await self.persist_session(session_id)
 
-    def mark_done(self, session_id: str) -> None:
+    async def mark_done(self, session_id: str) -> None:
         """Mark session as DONE after all work complete."""
         session = self._sessions.get(session_id)
         if session:
             session["state"] = ContractState.DONE
+            await self.persist_session(session_id)
 
     async def draft_plan(self, contract: Contract) -> dict[str, Any]:
         """
