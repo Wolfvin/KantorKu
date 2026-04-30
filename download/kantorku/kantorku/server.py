@@ -1,8 +1,10 @@
 """
-kantorku server — FastAPI + 2 WebSocket channels.
+kantorku server — FastAPI + 2 WebSocket channels + SSE + Health.
 
 Channel 1 (/ws/client): User ↔ Manager chat (Panel 1)
 Channel 2 (/ws/office): Live office event stream (Panel 2)
+SSE (/events/stream/{session_id}): Server-Sent Events for non-WS clients
+Health (/health/*): Liveness, readiness, dashboard
 
 Usage:
     uvicorn kantorku.server:app --host 0.0.0.0 --port 8000
@@ -12,20 +14,37 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, JSONResponse
+from sse_starlette.sse import EventSourceResponse
 
 from kantorku.office import Office
 from kantorku.events.bus import EventBus
 from kantorku.config.settings import KantorkuConfig
+from kantorku.health import HealthChecker, HealthStatus
+from kantorku.middleware import (
+    MiddlewarePipeline,
+    MiddlewareContext,
+    LoggingMiddleware,
+    AuthMiddleware,
+    RateLimitMiddleware,
+    CostGuardMiddleware,
+    AuditMiddleware,
+)
+
+logger = logging.getLogger("kantorku.server")
 
 
 # Global office instance — initialized on startup
 _office: Office | None = None
+_health: HealthChecker | None = None
+_pipeline: MiddlewarePipeline | None = None
 
 
 def create_office(config_path: str | None = None) -> Office:
@@ -42,14 +61,41 @@ def create_office(config_path: str | None = None) -> Office:
     return _office
 
 
+def create_middleware_pipeline(office: Office) -> MiddlewarePipeline:
+    """Create the middleware pipeline with default middleware."""
+    pipeline = MiddlewarePipeline()
+    pipeline.add(LoggingMiddleware())
+    pipeline.add(RateLimitMiddleware(max_requests=200, window_seconds=60))
+    if office.cost_tracker:
+        pipeline.add(CostGuardMiddleware(
+            max_session_cost=10.0,
+            max_total_cost=100.0,
+            cost_tracker=office.cost_tracker,
+        ))
+    return pipeline
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
+    global _health, _pipeline
+
     # Initialize office on startup
     if _office:
         await _office.initialize()
+
+        # Initialize health checker
+        _health = HealthChecker(office=_office, check_interval=30)
+        await _health.start()
+
+        # Initialize middleware pipeline
+        _pipeline = create_middleware_pipeline(_office)
+
     yield
+
     # Cleanup on shutdown
+    if _health:
+        await _health.stop()
     if _office:
         await _office.shutdown()
 
@@ -57,7 +103,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="kantorku",
     description="Kantor digital yang sesungguhnya — AI worker orchestration",
-    version="0.1.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -71,28 +117,119 @@ app.add_middleware(
 )
 
 
+# ── Health Endpoints ──────────────────────────────────────────────────
+
+
 @app.get("/")
 async def root():
-    """Health check."""
+    """Root health check."""
     return {
         "name": "kantorku",
-        "version": "0.1.0",
+        "version": "0.3.0",
         "status": "running",
         "workers": len(_office.registry.all_worker_ids) if _office else 0,
-        "pool": _office.get_pool_status() if _office else {},
     }
+
+
+@app.get("/health/live")
+async def liveness():
+    """Liveness probe — is the server alive?"""
+    if not _health:
+        return JSONResponse(
+            content={"status": "healthy", "message": "Server is alive"},
+            status_code=200,
+        )
+    result = _health.liveness()
+    status_code = 200 if result.is_healthy else 503
+    return JSONResponse(content=result.to_dict(), status_code=status_code)
+
+
+@app.get("/health/ready")
+async def readiness():
+    """Readiness probe — is the server ready to accept requests?"""
+    if not _health:
+        return JSONResponse(
+            content={"status": "unhealthy", "message": "Not initialized"},
+            status_code=503,
+        )
+    result = _health.readiness()
+    status_code = 200 if result.is_healthy else 503
+    return JSONResponse(content=result.to_dict(), status_code=status_code)
+
+
+@app.get("/health/dashboard")
+async def dashboard():
+    """Full health dashboard with detailed subsystem status."""
+    if not _health:
+        return JSONResponse(
+            content={"error": "Health checker not initialized"},
+            status_code=503,
+        )
+    return _health.dashboard()
 
 
 @app.get("/status")
 async def status():
-    """Get office status."""
+    """Get office status (workers, pool, costs, metrics)."""
     if not _office:
         return {"error": "Office not initialized"}
 
-    return {
+    result = {
         "workers": _office.get_worker_status(),
         "pool": _office.get_pool_status(),
     }
+
+    # Add P3 data
+    if _office.cost_tracker:
+        result["cost"] = _office.cost_tracker.get_report()
+
+    if _health:
+        result["health"] = {
+            "providers": {
+                name: status.to_dict()
+                for name, status in _health._provider_health.items()
+            },
+        }
+
+    return result
+
+
+# ── Cost & Metrics Endpoints ─────────────────────────────────────────
+
+
+@app.get("/cost")
+async def cost_report():
+    """Get detailed cost report."""
+    if not _office or not _office.cost_tracker:
+        return {"cost_tracking": False}
+    return _office.cost_tracker.get_report()
+
+
+@app.get("/metrics")
+async def metrics():
+    """Get observability metrics."""
+    if not _office:
+        return {}
+    return _office.get_metrics_summary()
+
+
+@app.get("/circuit-breaker")
+async def circuit_breaker_status():
+    """Get circuit breaker status for all providers."""
+    if not _office:
+        return {}
+    return _office.get_circuit_breaker_status()
+
+
+@app.get("/spans")
+async def spans(limit: int = 100):
+    """Get recent tracing spans."""
+    if not _office:
+        return {"spans": []}
+    return {"spans": _office.get_observability_spans(limit)}
+
+
+# ── WebSocket: Client Channel ────────────────────────────────────────
 
 
 @app.websocket("/ws/client")
@@ -148,6 +285,9 @@ async def client_channel(ws: WebSocket):
         await _office.cleanup_session(session_id)
 
 
+# ── WebSocket: Office Channel ────────────────────────────────────────
+
+
 @app.websocket("/ws/office")
 async def office_channel(
     ws: WebSocket,
@@ -156,16 +296,7 @@ async def office_channel(
     """
     Office event stream WebSocket channel (Panel 2).
 
-    Streams all office events for a session in real-time:
-    - briefing_opened, plan_drafted, plan_revised
-    - task_assigned, task_started, task_done, task_failed
-    - worker_dm, worker_broadcast
-    - context_fetch_start, context_fetch_done
-    - verify_design_start/done, verify_engineer_start/done
-    - error_logged, skill_updated
-
-    Query params:
-        session_id: Required session identifier
+    Streams all office events for a session in real-time.
     """
     await ws.accept()
 
@@ -183,12 +314,115 @@ async def office_channel(
         pass
 
 
+# ── SSE: Server-Sent Events Stream ───────────────────────────────────
+
+
+@app.get("/events/stream/{session_id}")
+async def sse_stream(session_id: str):
+    """
+    Server-Sent Events stream for non-WebSocket clients.
+
+    Provides the same event stream as /ws/office but via SSE,
+    which works with standard HTTP and doesn't require WebSocket support.
+
+    Usage (JavaScript):
+        const source = new EventSource('/events/stream/session-123');
+        source.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log(data);
+        };
+    """
+    async def event_generator():
+        if not _office:
+            yield {"event": "error", "data": json.dumps({"message": "Office not initialized"})}
+            return
+
+        try:
+            async with _office.bus.subscribe(session_id) as events:
+                async for event in events:
+                    yield {
+                        "event": event.type,
+                        "data": json.dumps(event.to_dict()),
+                    }
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            yield {"event": "error", "data": json.dumps({"message": str(e)})}
+
+    return EventSourceResponse(event_generator())
+
+
+# ── REST: Events Replay ──────────────────────────────────────────────
+
+
 @app.get("/events/{session_id}")
 async def get_events(session_id: str, limit: int = 50):
     """Get recent events for a session (for reconnection/replay)."""
     if not _office:
         return {"events": []}
     return {"events": _office.get_events(session_id, limit)}
+
+
+# ── REST: Sessions ───────────────────────────────────────────────────
+
+
+@app.get("/sessions")
+async def list_sessions():
+    """List all active sessions."""
+    if not _office:
+        return {"sessions": []}
+
+    sessions = []
+    if hasattr(_office, 'conductor') and hasattr(_office.conductor, '_sessions'):
+        for session_id, data in _office.conductor._sessions.items():
+            contract = data.get("contract")
+            sessions.append({
+                "session_id": session_id,
+                "state": data.get("state", "unknown"),
+                "contract_title": contract.title if contract and hasattr(contract, 'title') else "",
+            })
+
+    return {"sessions": sessions}
+
+
+@app.get("/sessions/{session_id}")
+async def get_session(session_id: str):
+    """Get details of a specific session."""
+    if not _office:
+        return {"error": "Office not initialized"}
+
+    # Get contract
+    contract = _office.conductor.get_contract(session_id) if _office.conductor else None
+    if not contract:
+        return {"error": "Session not found", "session_id": session_id}
+
+    # Get events
+    events = _office.get_events(session_id)
+
+    # Get task results from Ring1
+    task_results = []
+    if _office.ring1:
+        task_results = await _office.ring1.get_task_results(session_id)
+
+    return {
+        "session_id": session_id,
+        "contract": contract.to_dict(),
+        "events": events,
+        "task_results": task_results,
+    }
+
+
+@app.delete("/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Clean up and delete a session."""
+    if not _office:
+        return {"error": "Office not initialized"}
+
+    await _office.cleanup_session(session_id)
+    return {"status": "deleted", "session_id": session_id}
+
+
+# ── CLI Entry Point ──────────────────────────────────────────────────
 
 
 def main():

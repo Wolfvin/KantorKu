@@ -4,6 +4,14 @@ kantorku — Kantor digital yang sesungguhnya.
 AI worker orchestration framework with Conductor, BriefingRoom,
 WorkerHub, ContextPool, and Three-Ring Memory.
 
+Now includes (v0.3.0):
+- Session persistence & crash recovery
+- Persistent task queue with retry & DLQ
+- Middleware pipeline (auth, logging, rate-limit, cost guard)
+- Health monitoring (liveness, readiness, dashboard)
+- SSE streaming for non-WebSocket clients
+- Full observability (tracing + metrics)
+
 Usage:
     from kantorku import Office
 
@@ -57,7 +65,53 @@ from kantorku.errors import (
     WorkerNotFoundError,
 )
 
-__version__ = "0.2.0"
+# P3: Persistence & Crash Recovery
+from kantorku.persistence import (
+    CheckpointManager,
+    CrashRecovery,
+    SessionSnapshot,
+    OfficeSnapshot,
+    atomic_write,
+    atomic_write_json,
+    atomic_read_json,
+)
+
+# P3: Task Queue
+from kantorku.task_queue import (
+    TaskQueue,
+    QueuedTask,
+    TaskState as QueueTaskState,
+    DeadLetterEntry,
+)
+
+# P3: Middleware Pipeline
+from kantorku.middleware import (
+    Middleware,
+    MiddlewarePipeline,
+    MiddlewareContext,
+    LoggingMiddleware,
+    AuthMiddleware,
+    RateLimitMiddleware as RateLimitMiddleware,
+    CostGuardMiddleware,
+    AuditMiddleware,
+    TimeoutMiddleware,
+    RetryMiddleware,
+    CachingMiddleware,
+)
+
+# P3: Health Monitoring
+from kantorku.health import (
+    HealthChecker,
+    HealthStatus,
+    HealthCheckResult,
+    AggregatedHealth,
+    WorkerHealthStatus,
+    ProviderHealthStatus,
+    Alert,
+    AlertSystem,
+)
+
+__version__ = "0.3.0"
 __all__ = [
     # Core
     "Office",
@@ -141,4 +195,42 @@ __all__ = [
     "NoContractError",
     "ConfigError",
     "WorkerNotFoundError",
+
+    # P3: Persistence
+    "CheckpointManager",
+    "CrashRecovery",
+    "SessionSnapshot",
+    "OfficeSnapshot",
+    "atomic_write",
+    "atomic_write_json",
+    "atomic_read_json",
+
+    # P3: Task Queue
+    "TaskQueue",
+    "QueuedTask",
+    "QueueTaskState",
+    "DeadLetterEntry",
+
+    # P3: Middleware
+    "Middleware",
+    "MiddlewarePipeline",
+    "MiddlewareContext",
+    "LoggingMiddleware",
+    "AuthMiddleware",
+    "RateLimitMiddleware",
+    "CostGuardMiddleware",
+    "AuditMiddleware",
+    "TimeoutMiddleware",
+    "RetryMiddleware",
+    "CachingMiddleware",
+
+    # P3: Health
+    "HealthChecker",
+    "HealthStatus",
+    "HealthCheckResult",
+    "AggregatedHealth",
+    "WorkerHealthStatus",
+    "ProviderHealthStatus",
+    "Alert",
+    "AlertSystem",
 ]

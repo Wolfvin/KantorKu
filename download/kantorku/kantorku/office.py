@@ -4,12 +4,16 @@ Office — Main entry point for kantorku.
 The Office is to kantorku what Crew is to CrewAI or StateGraph is to LangGraph.
 It orchestrates everything: workers, conductor, briefing room, context pool, memory.
 
-Now includes:
+Now includes (v0.3.0):
 - CostTracker integration (automatic cost tracking for all LLM calls)
 - LLMCache integration (avoid redundant API calls)
 - Observability integration (tracing + metrics for all operations)
 - Async context manager support (async with Office() as office)
 - Structured errors
+- Session persistence & crash recovery (P3)
+- Persistent task queue with retry & DLQ (P3)
+- Middleware pipeline (P3)
+- Health monitoring (P3)
 
 Usage:
     # From config file
@@ -25,11 +29,18 @@ Usage:
     # Async context manager
     async with Office.from_config("kantorku.toml") as office:
         result = await office.run("Build rate limiter")
+
+    # Crash recovery
+    office = Office.from_config("kantorku.toml")
+    await office.initialize()
+    if office.recovery.has_recovery_data():
+        await office.restore_from_crash()
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -55,6 +66,14 @@ from kantorku.cost import CostTracker
 from kantorku.cache import LLMCache
 from kantorku.observability import get_tracer, get_metrics
 from kantorku.errors import OfficeNotInitializedError, NoContractError
+
+# P3 imports
+from kantorku.persistence import CheckpointManager, CrashRecovery, OfficeSnapshot
+from kantorku.task_queue import TaskQueue
+from kantorku.middleware import MiddlewarePipeline, MiddlewareContext
+from kantorku.health import HealthChecker
+
+logger = logging.getLogger("kantorku.office")
 
 
 class Office:
@@ -90,6 +109,16 @@ class Office:
         enable_cost_tracking: bool = True,
         circuit_breaker: CircuitBreaker | None = None,
         retry_policy: RetryPolicy | None = None,
+        # P3: Persistence
+        snapshot_dir: str = "data/snapshots",
+        auto_checkpoint_interval: int = 10,
+        # P3: Task Queue
+        enable_task_queue: bool = True,
+        task_queue_max_retries: int = 2,
+        # P3: Middleware
+        middleware: MiddlewarePipeline | None = None,
+        # P3: Health
+        health_check_interval: int = 30,
     ) -> None:
         self.config = config or KantorkuConfig(conductor_model=conductor_model)
         self.hooks = hooks or Hooks()
@@ -147,6 +176,34 @@ class Office:
         self.hub: WorkerHub | None = None
         self.briefing_room: BriefingRoom | None = None
         self.intake: Intake | None = None
+
+        # P3: Checkpoint manager for session persistence
+        self.checkpoint = CheckpointManager(
+            ring1=self.ring1,
+            ring2=self.ring2,
+            bus=self.bus,
+            snapshot_dir=snapshot_dir,
+            auto_interval=auto_checkpoint_interval,
+        )
+
+        # P3: Crash recovery
+        self.recovery = CrashRecovery(
+            ring1=self.ring1,
+            ring2=self.ring2,
+            snapshot_dir=snapshot_dir,
+        )
+
+        # P3: Task queue (initialized after ring2 in initialize())
+        self._enable_task_queue = enable_task_queue
+        self._task_queue_max_retries = task_queue_max_retries
+        self._task_queue: TaskQueue | None = None
+
+        # P3: Middleware pipeline
+        self._middleware = middleware or MiddlewarePipeline()
+
+        # P3: Health checker (initialized after office is ready)
+        self._health: HealthChecker | None = None
+        self._health_check_interval = health_check_interval
 
         self._initialized = False
 
@@ -368,7 +425,29 @@ class Office:
                 pw.router = self.router
             await self.pool.start()
 
+            # P3: Initialize task queue
+            if self._enable_task_queue:
+                self._task_queue = TaskQueue(
+                    ring2=self.ring2,
+                    bus=self.bus,
+                    default_max_retries=self._task_queue_max_retries,
+                )
+                await self._task_queue.start()
+
+            # P3: Initialize health checker
+            self._health = HealthChecker(
+                office=self,
+                check_interval=self._health_check_interval,
+            )
+            await self._health.start()
+
+            # P3: Initialize checkpoint manager references
+            self.checkpoint.ring1 = self.ring1
+            self.checkpoint.ring2 = self.ring2
+            self.checkpoint.bus = self.bus
+
             self._initialized = True
+            logger.info("kantorku Office initialized (v0.3.0)")
 
     async def chat(
         self,
@@ -831,6 +910,89 @@ class Office:
         """Get recent tracing spans."""
         return self._tracer.get_spans(limit)
 
+    # ── P3: Persistence & Recovery ─────────────────────────────────
+
+    async def checkpoint_session(self, session_id: str) -> str | None:
+        """Manually checkpoint a session."""
+        session = self.conductor._sessions.get(session_id)
+        if not session:
+            return None
+
+        contract = session.get("contract")
+        contract_dict = contract.to_dict() if contract and hasattr(contract, 'to_dict') else {}
+        contract_state = session.get("state")
+        state_value = contract_state.value if hasattr(contract_state, 'value') else str(contract_state)
+
+        return await self.checkpoint.save_session(
+            session_id=session_id,
+            contract=contract_dict,
+            contract_state=state_value,
+            client_messages=contract.client_messages if contract and hasattr(contract, 'client_messages') else [],
+            manager_messages=contract.manager_messages if contract and hasattr(contract, 'manager_messages') else [],
+            cost_usd=self.cost_tracker.get_session_cost(session_id) if self.cost_tracker else 0.0,
+        )
+
+    async def restore_from_crash(self) -> bool:
+        """
+        Restore office state from the last crash recovery snapshot.
+
+        Returns True if recovery was successful.
+        """
+        snapshot = await self.recovery.try_recover()
+        if not snapshot:
+            logger.info("No recovery data found — starting fresh")
+            return False
+
+        # Restore sessions
+        for session_id, session_snap in snapshot.sessions.items():
+            if session_snap.contract_state in ("working", "contract_presented"):
+                logger.info(f"Restoring session {session_id} (state: {session_snap.contract_state})")
+                # Store restored session in Ring1
+                await self.ring1.store_session(session_id, session_snap.to_dict())
+
+        logger.info(f"Crash recovery completed: {len(snapshot.sessions)} sessions restored")
+        return True
+
+    # ── P3: Task Queue ─────────────────────────────────────────────
+
+    async def enqueue_task(
+        self,
+        instruction: str,
+        session_id: str = "",
+        assigned_to: str = "",
+        priority: int = 0,
+        **kwargs: Any,
+    ) -> str | None:
+        """Enqueue a task to the persistent task queue."""
+        if not self._task_queue:
+            return None
+        return await self._task_queue.enqueue(
+            instruction=instruction,
+            session_id=session_id,
+            assigned_to=assigned_to,
+            priority=priority,
+            **kwargs,
+        )
+
+    def get_task_queue_stats(self) -> dict[str, Any]:
+        """Get task queue statistics."""
+        if not self._task_queue:
+            return {"enabled": False}
+        return self._task_queue.get_stats()
+
+    def get_dead_letter_queue(self) -> list[dict[str, Any]]:
+        """Get dead letter queue entries."""
+        if not self._task_queue:
+            return []
+        return [e.to_dict() for e in self._task_queue.get_dead_letter_queue()]
+
+    # ── P3: Health ─────────────────────────────────────────────────
+
+    @property
+    def health(self) -> HealthChecker | None:
+        """Access the health checker."""
+        return self._health
+
     async def cleanup_session(self, session_id: str) -> None:
         """Clean up all session resources."""
         await self.conductor.cleanup_session(session_id)
@@ -839,6 +1001,22 @@ class Office:
 
     async def shutdown(self) -> None:
         """Gracefully shut down the office."""
+        # P3: Save office snapshot before shutdown
+        if self._initialized and self.checkpoint:
+            try:
+                await self.checkpoint.save_office_snapshot(self)
+                logger.info("Office snapshot saved before shutdown")
+            except Exception as e:
+                logger.warning(f"Failed to save office snapshot: {e}")
+
+        # P3: Stop health checker
+        if self._health:
+            await self._health.stop()
+
+        # P3: Stop task queue
+        if self._task_queue:
+            await self._task_queue.stop()
+
         await self.pool.stop()
         if self.cache:
             await self.cache.close()
