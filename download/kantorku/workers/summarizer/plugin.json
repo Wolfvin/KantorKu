@@ -1,5 +1,8 @@
 {
   "id": "summarizer",
+  "category": "support",
+  "subcategory": "compression",
+  "display_name": "Context Compressor",
   "api": {
     "provider": "deepseek",
     "model": "deepseek-v4-flash",
@@ -7,5 +10,8 @@
   },
   "squad": "support",
   "role": "Context Compressor",
-  "capabilities": ["summarization", "context-compression", "key-point-extraction", "token-optimization"]
+  "description": "Compresses long content — executive summaries, key point extraction, token optimization, long context compression",
+  "tags": ["summarization", "context-compression", "key-points", "token-optimization", "compression", "1m-context"],
+  "capabilities": ["summarization", "context-compression", "key-point-extraction", "token-optimization"],
+  "interacts_with": ["scribe", "narrator"]
 }

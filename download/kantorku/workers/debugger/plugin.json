@@ -1,5 +1,8 @@
 {
   "id": "debugger",
+  "category": "support",
+  "subcategory": "debugging",
+  "display_name": "Root Cause Analyst",
   "api": {
     "provider": "xai",
     "model": "grok-3",
@@ -8,5 +11,8 @@
   },
   "squad": "support",
   "role": "Root Cause Analyst",
-  "capabilities": ["root-cause-analysis", "stack-trace-reading", "bug-triaging", "fix-suggestion"]
+  "description": "Analyzes bugs and errors — root cause analysis, stack trace reading, bug triaging, fix suggestions",
+  "tags": ["root-cause-analysis", "stack-trace", "bug-triage", "fix-suggestion", "debugging", "grok"],
+  "capabilities": ["root-cause-analysis", "stack-trace-reading", "bug-triaging", "fix-suggestion"],
+  "interacts_with": ["coder_backend", "coder_frontend", "watchdog"]
 }

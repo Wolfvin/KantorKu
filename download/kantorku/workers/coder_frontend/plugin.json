@@ -1,5 +1,8 @@
 {
   "id": "coder_frontend",
+  "category": "coding",
+  "subcategory": "frontend",
+  "display_name": "Frontend Coder",
   "api": {
     "provider": "anthropic",
     "model": "claude-sonnet-4-20250514",
@@ -7,5 +10,8 @@
   },
   "squad": "coding",
   "role": "React/CSS/UI/Visual Specialist",
-  "capabilities": ["react", "nextjs", "css", "tailwind", "component-architecture", "accessibility"]
+  "description": "Writes frontend code — React, Next.js, CSS, Tailwind, component architecture, visual quality, accessibility",
+  "tags": ["react", "nextjs", "css", "tailwind", "component-architecture", "accessibility", "ui", "visual"],
+  "capabilities": ["react", "nextjs", "css", "tailwind", "component-architecture", "accessibility"],
+  "interacts_with": ["coder_wiring", "verifier_designer", "auditor"]
 }

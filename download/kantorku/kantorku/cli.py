@@ -177,6 +177,10 @@ def cmd_worker_create(args: argparse.Namespace) -> None:
     overwrite = getattr(args, "overwrite", False)
 
     cap_list = [c.strip() for c in capabilities.split(",") if c.strip()] if capabilities else []
+    tag_list = [t.strip() for t in getattr(args, "tags", "").split(",") if t.strip()] if getattr(args, "tags", "") else []
+    category = getattr(args, "category", "") or ""
+    subcategory = getattr(args, "subcategory", "") or ""
+    display_name = getattr(args, "display_name", "") or ""
 
     gen = WorkerGenerator()
     try:
@@ -185,8 +189,12 @@ def cmd_worker_create(args: argparse.Namespace) -> None:
             base_dir=base_dir,
             model=model,
             squad=squad,
+            category=category,
+            subcategory=subcategory,
+            display_name=display_name,
             role=role,
             capabilities=cap_list,
+            tags=tag_list,
             description=description,
             overwrite=overwrite,
         )
@@ -391,10 +399,10 @@ def cmd_worker_list(args: argparse.Namespace) -> None:
         print("Create one with: kantorku worker create my_worker")
         return
 
-    # Group by squad
+    # Group by category (or squad if no category)
     squads: dict[str, list[dict]] = {}
     for w in workers:
-        squad = w.get("squad", "unknown") or "unassigned"
+        squad = w.get("category", "") or w.get("squad", "unknown") or "uncategorized"
         if squad not in squads:
             squads[squad] = []
         squads[squad].append(w)
@@ -409,12 +417,11 @@ def cmd_worker_list(args: argparse.Namespace) -> None:
         for w in members:
             model = w.get("model", "N/A") or "N/A"
             status = w.get("status", "N/A")
+            display = w.get("display_name", "") or w.get("role", "")
+            subcat = w.get("subcategory", "")
             custom = " (custom)" if w.get("has_custom_class") else ""
-            src = w.get("source_dir", "")
-            src_label = ""
-            if src and "kantorku/workers" not in src:
-                src_label = f" ← {src}"
-            print(f"    - {w['id']:25s} model={model:30s} status={status}{custom}{src_label}")
+            subcat_label = f"/{subcat}" if subcat else ""
+            print(f"    - {w['id']:25s} [{display}{subcat_label}] model={model:30s}{custom}")
         print()
 
 
@@ -557,6 +564,10 @@ def main() -> None:
                                help="Squad assignment")
     create_parser.add_argument("--role", "-r", default="", help="Role description")
     create_parser.add_argument("--capabilities", "-cap", default="", help="Comma-separated capabilities")
+    create_parser.add_argument("--category", "-cat", default="", help="Top-level category (coding, verification, support, translation)")
+    create_parser.add_argument("--subcategory", "-sub", default="", help="Sub-category (e.g. frontend, backend, debugging)")
+    create_parser.add_argument("--display-name", "-dn", default="", help="Human-friendly display name")
+    create_parser.add_argument("--tags", "-t", default="", help="Comma-separated tags for AI agent organization")
     create_parser.add_argument("--description", "-d", default="", help="Short description")
     create_parser.add_argument("--base-dir", default="workers", help="Parent directory for workers")
     create_parser.add_argument("--overwrite", "-f", action="store_true", help="Overwrite existing files")

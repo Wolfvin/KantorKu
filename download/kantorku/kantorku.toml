@@ -1,38 +1,57 @@
 # =====================================================
 # KANTORKU.TOML — WORKER MODEL ASSIGNMENT
 # Verified: April 2026 | Multi-source benchmarks
+#
+# KATEGORISASI WORKER:
+#   🟦 coding       → Yang nulis kode (frontend, backend, wiring)
+#   🟩 verification → Yang cek & verifikasi (design_judge, logic_judge)
+#   🟧 support      → Yang bantuan & analisis (debugger, scout, dll)
+#   🟪 translation  → Yang parse & format (intake, narrator)
 # =====================================================
 
 [office]
 conductor_model = "anthropic/claude-opus-4-6"
+# CEO/Manager — Decision-making + orchestration only
 # SWE-bench 80.8% | Arena Elo #2 (1095)
-# Decision-making + orchestration only
 # Expensive ($5/M) but low frequency usage
 
 # ─────────────────────────────────────
-# TRANSLATION LAYER — cheap & fast
+# 🟪 TRANSLATION LAYER — murah & cepat
+# Intake: parse pesan client
+# Narrator: format output buat client
 # ─────────────────────────────────────
 
 [workers.intake]
+category = "translation"
+subcategory = "input"
 model = "ollama/llama3"
-# Parsing only — doesn't need frontier
+# Parsing only — tidak butuh frontier model
 
 [workers.narrator]
+category = "translation"
+subcategory = "output"
 model = "ollama/llama3"
-# Format output only — doesn't need frontier
+# Format output only — tidak butuh frontier model
 
 # ─────────────────────────────────────
-# CODING — 3 SPECIALIZATIONS
+# 🟦 CODING — 3 SPESIALISASI
+# Frontend: UI/Visual (Claude Sonnet)
+# Backend: Server/Systems (MiniMax M2.7)
+# Wiring: Integration/Glue (Codex 5.3)
 # ─────────────────────────────────────
 
 [workers.coder_frontend]
+category = "coding"
+subcategory = "frontend"
 model = "anthropic/claude-sonnet-4-6"
 squad = "coding"
 role = "React/CSS/UI/Visual specialist"
 # WebDev Arena Elo: top 3
-# $1.50/M — reasonable for frontend quality
+# $1.50/M — reasonable untuk frontend quality
 
 [workers.coder_backend]
+category = "coding"
+subcategory = "backend"
 model = "minimax/minimax-m2-7"
 squad = "coding"
 role = "Python/Rust/Systems specialist"
@@ -40,6 +59,8 @@ role = "Python/Rust/Systems specialist"
 # $0.30/M — 16x cheaper than Claude Opus
 
 [workers.coder_wiring]
+category = "coding"
+subcategory = "integration"
 model = "google/gemini-3-1-pro"
 squad = "coding"
 role = "API/WS/MCP/Glue specialist"
@@ -47,16 +68,22 @@ role = "API/WS/MCP/Glue specialist"
 # 1M context — see entire codebase when wiring
 
 # ─────────────────────────────────────
-# VERIFICATION — 2 SPECIALIZATIONS
+# 🟩 VERIFICATION — 2 SPESIALISASI
+# Designer: Cek visual/UX (Gemini — multimodal)
+# Engineer: Cek logic/security (MiniMax — murah & akurat)
 # ─────────────────────────────────────
 
 [workers.verifier_designer]
+category = "verification"
+subcategory = "visual"
 model = "google/gemini-3-1-pro"
 squad = "verification"
 role = "Visual/UX judge"
 # Multimodal: screenshot → judge visual quality
 
 [workers.verifier_engineer]
+category = "verification"
+subcategory = "engineering"
 model = "minimax/minimax-m2-5"
 squad = "verification"
 role = "Logic/test/security reviewer"
@@ -74,40 +101,58 @@ queue_type = "fifo"
 # Context caching $0.028/M repeated prefixes
 
 # ─────────────────────────────────────
-# SUPPORT WORKERS
+# 🟧 SUPPORT — 6 SPESIALISASI
+# Debugger: Root cause (Grok 3)
+# Scout: Research (Gemini 2.5 Pro)
+# Auditor: Architecture review (Claude Sonnet)
+# Scribe: Documentation (DeepSeek V4 Flash)
+# Summarizer: Compression (DeepSeek V4 Flash)
+# Sentinel: Error logging (Ollama — lokal/gratis)
 # ─────────────────────────────────────
 
 [workers.debugger]
+category = "support"
+subcategory = "debugging"
 model = "deepseek/deepseek-v3-2"
 squad = "support"
 role = "Root cause analysis"
-# Debugging = many iterations → needs cheap
+# Debugging = banyak iterasi → needs cheap
 
 [workers.scout]
+category = "support"
+subcategory = "research"
 model = "google/gemini-2-5-pro"
 squad = "support"
 role = "Research, real-time search"
 # Real-time search | 1M+ context
 
 [workers.auditor]
+category = "support"
+subcategory = "review"
 model = "anthropic/claude-sonnet-4-6"
 squad = "support"
 role = "Code review, nuance"
 # Architectural reasoning
 
 [workers.scribe]
+category = "support"
+subcategory = "documentation"
 model = "deepseek/deepseek-v4-flash"
 squad = "support"
 role = "Documentation"
 # Long context | cheap | docs don't need frontier
 
 [workers.summarizer]
+category = "support"
+subcategory = "compression"
 model = "deepseek/deepseek-v4-flash"
 squad = "support"
 role = "Long context compression"
 # 1M context | compress long histories
 
 [workers.sentinel]
+category = "support"
+subcategory = "monitoring"
 model = "ollama/llama3"
 squad = "support"
 role = "Error logging"
@@ -133,7 +178,7 @@ api_key = "${DEEPSEEK_API_KEY}"
 base_url = "http://localhost:11434/v1"
 
 # ─────────────────────────────────────
-# MEMORY
+# MEMORY — Three-Ring System
 # ─────────────────────────────────────
 
 [memory]

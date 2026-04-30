@@ -1,5 +1,8 @@
 {
   "id": "coder_wiring",
+  "category": "coding",
+  "subcategory": "integration",
+  "display_name": "Wiring Coder",
   "api": {
     "provider": "openai",
     "model": "codex-5.3",
@@ -7,5 +10,8 @@
   },
   "squad": "coding",
   "role": "API/WebSocket/MCP/Glue Specialist",
-  "capabilities": ["api-design", "websocket", "mcp", "integration", "glue-code", "codex"]
+  "description": "Writes integration code — API wiring, WebSocket, MCP, glue between services, third-party SDK integration",
+  "tags": ["api-design", "websocket", "mcp", "integration", "glue-code", "codex", "sdk", "middleware"],
+  "capabilities": ["api-design", "websocket", "mcp", "integration", "glue-code", "codex"],
+  "interacts_with": ["coder_frontend", "coder_backend", "scout", "verifier_engineer"]
 }

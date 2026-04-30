@@ -167,9 +167,13 @@ class WorkerIdentity:
     Attributes:
         id: Unique worker identifier (e.g. "verifier_designer")
         api: Worker's OWN API configuration (separate from global providers)
+        category: Top-level category (coding, verification, support, translation)
+        subcategory: Sub-category (frontend, backend, integration, visual, engineering, etc.)
+        display_name: Human-friendly name (e.g. "Frontend Coder", "Design Verifier")
         squad: Squad membership (coding, verification, support, translation)
         role: Human-readable role description
         capabilities: What this worker can do
+        tags: Searchable tags for AI agent organization
         skill_md: Contents of SKILL.md (injected into system prompt)
         class_path: Dotted path to worker class (e.g. "my_package.MyWorker")
         source_dir: Directory this identity was loaded from
@@ -178,9 +182,13 @@ class WorkerIdentity:
 
     id: str = ""
     api: WorkerAPI = field(default_factory=WorkerAPI)
+    category: str = ""
+    subcategory: str = ""
+    display_name: str = ""
     squad: str = ""
     role: str = ""
     capabilities: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     skill_md: str = ""
     class_path: str = ""
     source_dir: str = ""
@@ -210,9 +218,13 @@ class WorkerIdentity:
         # Set all fields
         self.id = kwargs.get("id", "")
         self.api = api
+        self.category = kwargs.get("category", "")
+        self.subcategory = kwargs.get("subcategory", "")
+        self.display_name = kwargs.get("display_name", "")
         self.squad = kwargs.get("squad", "")
         self.role = kwargs.get("role", "")
         self.capabilities = kwargs.get("capabilities", [])
+        self.tags = kwargs.get("tags", [])
         self.skill_md = kwargs.get("skill_md", "")
         self.class_path = kwargs.get("class_path", "")
         self.source_dir = kwargs.get("source_dir", "")
@@ -311,9 +323,13 @@ class WorkerIdentity:
         return cls(
             id=plugin_data.get("id", path.name),
             api=api,
+            category=plugin_data.get("category", ""),
+            subcategory=plugin_data.get("subcategory", ""),
+            display_name=plugin_data.get("display_name", ""),
             squad=plugin_data.get("squad", ""),
             role=plugin_data.get("role", ""),
             capabilities=plugin_data.get("capabilities", []),
+            tags=plugin_data.get("tags", []),
             skill_md=skill_md,
             class_path=class_path,
             source_dir=str(path),
@@ -345,9 +361,13 @@ class WorkerIdentity:
         return cls(
             id=data.get("id", ""),
             api=api,
+            category=data.get("category", ""),
+            subcategory=data.get("subcategory", ""),
+            display_name=data.get("display_name", ""),
             squad=data.get("squad", ""),
             role=data.get("role", ""),
             capabilities=data.get("capabilities", []),
+            tags=data.get("tags", []),
             skill_md=data.get("skill_md", ""),
             class_path=data.get("class_path", ""),
             source_dir=data.get("source_dir", ""),
@@ -479,9 +499,13 @@ class WorkerIdentity:
             "id": self.id,
             "api": self.api.to_dict(),
             "model": self.api.full_model,  # Backwards compat
+            "category": self.category,
+            "subcategory": self.subcategory,
+            "display_name": self.display_name,
             "squad": self.squad,
             "role": self.role,
             "capabilities": self.capabilities,
+            "tags": self.tags,
             "class_path": self.class_path,
             "source_dir": self.source_dir,
         }
@@ -492,9 +516,13 @@ class WorkerIdentity:
         result.update({
             "id": self.id,
             "api": self.api.to_dict(),
+            "category": self.category,
+            "subcategory": self.subcategory,
+            "display_name": self.display_name,
             "squad": self.squad,
             "role": self.role,
             "capabilities": self.capabilities,
+            "tags": self.tags,
         })
         if self.class_path and not self.class_path.startswith("_auto:"):
             result["class"] = self.class_path

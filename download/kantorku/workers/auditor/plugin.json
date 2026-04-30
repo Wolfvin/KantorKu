@@ -1,5 +1,8 @@
 {
   "id": "auditor",
+  "category": "support",
+  "subcategory": "review",
+  "display_name": "Code Auditor",
   "api": {
     "provider": "anthropic",
     "model": "claude-sonnet-4-20250514",
@@ -7,5 +10,8 @@
   },
   "squad": "support",
   "role": "Code Review Specialist",
-  "capabilities": ["code-review", "architecture-review", "anti-pattern-detection", "best-practices"]
+  "description": "Reviews architecture and code quality — architectural soundness, anti-patterns, best practices, compliance",
+  "tags": ["code-review", "architecture-review", "anti-pattern-detection", "best-practices", "audit", "compliance"],
+  "capabilities": ["code-review", "architecture-review", "anti-pattern-detection", "best-practices"],
+  "interacts_with": ["verifier_designer", "verifier_engineer", "coder_frontend", "coder_backend"]
 }

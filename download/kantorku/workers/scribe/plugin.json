@@ -1,5 +1,8 @@
 {
   "id": "scribe",
+  "category": "support",
+  "subcategory": "documentation",
+  "display_name": "Documentation Writer",
   "api": {
     "provider": "deepseek",
     "model": "deepseek-v4-flash",
@@ -7,5 +10,8 @@
   },
   "squad": "support",
   "role": "Documentation Writer",
-  "capabilities": ["documentation", "api-docs", "readme", "changelog"]
+  "description": "Writes documentation — API docs, README, changelog, configuration reference, migration guides",
+  "tags": ["documentation", "api-docs", "readme", "changelog", "writing", "guides"],
+  "capabilities": ["documentation", "api-docs", "readme", "changelog"],
+  "interacts_with": ["coder_backend", "coder_frontend", "compressor"]
 }

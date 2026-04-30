@@ -1,5 +1,8 @@
 {
   "id": "narrator",
+  "category": "translation",
+  "subcategory": "output",
+  "display_name": "Output Storyteller",
   "api": {
     "provider": "ollama",
     "model": "llama3",
@@ -7,5 +10,8 @@
   },
   "squad": "translation",
   "role": "Output Formatter",
-  "capabilities": ["output-formatting", "presentation", "markdown-rendering", "client-communication"]
+  "description": "Formats output for client — presentation formatting, markdown rendering, client communication, deliverable packaging",
+  "tags": ["output-formatting", "presentation", "markdown-rendering", "client-communication", "storytelling", "packaging"],
+  "capabilities": ["output-formatting", "presentation", "markdown-rendering", "client-communication"],
+  "interacts_with": ["intake", "summarizer"]
 }

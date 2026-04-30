@@ -269,11 +269,11 @@ class WorkerRegistry:
 
     def _infer_squad(self, worker_id: str) -> str:
         """Infer squad from worker ID naming convention."""
-        if any(x in worker_id for x in ["coder"]):
+        if any(x in worker_id for x in ["coder", "frontend", "backend", "wiring"]):
             return "coding"
-        if any(x in worker_id for x in ["verifier"]):
+        if any(x in worker_id for x in ["verifier", "judge"]):
             return "verification"
-        if any(x in worker_id for x in ["intake", "narrator", "translat"]):
+        if any(x in worker_id for x in ["intake", "narrator", "translat", "gatekeeper", "storyteller"]):
             return "translation"
         return "support"
 
@@ -469,8 +469,13 @@ class WorkerRegistry:
             result.append({
                 "id": wid,
                 "model": identity.model,
+                "category": identity.category,
+                "subcategory": identity.subcategory,
+                "display_name": identity.display_name,
                 "squad": identity.squad,
                 "role": identity.role,
+                "capabilities": identity.capabilities,
+                "tags": identity.tags,
                 "status": instance.status.value if instance else "unhired",
                 "has_custom_class": wid in self._worker_classes or bool(identity.class_path),
                 "source_dir": identity.source_dir,
@@ -482,6 +487,20 @@ class WorkerRegistry:
         return [
             wid for wid, identity in self._identities.items()
             if identity.squad == squad
+        ]
+
+    def list_by_category(self, category: str) -> list[str]:
+        """List worker IDs belonging to a specific category."""
+        return [
+            wid for wid, identity in self._identities.items()
+            if identity.category == category
+        ]
+
+    def list_by_subcategory(self, subcategory: str) -> list[str]:
+        """List worker IDs belonging to a specific subcategory."""
+        return [
+            wid for wid, identity in self._identities.items()
+            if identity.subcategory == subcategory
         ]
 
     def validate_worker_dir(self, path: Path) -> list[str]:
@@ -562,3 +581,18 @@ class WorkerRegistry:
     @property
     def support_squad(self) -> list[str]:
         return self.list_by_squad("support")
+
+    @property
+    def translation_squad(self) -> list[str]:
+        return self.list_by_squad("translation")
+
+    @property
+    def categories(self) -> dict[str, list[str]]:
+        """All workers grouped by category."""
+        cats: dict[str, list[str]] = {}
+        for wid, identity in self._identities.items():
+            cat = identity.category or identity.squad or "uncategorized"
+            if cat not in cats:
+                cats[cat] = []
+            cats[cat].append(wid)
+        return cats

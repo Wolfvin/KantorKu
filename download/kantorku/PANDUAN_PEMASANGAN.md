@@ -591,25 +591,52 @@ class ProactiveCoder(BaseWorker):
 
 ## 7. Tabel Worker & Model Assignment
 
-### 7.1 Worker Utama (Verified April 2026)
+### 7.1 Worker Utama — Dikelompokkan per Category
 
-| Worker | Model | Squad | Harga/1M | Benchmark |
-|--------|-------|-------|----------|-----------|
-| **conductor** | Claude Opus 4.6 | orchestration | $5.00 | SWE-bench 80.8% |
-| **intake** | Llama 3 (Ollama) | translation | gratis | 2600 tok/s lokal |
-| **narrator** | Llama 3 (Ollama) | translation | gratis | Format output saja |
-| **coder_frontend** | Claude Sonnet 4.6 | coding | $1.50 | WebDev Arena top 3 |
-| **coder_backend** | MiniMax M2.7 | coding | $0.30 | SWE-Pro #1 open-weight |
-| **coder_wiring** | Gemini 3.1 Pro | coding | $2.00 | BFCL 99.3, 1M context |
-| **verifier_designer** | Gemini 3.1 Pro | verification | $2.00 | Multimodal visual judge |
-| **verifier_engineer** | MiniMax M2.5 | verification | $0.12 | SWE 80.2%, $0.12/M |
-| **pool (x3)** | DeepSeek V3.2 | context | $0.28 | LiveCodeBench 83.3% |
-| **debugger** | DeepSeek V3.2 | support | $0.28 | Iterasi banyak → murah |
-| **scout** | Gemini 2.5 Pro | support | $1.25 | Real-time search |
-| **auditor** | Claude Sonnet 4.6 | support | $1.50 | Architectural reasoning |
-| **scribe** | DeepSeek V4 Flash | support | $0.27 | Long context, murah |
-| **summarizer** | DeepSeek V4 Flash | support | $0.27 | 1M context compress |
-| **sentinel** | Llama 3 (Ollama) | support | gratis | Logging saja |
+#### 🟦 CODING — Yang Nulis Kode
+
+| Worker | Subcategory | Display Name | Model | Harga/1M | Benchmark |
+|--------|------------|-------------|-------|----------|-----------|
+| **coder_frontend** | frontend | Frontend Coder | Claude Sonnet 4.6 | $1.50 | WebDev Arena top 3 |
+| **coder_backend** | backend | Backend Coder | MiniMax M2.7 | $0.30 | SWE-Pro #1 open-weight |
+| **coder_wiring** | integration | Wiring Coder | Gemini 3.1 Pro | $2.00 | BFCL 99.3, 1M context |
+
+#### 🟩 VERIFICATION — Yang Cek & Verifikasi
+
+| Worker | Subcategory | Display Name | Model | Harga/1M | Benchmark |
+|--------|------------|-------------|-------|----------|-----------|
+| **verifier_designer** | visual | Design Verifier | Gemini 3.1 Pro | $2.00 | Multimodal visual judge |
+| **verifier_engineer** | engineering | Engineering Verifier | MiniMax M2.5 | $0.12 | SWE 80.2%, $0.12/M |
+
+#### 🟧 SUPPORT — Yang Bantuan & Analisis
+
+| Worker | Subcategory | Display Name | Model | Harga/1M | Benchmark |
+|--------|------------|-------------|-------|----------|-----------|
+| **debugger** | debugging | Root Cause Analyst | DeepSeek V3.2 | $0.28 | Iterasi banyak → murah |
+| **scout** | research | Research Agent | Gemini 2.5 Pro | $1.25 | Real-time search |
+| **auditor** | review | Code Auditor | Claude Sonnet 4.6 | $1.50 | Architectural reasoning |
+| **scribe** | documentation | Documentation Writer | DeepSeek V4 Flash | $0.27 | Long context, murah |
+| **summarizer** | compression | Context Compressor | DeepSeek V4 Flash | $0.27 | 1M context compress |
+| **sentinel** | monitoring | Error Watchdog | Llama 3 (Ollama) | gratis | Logging saja |
+
+#### 🟪 TRANSLATION — Yang Parse & Format
+
+| Worker | Subcategory | Display Name | Model | Harga/1M | Benchmark |
+|--------|------------|-------------|-------|----------|-----------|
+| **intake** | input | Message Gatekeeper | Llama 3 (Ollama) | gratis | 2600 tok/s lokal |
+| **narrator** | output | Output Storyteller | Llama 3 (Ollama) | gratis | Format output saja |
+
+#### 🎯 ORCHESTRATION — Yang Mengatur
+
+| Worker | Model | Harga/1M | Benchmark |
+|--------|-------|----------|-----------|
+| **conductor** | Claude Opus 4.6 | $5.00 | SWE-bench 80.8% |
+
+#### 🔄 CONTEXT POOL
+
+| Worker | Model | Instances | Harga/1M | Benchmark |
+|--------|-------|-----------|----------|-----------|
+| **pool** | DeepSeek V3.2 | 3 | $0.28 | LiveCodeBench 83.3% |
 
 ### 7.2 Model Ollama untuk Lokal
 

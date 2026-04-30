@@ -31,10 +31,14 @@ from typing import Any
 
 PLUGIN_JSON_TEMPLATE = """{{
   "id": "{worker_id}",
+  "category": "{category}",
+  "subcategory": "{subcategory}",
+  "display_name": "{display_name}",
   "model": "{model}",
   "squad": "{squad}",
   "role": "{role}",
   "capabilities": {capabilities},
+  "tags": {tags},
   "description": "{description}"
 }}"""
 
@@ -163,8 +167,12 @@ class WorkerGenerator:
         base_dir: Path = Path("workers"),
         model: str = "ollama/llama3",
         squad: str = "support",
+        category: str = "",
+        subcategory: str = "",
+        display_name: str = "",
         role: str = "",
         capabilities: list[str] | None = None,
+        tags: list[str] | None = None,
         description: str = "",
         skill_md_content: str | None = None,
         worker_py_content: str | None = None,
@@ -178,8 +186,12 @@ class WorkerGenerator:
             base_dir: Parent directory to create the worker in
             model: LLM model assignment (provider/model format)
             squad: Squad membership (coding, verification, support, translation)
+            category: Top-level category (same as squad by default)
+            subcategory: Sub-category (e.g. frontend, backend, debugging)
+            display_name: Human-friendly name (e.g. "Frontend Coder")
             role: Human-readable role description
             capabilities: List of capability strings
+            tags: Searchable tags for AI agent organization
             description: Short description for plugin.json
             skill_md_content: Custom SKILL.md content (uses template if None)
             worker_py_content: Custom worker.py content (uses template if None)
@@ -206,7 +218,10 @@ class WorkerGenerator:
 
         # Set defaults
         role = role or worker_id.replace("_", " ").title()
+        category = category or squad  # Default category = squad
+        display_name = display_name or role
         capabilities = capabilities or []
+        tags = tags or list(capabilities)  # Default tags = capabilities
         description = description or f"{role} worker for kantorku"
 
         # Create directory
@@ -223,10 +238,14 @@ class WorkerGenerator:
         # Generate plugin.json
         plugin_data = {
             "id": worker_id,
+            "category": category,
+            "subcategory": subcategory,
+            "display_name": display_name,
             "model": model,
             "squad": squad,
             "role": role,
             "capabilities": capabilities,
+            "tags": tags,
             "description": description,
         }
         self._write_file(
