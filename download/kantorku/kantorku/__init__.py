@@ -14,7 +14,7 @@ Usage:
 from kantorku.office import Office
 from kantorku.worker.base import BaseWorker, WorkerStatus, Task, TaskResult
 from kantorku.worker.registry import WorkerRegistry
-from kantorku.worker.identity import WorkerIdentity
+from kantorku.worker.identity import WorkerIdentity, WorkerAPI
 from kantorku.worker.generator import WorkerGenerator
 from kantorku.layers.conductor import Conductor, Contract, ContractState, TodoItem
 from kantorku.layers.briefing_room import BriefingRoom
@@ -46,6 +46,7 @@ __all__ = [
     "TaskResult",
     "WorkerRegistry",
     "WorkerIdentity",
+    "WorkerAPI",
     "WorkerGenerator",
     # Layers
     "Conductor",

@@ -1,7 +1,11 @@
 {
   "id": "auditor",
-  "model": "",
-  "squad": "",
-  "role": "",
-  "capabilities": []
+  "api": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "api_key": "${ANTHROPIC_API_KEY}"
+  },
+  "squad": "support",
+  "role": "Code Review Specialist",
+  "capabilities": ["code-review", "architecture-review", "anti-pattern-detection", "best-practices"]
 }

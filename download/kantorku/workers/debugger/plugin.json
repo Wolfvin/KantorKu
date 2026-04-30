@@ -1,7 +1,12 @@
 {
   "id": "debugger",
-  "model": "",
-  "squad": "",
-  "role": "",
-  "capabilities": []
+  "api": {
+    "provider": "xai",
+    "model": "grok-3",
+    "api_key": "${XAI_API_KEY}",
+    "base_url": "https://api.x.ai/v1"
+  },
+  "squad": "support",
+  "role": "Root Cause Analyst",
+  "capabilities": ["root-cause-analysis", "stack-trace-reading", "bug-triaging", "fix-suggestion"]
 }

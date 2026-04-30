@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from kantorku import Office, BaseWorker, WorkerIdentity, WorkerRegistry, WorkerGenerator
+from kantorku import Office, BaseWorker, WorkerIdentity, WorkerRegistry, WorkerGenerator, WorkerAPI
 from kantorku.worker.base import Task, TaskResult, WorkerStatus
 from kantorku.worker.identity import WORKER_MODULE_FILENAME
 from kantorku.events.bus import EventBus
@@ -97,11 +97,17 @@ class Worker(BaseWorker):
         assert "alphanumeric" in errors[0]
 
     def test_validate_invalid_model(self):
-        """validate() catches missing provider/ in model."""
+        """validate() no longer checks model format at discovery time (env vars may not be set)."""
         identity = WorkerIdentity(id="my_bot", model="just-a-model")
         errors = identity.validate()
-        assert len(errors) > 0
-        assert "provider/model" in errors[0]
+        # Model validation is deferred to runtime, so no errors at discovery
+        assert len(errors) == 0
+
+    def test_validate_api_structure(self):
+        """WorkerAPI.validate() catches missing provider/model."""
+        api = WorkerAPI(provider="google", model="", api_key="${GOOGLE_API_KEY}")
+        errors = api.validate()
+        assert any("model" in e.lower() for e in errors)
 
     def test_validate_empty_model_ok(self):
         """validate() allows empty model (can be set later via config)."""

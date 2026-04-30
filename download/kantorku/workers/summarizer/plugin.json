@@ -1,7 +1,11 @@
 {
   "id": "summarizer",
-  "model": "",
-  "squad": "",
-  "role": "",
-  "capabilities": []
+  "api": {
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "api_key": "${DEEPSEEK_API_KEY}"
+  },
+  "squad": "support",
+  "role": "Context Compressor",
+  "capabilities": ["summarization", "context-compression", "key-point-extraction", "token-optimization"]
 }

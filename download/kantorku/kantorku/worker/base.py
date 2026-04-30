@@ -77,16 +77,28 @@ class BaseWorker:
     """
     Base class for all kantorku workers.
 
+    Each worker is an INDEPENDENT AGENT with its own API.
+    Workers are NOT just LLM wrappers — they have real APIs.
+
+    Example: A design worker uses Gemini API, a debug worker uses Grok API.
+    Each worker's API is configured in plugin.json under the "api" section.
+
     Subclasses override `handle(task)` to implement specific logic.
-    The base class provides LLM access, event emission, and lifecycle management.
+    The base class provides:
+    - LLM calls via self.llm_call() — uses the worker's OWN API config
+    - Direct API access via self.api_call() — for custom HTTP requests
+    - Event emission via EventBus
+    - Context retrieval from Ring 1
+    - Lifecycle management (idle → thinking → active → done)
 
     Usage:
-        class MyCoder(BaseWorker):
+        class DesignerWorker(BaseWorker):
             async def handle(self, task: Task) -> TaskResult:
-                response = await self.llm_call("Implement X")
+                # Uses this worker's OWN API (e.g. Gemini)
+                response = await self.llm_call("Design a dashboard layout")
                 return TaskResult(task_id=task.id, output=response)
 
-        worker = MyCoder(identity=identity, router=router, bus=bus)
+        worker = DesignerWorker(identity=identity, router=router, bus=bus)
         result = await worker.execute(task)
     """
 
@@ -102,6 +114,7 @@ class BaseWorker:
         self._status = WorkerStatus.IDLE
         self._emitter: EventEmitter | None = None
         self._ring1: Any = None  # Set by Office during initialization
+        self._own_provider: Any = None  # Lazy-init'd provider from identity.api
 
     @property
     def id(self) -> str:
@@ -109,7 +122,13 @@ class BaseWorker:
 
     @property
     def model(self) -> str:
+        """Full model string (provider/model) from this worker's OWN API config."""
         return self.identity.model
+
+    @property
+    def api(self):
+        """This worker's OWN API configuration (WorkerAPI)."""
+        return self.identity.api
 
     @property
     def squad(self) -> str:
@@ -209,6 +228,49 @@ class BaseWorker:
         """
         raise NotImplementedError(f"Worker {self.id} must implement handle()")
 
+    def _ensure_own_provider(self) -> None:
+        """
+        Lazily create this worker's OWN provider from its API config.
+
+        If the worker has its own api_key configured (in plugin.json),
+        we create a dedicated provider instance just for this worker.
+        This means each worker can use a DIFFERENT API key and even
+        a DIFFERENT provider than the global router config.
+        """
+        if self._own_provider is not None:
+            return
+
+        from kantorku.worker.identity import WorkerAPI
+        api = self.identity.api
+        if not api.provider or not api.model:
+            return
+
+        # Resolve env vars
+        resolved = api.resolve_env_vars()
+
+        # Check if the router already has this provider configured
+        # If yes AND the worker doesn't have its own api_key, reuse it
+        if not resolved.api_key and api.provider in self.router._providers:
+            self._own_provider = self.router._providers[api.provider]
+            return
+
+        # Worker has its own API key — create a dedicated provider
+        try:
+            provider_cls = self.router.PROVIDER_MAP.get(api.provider)
+            if provider_cls is None:
+                return  # Unknown provider, will fall back to router
+
+            kwargs: dict[str, Any] = {}
+            if resolved.api_key:
+                kwargs["api_key"] = resolved.api_key
+            if resolved.base_url:
+                kwargs["base_url"] = resolved.base_url
+            kwargs.update(resolved.extra)
+
+            self._own_provider = provider_cls(**kwargs)
+        except Exception:
+            pass  # Fall back to global router
+
     async def llm_call(
         self,
         prompt: str,
@@ -217,12 +279,19 @@ class BaseWorker:
         **kwargs: Any,
     ) -> str:
         """
-        Make an LLM call through the provider router.
+        Make an LLM call using THIS worker's own API configuration.
+
+        Each worker uses its OWN API key and provider. For example:
+        - verifier_designer → calls Gemini API with Google key
+        - debugger → calls Grok API with xAI key
+        - coder_wiring → calls Codex API with OpenAI key
+
+        Falls back to the global provider router if no worker-specific API is set.
 
         Args:
             prompt: User message content
-            system: Optional system prompt (defaults to skill_md)
-            model: Override model (defaults to worker's assigned model)
+            system: Optional system prompt (defaults to SKILL.md)
+            model: Override model (defaults to worker's API config)
             **kwargs: Additional provider-specific parameters
 
         Returns:
@@ -234,12 +303,76 @@ class BaseWorker:
             messages.append({"role": "system", "content": sys})
         messages.append({"role": "user", "content": prompt})
 
+        # Try worker's own provider first
+        self._ensure_own_provider()
+        if self._own_provider is not None:
+            model_name = model or self.identity.api.model or self.model
+            # Strip provider prefix if present
+            if "/" in model_name:
+                model_name = model_name.split("/", 1)[1]
+            return await self._own_provider.complete(
+                model=model_name,
+                messages=messages,
+                **kwargs,
+            )
+
+        # Fall back to global router
         model_name = model or self.model
         return await self.router.complete(
             model=model_name,
             messages=messages,
             **kwargs,
         )
+
+    async def api_call(
+        self,
+        method: str,
+        url: str,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Make a direct HTTP API call using this worker's own API key.
+
+        Use this for non-LLM API calls, like:
+        - Image generation APIs (DALL-E, Midjourney, Stable Diffusion)
+        - Web search APIs (Tavily, SerpAPI)
+        - Code execution APIs (E2B, CodeSandbox)
+        - Any REST API
+
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE)
+            url: Full URL to call
+            **kwargs: Passed to httpx (json, headers, params, etc.)
+
+        Returns:
+            Parsed JSON response or raw text
+        """
+        import httpx
+
+        headers = kwargs.pop("headers", {})
+        resolved = self.identity.api.resolve_env_vars()
+
+        # Auto-inject API key as Bearer token
+        if resolved.api_key and "Authorization" not in headers:
+            headers["Authorization"] = f"Bearer {resolved.api_key}"
+
+        # Auto-inject Content-Type
+        if "Content-Type" not in headers and "json" in kwargs:
+            headers["Content-Type"] = "application/json"
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.request(
+                method=method.upper(),
+                url=url,
+                headers=headers,
+                **kwargs,
+            )
+            response.raise_for_status()
+
+            try:
+                return response.json()
+            except Exception:
+                return response.text
 
     async def llm_call_stream(
         self,

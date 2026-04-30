@@ -1,7 +1,11 @@
 {
   "id": "coder_wiring",
-  "model": "",
-  "squad": "",
-  "role": "",
-  "capabilities": []
+  "api": {
+    "provider": "openai",
+    "model": "codex-5.3",
+    "api_key": "${OPENAI_API_KEY}"
+  },
+  "squad": "coding",
+  "role": "API/WebSocket/MCP/Glue Specialist",
+  "capabilities": ["api-design", "websocket", "mcp", "integration", "glue-code", "codex"]
 }

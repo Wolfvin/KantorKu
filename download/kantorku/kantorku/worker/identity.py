@@ -1,8 +1,8 @@
 """
-WorkerIdentity — Worker plugin system.
+WorkerIdentity — Worker plugin system with API support.
 
 Each worker is defined by a directory containing:
-- plugin.json: Machine-readable metadata (id, model, squad, capabilities, class)
+- plugin.json: Machine-readable metadata (id, api, squad, capabilities, class)
 - SKILL.md: Human-readable skill description (injected into LLM prompt)
 - worker.py: Optional Python module with custom BaseWorker subclass
 
@@ -12,6 +12,12 @@ Workers are discovered from:
 3. Any custom directory passed to discover_workers()
 4. Entry points from pip-installed packages
 
+Each worker has its OWN API configuration — not just a model string.
+Example:
+    verifier_designer uses Gemini API (google/gemini-2.5-pro)
+    debugger uses Grok API (xai/grok-3)
+    coder_wiring uses Codex API (openai/codex-5.3)
+
 Plug-and-play: Drop a folder with plugin.json + SKILL.md and it just works.
               Add worker.py for custom logic. No registration needed.
 """
@@ -20,6 +26,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -35,24 +42,142 @@ DEFAULT_WORKER_CLASS_NAME = "Worker"
 
 
 @dataclass
+class WorkerAPI:
+    """
+    API configuration for a worker.
+
+    Each worker has its OWN API — separate from the global provider config.
+    This is what makes kantorku workers truly independent agents:
+    they can call different AI providers, different models, with different keys.
+
+    Example:
+        # Design worker uses Gemini
+        api = WorkerAPI(provider="google", model="gemini-2.5-pro",
+                        api_key="${GOOGLE_API_KEY}")
+
+        # Debug worker uses Grok
+        api = WorkerAPI(provider="xai", model="grok-3",
+                        api_key="${XAI_API_KEY}",
+                        base_url="https://api.x.ai/v1")
+
+        # Wiring worker uses OpenAI Codex
+        api = WorkerAPI(provider="openai", model="codex-5.3",
+                        api_key="${OPENAI_API_KEY}")
+
+    Attributes:
+        provider: AI provider name (anthropic, google, openai, xai, deepseek, minimax, ollama, etc.)
+        model: Model name WITHOUT provider prefix (e.g. "gemini-2.5-pro", not "google/gemini-2.5-pro")
+        api_key: API key (supports ${ENV_VAR} pattern for env var resolution)
+        base_url: Optional custom base URL (for self-hosted or proxy APIs)
+        extra: Additional provider-specific config (temperature, max_tokens, etc.)
+    """
+    provider: str = ""
+    model: str = ""
+    api_key: str = ""
+    base_url: str = ""
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WorkerAPI:
+        """Create WorkerAPI from a dictionary (e.g. plugin.json "api" section)."""
+        return cls(
+            provider=data.get("provider", ""),
+            model=data.get("model", ""),
+            api_key=data.get("api_key", ""),
+            base_url=data.get("base_url", ""),
+            extra=data.get("extra", {}),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "provider": self.provider,
+            "model": self.model,
+        }
+        if self.api_key:
+            result["api_key"] = self.api_key
+        if self.base_url:
+            result["base_url"] = self.base_url
+        if self.extra:
+            result["extra"] = self.extra
+        return result
+
+    def resolve_env_vars(self) -> WorkerAPI:
+        """
+        Resolve ${ENV_VAR} patterns in api_key and base_url.
+        Returns a new WorkerAPI with resolved values.
+        """
+        resolved_key = self._resolve_env(self.api_key)
+        resolved_url = self._resolve_env(self.base_url)
+
+        # Also resolve in extra
+        resolved_extra = {}
+        for k, v in self.extra.items():
+            if isinstance(v, str):
+                resolved_extra[k] = self._resolve_env(v)
+            else:
+                resolved_extra[k] = v
+
+        return WorkerAPI(
+            provider=self.provider,
+            model=self.model,
+            api_key=resolved_key,
+            base_url=resolved_url,
+            extra=resolved_extra,
+        )
+
+    def _resolve_env(self, value: str) -> str:
+        """Resolve ${ENV_VAR} patterns in a string."""
+        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+            env_var = value[2:-1]
+            return os.environ.get(env_var, "")
+        return value
+
+    @property
+    def full_model(self) -> str:
+        """Get the full 'provider/model' string."""
+        if self.provider and self.model:
+            return f"{self.provider}/{self.model}"
+        return self.model or ""
+
+    def validate(self) -> list[str]:
+        """Validate API config. Returns list of error messages."""
+        errors: list[str] = []
+        if not self.provider:
+            errors.append("API provider is required")
+        if not self.model:
+            errors.append("API model is required")
+        if self.api_key and self.api_key.startswith("${") and self.api_key.endswith("}"):
+            env_var = self.api_key[2:-1]
+            if not os.environ.get(env_var):
+                errors.append(f"API key env var ${env_var} is not set")
+        return errors
+
+
+@dataclass
 class WorkerIdentity:
     """
     A worker's identity — loaded from plugin.json + SKILL.md + optional worker.py.
 
+    Each worker is a FULLY INDEPENDENT AGENT with its own:
+    - API configuration (provider, model, api_key, base_url)
+    - Skill description (SKILL.md → injected into system prompt)
+    - Custom logic (worker.py → BaseWorker subclass)
+    - Squad membership and role
+
     Attributes:
-        id: Unique worker identifier (e.g. "coder_backend")
-        model: LLM model assignment (e.g. "minimax/minimax-m2-7")
+        id: Unique worker identifier (e.g. "verifier_designer")
+        api: Worker's OWN API configuration (separate from global providers)
         squad: Squad membership (coding, verification, support, translation)
         role: Human-readable role description
         capabilities: What this worker can do
         skill_md: Contents of SKILL.md (injected into system prompt)
         class_path: Dotted path to worker class (e.g. "my_package.MyWorker")
-        source_dir: Directory this identity was loaded from (for auto-discovery)
+        source_dir: Directory this identity was loaded from
         plugin_data: Raw plugin.json data
     """
 
     id: str = ""
-    model: str = ""
+    api: WorkerAPI = field(default_factory=WorkerAPI)
     squad: str = ""
     role: str = ""
     capabilities: list[str] = field(default_factory=list)
@@ -63,6 +188,49 @@ class WorkerIdentity:
 
     # ---- Transient (not serialized) ----
     _resolved_class: Type | None = field(default=None, repr=False, compare=False)
+
+    def __init__(self, model: str = "", **kwargs: Any) -> None:
+        """
+        Create a WorkerIdentity.
+
+        Supports backwards compatibility with 'model' kwarg:
+            WorkerIdentity(id="x", model="anthropic/claude-opus-4-6")
+        which gets parsed into self.api automatically.
+        """
+        # Extract api from kwargs if present
+        api = kwargs.pop("api", WorkerAPI())
+
+        # If model is provided and api is empty, parse model into api
+        if model and not api.provider and not api.model:
+            if "/" in model:
+                api.provider, api.model = model.split("/", 1)
+            else:
+                api.model = model
+
+        # Set all fields
+        self.id = kwargs.get("id", "")
+        self.api = api
+        self.squad = kwargs.get("squad", "")
+        self.role = kwargs.get("role", "")
+        self.capabilities = kwargs.get("capabilities", [])
+        self.skill_md = kwargs.get("skill_md", "")
+        self.class_path = kwargs.get("class_path", "")
+        self.source_dir = kwargs.get("source_dir", "")
+        self.plugin_data = kwargs.get("plugin_data", {})
+        self._resolved_class = None
+
+    @property
+    def model(self) -> str:
+        """Full model string (provider/model). Backwards compatible."""
+        return self.api.full_model
+
+    @model.setter
+    def model(self, value: str) -> None:
+        """Set model from 'provider/model' string."""
+        if "/" in value:
+            self.api.provider, self.api.model = value.split("/", 1)
+        else:
+            self.api.model = value
 
     @classmethod
     def from_directory(cls, path: Path) -> WorkerIdentity:
@@ -75,10 +243,24 @@ class WorkerIdentity:
             ├── SKILL.md       (optional, injected as system prompt)
             └── worker.py      (optional, custom BaseWorker subclass)
 
-        The plugin.json "class" field can specify:
-        - A dotted path: "my_package.my_module.MyClass"
-        - A local module: "worker.py:MyWorker" or just "worker.MyWorker"
-        - Empty string: auto-detect worker.py in same directory
+        plugin.json "api" section (recommended):
+            {
+              "id": "verifier_designer",
+              "api": {
+                "provider": "google",
+                "model": "gemini-2.5-pro",
+                "api_key": "${GOOGLE_API_KEY}"
+              },
+              "squad": "verification",
+              "role": "Visual/UX judge"
+            }
+
+        Legacy plugin.json (still supported):
+            {
+              "id": "verifier_designer",
+              "model": "google/gemini-2.5-pro",
+              "squad": "verification"
+            }
         """
         path = Path(path).resolve()
         plugin_path = path / "plugin.json"
@@ -103,9 +285,32 @@ class WorkerIdentity:
         if not class_path and worker_py_path.exists():
             class_path = f"_auto:{worker_py_path}"
 
+        # Build API config — prefer "api" section, fallback to "model" string
+        api_data = plugin_data.get("api", {})
+        if api_data:
+            api = WorkerAPI.from_dict(api_data)
+        elif "model" in plugin_data:
+            # Legacy: parse "provider/model" string
+            model_str = plugin_data.get("model", "")
+            if "/" in model_str:
+                provider, model = model_str.split("/", 1)
+                api = WorkerAPI(provider=provider, model=model)
+            else:
+                api = WorkerAPI(model=model_str)
+        else:
+            api = WorkerAPI()
+
+        # Also check for api_key at top level (shorthand)
+        if not api.api_key and "api_key" in plugin_data:
+            api.api_key = plugin_data["api_key"]
+
+        # Also check for base_url at top level (shorthand)
+        if not api.base_url and "base_url" in plugin_data:
+            api.base_url = plugin_data["base_url"]
+
         return cls(
             id=plugin_data.get("id", path.name),
-            model=plugin_data.get("model", ""),
+            api=api,
             squad=plugin_data.get("squad", ""),
             role=plugin_data.get("role", ""),
             capabilities=plugin_data.get("capabilities", []),
@@ -118,9 +323,28 @@ class WorkerIdentity:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> WorkerIdentity:
         """Create identity from a dictionary (useful for programmatic creation)."""
+        # Build API from dict
+        api_data = data.get("api", {})
+        if api_data:
+            api = WorkerAPI.from_dict(api_data)
+        elif "model" in data:
+            model_str = data.get("model", "")
+            if "/" in model_str:
+                provider, model = model_str.split("/", 1)
+                api = WorkerAPI(provider=provider, model=model)
+            else:
+                api = WorkerAPI(model=model_str)
+        else:
+            api = WorkerAPI()
+
+        if not api.api_key and "api_key" in data:
+            api.api_key = data["api_key"]
+        if not api.base_url and "base_url" in data:
+            api.base_url = data["base_url"]
+
         return cls(
             id=data.get("id", ""),
-            model=data.get("model", ""),
+            api=api,
             squad=data.get("squad", ""),
             role=data.get("role", ""),
             capabilities=data.get("capabilities", []),
@@ -134,12 +358,8 @@ class WorkerIdentity:
         """
         Validate this identity. Returns list of error messages (empty = valid).
 
-        Checks:
-        - id is present and valid format
-        - model has provider/model format (if set)
-        - squad is a known squad or custom
-        - class_path is resolvable (if set)
-        - source_dir exists (if set)
+        NOTE: API key env vars are NOT checked during discovery.
+        They are only resolved at runtime when the worker is actually hired.
         """
         errors: list[str] = []
 
@@ -150,13 +370,10 @@ class WorkerIdentity:
                 f"Worker id '{self.id}' must be alphanumeric + underscores only"
             )
 
-        if self.model and "/" not in self.model:
-            errors.append(
-                f"Model must be 'provider/model' format, got: {self.model}"
-            )
+        # Only validate API structure, NOT env var presence
+        # (env vars are checked at runtime, not discovery time)
 
         if self.class_path and self.class_path.startswith("_auto:"):
-            # Check the worker.py file exists
             py_path = Path(self.class_path[6:])
             if not py_path.exists():
                 errors.append(f"Auto-detected worker.py not found: {py_path}")
@@ -206,10 +423,7 @@ class WorkerIdentity:
     def _load_from_file(
         self, py_path: Path, base_class: Type
     ) -> Type | None:
-        """
-        Dynamically load a Python module from file path and find
-        the first subclass of base_class.
-        """
+        """Dynamically load a Python module from file path and find a BaseWorker subclass."""
         if not py_path.exists():
             return None
 
@@ -220,7 +434,6 @@ class WorkerIdentity:
                 return None
 
             module = importlib.util.module_from_spec(spec)
-            # Add to sys.modules so relative imports work
             sys.modules[module_name] = module
             spec.loader.exec_module(module)
 
@@ -264,7 +477,8 @@ class WorkerIdentity:
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
-            "model": self.model,
+            "api": self.api.to_dict(),
+            "model": self.api.full_model,  # Backwards compat
             "squad": self.squad,
             "role": self.role,
             "capabilities": self.capabilities,
@@ -277,7 +491,7 @@ class WorkerIdentity:
         result = dict(self.plugin_data) if self.plugin_data else {}
         result.update({
             "id": self.id,
-            "model": self.model,
+            "api": self.api.to_dict(),
             "squad": self.squad,
             "role": self.role,
             "capabilities": self.capabilities,

@@ -1,7 +1,11 @@
 {
   "id": "intake",
-  "model": "",
-  "squad": "",
-  "role": "",
-  "capabilities": []
+  "api": {
+    "provider": "ollama",
+    "model": "llama3",
+    "base_url": "http://localhost:11434"
+  },
+  "squad": "translation",
+  "role": "Message Parser",
+  "capabilities": ["message-parsing", "intent-extraction", "task-structuring", "requirement-analysis"]
 }

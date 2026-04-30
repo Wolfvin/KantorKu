@@ -1,7 +1,11 @@
 {
   "id": "coder_frontend",
-  "model": "",
-  "squad": "",
-  "role": "",
-  "capabilities": []
+  "api": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "api_key": "${ANTHROPIC_API_KEY}"
+  },
+  "squad": "coding",
+  "role": "React/CSS/UI/Visual Specialist",
+  "capabilities": ["react", "nextjs", "css", "tailwind", "component-architecture", "accessibility"]
 }

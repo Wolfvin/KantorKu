@@ -1,7 +1,11 @@
 {
   "id": "coder_backend",
-  "model": "",
-  "squad": "",
-  "role": "",
-  "capabilities": []
+  "api": {
+    "provider": "minimax",
+    "model": "minimax-m2-7",
+    "api_key": "${MINIMAX_API_KEY}"
+  },
+  "squad": "coding",
+  "role": "Python/Rust/Systems Specialist",
+  "capabilities": ["python", "rust", "systems-programming", "algorithms", "database"]
 }

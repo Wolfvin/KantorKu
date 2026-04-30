@@ -1,7 +1,11 @@
 {
   "id": "verifier_engineer",
-  "model": "",
-  "squad": "",
-  "role": "",
-  "capabilities": []
+  "api": {
+    "provider": "minimax",
+    "model": "minimax-m2-5",
+    "api_key": "${MINIMAX_API_KEY}"
+  },
+  "squad": "verification",
+  "role": "Logic/Test/Security Judge",
+  "capabilities": ["logic-review", "test-coverage", "security-audit", "performance-check"]
 }

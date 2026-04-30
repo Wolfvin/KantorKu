@@ -1,26 +1,27 @@
 ---
-Task ID: 1
+Task ID: 2
 Agent: Main Agent
-Task: Implement plug-and-play worker system for kantorku framework
+Task: Upgrade worker system with per-worker API support and detailed documentation
 
 Work Log:
-- Explored entire worker system: base.py, registry.py, identity.py, all 13 workers, CLI, office.py
-- Upgraded WorkerIdentity with: class_path field, source_dir field, validate() method, resolve_worker_class() with dynamic import, _load_from_file() and _load_from_dotted_path(), to_plugin_json() serialization
-- Upgraded WorkerRegistry with: discover_workers_multi(), discover_from_entry_points(), hot_plug(), hot_plug_class(), validate_worker_dir(), _infer_squad(), backwards-compatible register_from_config alias
-- Created WorkerGenerator with: create() scaffolding, plugin.json + SKILL.md + worker.py + __init__.py templates, validation, quickstart guide
-- Upgraded CLI with: worker create, worker add, worker validate, worker list (improved), backwards compat with worker-list
-- Upgraded Office with: hire_worker(path=...) for directory loading, hot_plug_worker() for runtime addition, multi-path discover in initialize(), entry points discovery
-- Added HookType.ON_WORKER_HIRED and ON_WORKER_FIRED
-- Created example custom worker (translator) with plugin.json + SKILL.md + worker.py
-- Created usage_examples.py showing 4 methods of adding workers
-- Updated __init__.py with WorkerGenerator export
-- Created 30 comprehensive tests in test_plug_and_play.py
-- All 39 tests pass (9 original + 30 new)
+- Created WorkerAPI dataclass with provider, model, api_key, base_url, extra fields
+- Added ${ENV_VAR} resolution to WorkerAPI (resolve_env_vars method)
+- Upgraded WorkerIdentity to use WorkerAPI instead of plain "model" string
+- Added backwards compat: WorkerIdentity(id="x", model="provider/model") still works
+- Added self.api property to BaseWorker (access WorkerAPI config)
+- Added self.api_call(method, url) to BaseWorker for direct HTTP API calls
+- Added self._ensure_own_provider() for lazy provider creation per-worker
+- self.llm_call() now tries worker's own API first, falls back to global router
+- Updated all 13 builtin worker plugin.json with proper "api" sections
+- Each worker now has a DIFFERENT API: Anthropic, Google, OpenAI, xAI, DeepSeek, MiniMax, Ollama
+- Created ADDING_WORKERS.md with complete documentation (Bahasa Indonesia)
+- Updated __init__.py with WorkerAPI export
+- Fixed validation to not check env vars at discovery time (only at runtime)
+- All 40 tests passing
 
 Stage Summary:
-- Plug-and-play worker system is fully implemented
-- Workers can be added by: directory path, custom class, hot-plug at runtime, CLI scaffold, TOML config, pip entry points
-- Auto-discovery from: builtin workers/, project workers/, custom dirs, pip packages
-- worker.py auto-detection and dynamic class loading works
-- Validation and error reporting for worker directories
+- Workers now have truly independent API configurations
+- coder_wiring uses OpenAI Codex 5.3, debugger uses xAI Grok 3, verifier_designer uses Google Gemini 2.5 Pro
+- self.api_call() enables direct HTTP calls with auto-injected Bearer token
+- Detailed ADDING_WORKERS.md guide created
 - Full backwards compatibility maintained
