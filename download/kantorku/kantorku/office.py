@@ -138,31 +138,120 @@ class Office:
         role: str = "",
         skill_md: str = "",
         worker_class: type[BaseWorker] | None = None,
+        path: str | Path | None = None,
     ) -> None:
         """
-        Register a worker with the office.
+        Register a worker with the office (plug-and-play).
+
+        Multiple ways to add a worker:
+
+        1. Simple (model + SKILL.md prompt):
+            office.hire_worker("my_bot", model="ollama/llama3", skill_md="You are a helper")
+
+        2. From a directory (auto-discovers plugin.json + SKILL.md + worker.py):
+            office.hire_worker("my_bot", path="workers/my_bot/")
+
+        3. With a custom class:
+            office.hire_worker("my_bot", model="ollama/llama3", worker_class=MyWorker)
+
+        4. Full config:
+            office.hire_worker(
+                "translator",
+                model="ollama/llama3",
+                squad="translation",
+                role="Language translator",
+                skill_md="You translate text...",
+            )
 
         Args:
             worker_id: Unique identifier (e.g. "coder_backend")
-            model: LLM model assignment
-            squad: Squad membership
+            model: LLM model assignment ("provider/model" format)
+            squad: Squad membership (coding, verification, support, translation)
             role: Role description
             skill_md: Skill description (injected into system prompt)
-            worker_class: Optional custom worker class
+            worker_class: Optional custom BaseWorker subclass
+            path: Optional path to worker directory (loads plugin.json + SKILL.md + worker.py)
         """
         from kantorku.worker.identity import WorkerIdentity
 
-        identity = WorkerIdentity.from_dict({
-            "id": worker_id,
-            "model": model,
-            "squad": squad,
-            "role": role,
-            "skill_md": skill_md,
-        })
+        # If path is provided, load from directory
+        if path:
+            identity = WorkerIdentity.from_directory(Path(path))
+            # Apply overrides
+            if model:
+                identity.model = model
+            if squad:
+                identity.squad = squad
+            if role:
+                identity.role = role
+            if skill_md:
+                identity.skill_md = skill_md
+        else:
+            identity = WorkerIdentity.from_dict({
+                "id": worker_id,
+                "model": model,
+                "squad": squad,
+                "role": role,
+                "skill_md": skill_md,
+            })
+
         self.registry.register_identity(identity)
 
         if worker_class:
-            self.registry.register_worker_class(worker_id, worker_class)
+            self.registry.register_worker_class(worker_id or identity.id, worker_class)
+
+        # If already initialized, auto-hire and set ring1
+        if self._initialized:
+            wid = worker_id or identity.id
+            worker = self.registry.hire(wid)
+            if self.ring1:
+                worker.set_ring1(self.ring1)
+
+    async def hot_plug_worker(
+        self,
+        path: str | Path,
+        model: str = "",
+        squad: str = "",
+        role: str = "",
+    ) -> BaseWorker:
+        """
+        Hot-plug a worker at runtime from a directory.
+
+        Drop a folder with plugin.json (+ SKILL.md + worker.py),
+        call this, and the worker is immediately available for tasks.
+
+        This is the fastest way to add a worker at runtime:
+            worker = await office.hot_plug_worker("workers/my_new_bot/")
+            result = await worker.execute(task)
+
+        Args:
+            path: Path to worker directory containing plugin.json
+            model: Override model (if not set in plugin.json)
+            squad: Override squad (if not set in plugin.json)
+            role: Override role (if not set in plugin.json)
+
+        Returns:
+            The instantiated worker, ready to use
+        """
+        worker = self.registry.hot_plug(
+            path=Path(path),
+            model=model,
+            squad=squad,
+            role=role,
+        )
+
+        # Set ring1 if available
+        if self.ring1 and self._initialized:
+            worker.set_ring1(self.ring1)
+
+        # Trigger hook
+        await self.hooks.trigger(HookType.ON_WORKER_HIRED, {
+            "worker_id": worker.id,
+            "model": worker.model,
+            "squad": worker.squad,
+        })
+
+        return worker
 
     async def initialize(self) -> None:
         """
@@ -182,12 +271,36 @@ class Office:
             wid: {"model": w.model, "squad": w.squad, "role": w.role}
             for wid, w in self.config.workers.items()
         }
-        self.registry.register_from_config(workers_config)
+        self.registry.discover_from_config(workers_config)
 
-        # Discover workers from workers/ directory
-        workers_dir = Path(__file__).parent.parent / "workers"
-        if workers_dir.exists():
-            self.registry.discover_workers(workers_dir)
+        # Discover workers from multiple directories (plug-and-play)
+        # Order matters: later directories override earlier ones
+        discover_dirs = []
+
+        # 1. Built-in workers (from kantorku package)
+        builtin_dir = Path(__file__).parent.parent / "workers"
+        if builtin_dir.exists():
+            discover_dirs.append(builtin_dir)
+
+        # 2. Project-level workers/ directory (current working directory)
+        project_workers = Path("workers")
+        if project_workers.exists() and project_workers.resolve() != builtin_dir.resolve():
+            discover_dirs.append(project_workers)
+
+        # 3. External workers directory from config
+        if hasattr(self.config, 'workers_dir') and self.config.workers_dir:
+            ext_dir = Path(self.config.workers_dir)
+            if ext_dir.exists() and ext_dir.resolve() not in [d.resolve() for d in discover_dirs]:
+                discover_dirs.append(ext_dir)
+
+        if discover_dirs:
+            self.registry.discover_workers_multi(discover_dirs)
+
+        # 4. Discover workers from pip-installed packages (entry points)
+        try:
+            self.registry.discover_from_entry_points()
+        except Exception:
+            pass
 
         # Initialize memory
         await self.ring1.initialize()

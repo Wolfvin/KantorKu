@@ -2,12 +2,15 @@
 kantorku CLI — Command-line interface.
 
 Commands:
-    kantorku serve           Start the server (default)
-    kantorku init            Scaffold a new kantorku project
-    kantorku worker list     List available workers
-    kantorku config validate Validate kantorku.toml
-    kantorku run             Run a one-shot task
-    kantorku version         Show version
+    kantorku serve                Start the server (default)
+    kantorku init                 Scaffold a new kantorku project
+    kantorku worker create        Create a new plug-and-play worker
+    kantorku worker add           Add a worker from an existing directory
+    kantorku worker validate      Validate a worker directory
+    kantorku worker list          List available workers
+    kantorku config validate      Validate kantorku.toml
+    kantorku run                  Run a one-shot task
+    kantorku version              Show version
 """
 
 from __future__ import annotations
@@ -93,8 +96,10 @@ port = 8000
     # Create data directory
     (project_dir / "data").mkdir(exist_ok=True)
 
-    # Create custom workers directory
-    (project_dir / "workers").mkdir(exist_ok=True)
+    # Create custom workers directory with README
+    workers_dir = project_dir / "workers"
+    workers_dir.mkdir(exist_ok=True)
+    (workers_dir / ".gitkeep").touch()
 
     # Create a simple example
     example_content = '''"""Example: Using kantorku programmatically."""
@@ -135,13 +140,207 @@ if __name__ == "__main__":
     print(f"Created kantorku project in ./{project_dir}/")
     print(f"  - {project_dir}/kantorku.toml  (configuration)")
     print(f"  - {project_dir}/data/          (memory storage)")
-    print(f"  - {project_dir}/workers/       (custom workers)")
+    print(f"  - {project_dir}/workers/       (custom workers — drop worker folders here!)")
     print(f"  - {project_dir}/example.py     (example script)")
     print()
     print("Next steps:")
     print(f"  1. cd {project_dir}")
     print("  2. Edit kantorku.toml with your API keys")
-    print("  3. Run: kantorku serve --config kantorku.toml")
+    print("  3. Create a custom worker: kantorku worker create my_worker")
+    print("  4. Run: kantorku serve --config kantorku.toml")
+
+
+# ─────────────────────────────────────────────────
+#  Worker Commands
+# ─────────────────────────────────────────────────
+
+def cmd_worker_create(args: argparse.Namespace) -> None:
+    """Create a new plug-and-play worker."""
+    from kantorku.worker.generator import WorkerGenerator
+
+    worker_id = getattr(args, "name", None)
+    if not worker_id:
+        print("Error: Worker name is required. Usage: kantorku worker create <name>")
+        sys.exit(1)
+
+    # Validate name
+    if not worker_id.replace("_", "").isalnum():
+        print(f"Error: Worker name '{worker_id}' must be alphanumeric + underscores only")
+        sys.exit(1)
+
+    base_dir = Path(getattr(args, "base_dir", "workers"))
+    model = getattr(args, "model", "ollama/llama3") or "ollama/llama3"
+    squad = getattr(args, "squad", "support") or "support"
+    role = getattr(args, "role", "") or ""
+    capabilities = getattr(args, "capabilities", "") or ""
+    description = getattr(args, "description", "") or ""
+    overwrite = getattr(args, "overwrite", False)
+
+    cap_list = [c.strip() for c in capabilities.split(",") if c.strip()] if capabilities else []
+
+    gen = WorkerGenerator()
+    try:
+        worker_dir = gen.create(
+            worker_id=worker_id,
+            base_dir=base_dir,
+            model=model,
+            squad=squad,
+            role=role,
+            capabilities=cap_list,
+            description=description,
+            overwrite=overwrite,
+        )
+        print(f"Created worker: {worker_id}")
+        print()
+        print(f"  {worker_dir}/")
+        print(f"  ├── plugin.json    ← metadata (id, model, squad, capabilities)")
+        print(f"  ├── SKILL.md       ← system prompt for the LLM")
+        print(f"  ├── worker.py      ← custom BaseWorker subclass")
+        print(f"  └── __init__.py    ← re-exports for Python import")
+        print()
+        print("Next steps:")
+        print(f"  1. Edit {worker_dir}/SKILL.md to define the worker's expertise")
+        print(f"  2. Edit {worker_dir}/worker.py to add custom logic")
+        print(f"  3. Edit {worker_dir}/plugin.json to set model/squad/role")
+        print(f"  4. The worker will be auto-discovered from workers/ at startup!")
+        print()
+        print("Quick test:")
+        print(f"  kantorku worker validate {worker_dir}")
+        print(f"  kantorku worker list")
+
+    except FileExistsError as e:
+        print(f"Error: {e}")
+        print("Use --overwrite to replace existing files.")
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+
+def cmd_worker_add(args: argparse.Namespace) -> None:
+    """Add a worker from an existing directory (validates first)."""
+    from kantorku.worker.registry import WorkerRegistry
+    from kantorku.events.bus import EventBus
+    from kantorku.providers.router import ProviderRouter
+
+    path = getattr(args, "path", None)
+    if not path:
+        print("Error: Worker directory path required. Usage: kantorku worker add <path>")
+        sys.exit(1)
+
+    worker_path = Path(path).resolve()
+    if not worker_path.exists():
+        print(f"Error: Directory not found: {worker_path}")
+        sys.exit(1)
+
+    # Validate first
+    router = ProviderRouter()
+    bus = EventBus()
+    registry = WorkerRegistry(router=router, bus=bus)
+
+    messages = registry.validate_worker_dir(worker_path)
+    errors = [m for m in messages if not m.startswith("[WARNING]") and not m.startswith("[INFO]")]
+    warnings = [m for m in messages if m.startswith("[WARNING]")]
+    infos = [m for m in messages if m.startswith("[INFO]")]
+
+    if errors:
+        print("Worker validation FAILED:")
+        for e in errors:
+            print(f"  ERROR: {e}")
+        sys.exit(1)
+
+    if warnings:
+        print("Worker validation passed with warnings:")
+        for w in warnings:
+            print(f"  {w}")
+
+    for i in infos:
+        print(f"  {i}")
+
+    # Show what was found
+    try:
+        identity = registry.hot_plug(
+            worker_path,
+            model=getattr(args, "model", "") or "",
+            squad=getattr(args, "squad", "") or "",
+            role=getattr(args, "role", "") or "",
+        )
+        print()
+        print(f"Worker ready: {identity.id}")
+        print(f"  Model: {identity.model or 'not set'}")
+        print(f"  Squad: {identity.squad or 'not set'}")
+        print(f"  Role:  {identity.role or 'not set'}")
+        print(f"  Has custom class: {'Yes' if identity.class_path else 'No (uses SKILL.md + BaseWorker)'}")
+        print()
+        print("To use in kantorku.toml, add:")
+        print(f'  [workers.{identity.id}]')
+        print(f'  model = "{identity.model or "ollama/llama3"}"')
+        print(f'  squad = "{identity.squad or "support"}"')
+        print(f'  role = "{identity.role or identity.id.replace("_", " ").title()}"')
+
+    except Exception as e:
+        print(f"Error adding worker: {e}")
+        sys.exit(1)
+
+
+def cmd_worker_validate(args: argparse.Namespace) -> None:
+    """Validate a worker directory."""
+    from kantorku.worker.registry import WorkerRegistry
+    from kantorku.events.bus import EventBus
+    from kantorku.providers.router import ProviderRouter
+
+    path = getattr(args, "path", None)
+    if not path:
+        print("Error: Worker directory path required. Usage: kantorku worker validate <path>")
+        sys.exit(1)
+
+    worker_path = Path(path).resolve()
+    router = ProviderRouter()
+    bus = EventBus()
+    registry = WorkerRegistry(router=router, bus=bus)
+
+    messages = registry.validate_worker_dir(worker_path)
+    errors = [m for m in messages if not m.startswith("[WARNING]") and not m.startswith("[INFO]")]
+    warnings = [m for m in messages if m.startswith("[WARNING]")]
+    infos = [m for m in messages if m.startswith("[INFO]")]
+
+    if errors:
+        print(f"Worker validation FAILED: {worker_path}")
+        for e in errors:
+            print(f"  ERROR: {e}")
+        sys.exit(1)
+
+    if warnings or infos:
+        print(f"Worker validation: {worker_path}")
+        for w in warnings:
+            print(f"  {w}")
+        for i in infos:
+            print(f"  {i}")
+        if not errors:
+            print()
+            print("Status: VALID (with notes above)")
+    else:
+        print(f"Worker validation: {worker_path}")
+        print("  Status: VALID")
+        print("  All checks passed!")
+
+    # Show worker details
+    try:
+        from kantorku.worker.identity import WorkerIdentity
+        identity = WorkerIdentity.from_directory(worker_path)
+        print()
+        print(f"  ID:           {identity.id}")
+        print(f"  Model:        {identity.model or 'not set'}")
+        print(f"  Squad:        {identity.squad or 'not set'}")
+        print(f"  Role:         {identity.role or 'not set'}")
+        print(f"  Capabilities: {identity.capabilities or 'none'}")
+        print(f"  Has SKILL.md: {'Yes' if identity.skill_md else 'No'}")
+        print(f"  Has worker.py: {'Yes' if identity.class_path else 'No'}")
+        if identity.class_path:
+            cls = identity.resolve_worker_class()
+            print(f"  Class:        {cls.__name__ if cls else 'unresolved'}")
+    except Exception:
+        pass
 
 
 def cmd_worker_list(args: argparse.Namespace) -> None:
@@ -155,40 +354,73 @@ def cmd_worker_list(args: argparse.Namespace) -> None:
     registry = WorkerRegistry(router=router, bus=bus)
 
     # Discover built-in workers
-    workers_dir = Path(__file__).parent.parent / "workers"
-    if workers_dir.exists():
-        registry.discover_workers(workers_dir)
+    builtin_dir = Path(__file__).parent / "workers"
+    if builtin_dir.exists():
+        registry.discover_workers(builtin_dir)
 
-    # Discover external workers
+    # Discover external workers from config
     config_path = getattr(args, "config", None)
     if config_path:
+        # From config file's parent workers/ directory
         external_dir = Path(config_path).parent / "workers"
         if external_dir.exists():
             registry.discover_workers(external_dir)
+
+        # Also load from config itself
+        try:
+            from kantorku.config.settings import KantorkuConfig
+            config = KantorkuConfig.from_toml(config_path)
+            workers_config = {
+                wid: {"model": w.model, "squad": w.squad, "role": w.role}
+                for wid, w in config.workers.items()
+            }
+            registry.discover_from_config(workers_config)
+        except Exception:
+            pass
+    else:
+        # Check current directory
+        cwd_workers = Path("workers")
+        if cwd_workers.exists():
+            registry.discover_workers(cwd_workers)
 
     workers = registry.list_workers()
 
     if not workers:
         print("No workers found.")
+        print()
+        print("Create one with: kantorku worker create my_worker")
         return
 
     # Group by squad
     squads: dict[str, list[dict]] = {}
     for w in workers:
-        squad = w.get("squad", "unknown")
+        squad = w.get("squad", "unknown") or "unassigned"
         if squad not in squads:
             squads[squad] = []
         squads[squad].append(w)
 
-    print(f"Available workers ({len(workers)} total):\n")
+    total = len(workers)
+    custom_count = sum(1 for w in workers if w.get("has_custom_class"))
+    builtin_count = total - custom_count
+
+    print(f"Available workers ({total} total: {builtin_count} built-in, {custom_count} custom):\n")
     for squad, members in sorted(squads.items()):
         print(f"  [{squad}]")
         for w in members:
-            model = w.get("model", "N/A")
+            model = w.get("model", "N/A") or "N/A"
             status = w.get("status", "N/A")
-            print(f"    - {w['id']:25s} model={model:30s} status={status}")
+            custom = " (custom)" if w.get("has_custom_class") else ""
+            src = w.get("source_dir", "")
+            src_label = ""
+            if src and "kantorku/workers" not in src:
+                src_label = f" ← {src}"
+            print(f"    - {w['id']:25s} model={model:30s} status={status}{custom}{src_label}")
         print()
 
+
+# ─────────────────────────────────────────────────
+#  Config & Run Commands
+# ─────────────────────────────────────────────────
 
 def cmd_config_validate(args: argparse.Namespace) -> None:
     """Validate a kantorku.toml configuration file."""
@@ -309,8 +541,39 @@ def main() -> None:
     init_parser = subparsers.add_parser("init", help="Scaffold a new kantorku project")
     init_parser.add_argument("name", nargs="?", default="my-office", help="Project directory name")
 
+    # worker subcommand group
+    worker_parser = subparsers.add_parser("worker", help="Worker management commands")
+    worker_subparsers = worker_parser.add_subparsers(dest="worker_command", help="Worker commands")
+
+    # worker create
+    create_parser = worker_subparsers.add_parser(
+        "create", help="Create a new plug-and-play worker",
+        aliases=["new"],
+    )
+    create_parser.add_argument("name", help="Worker ID (alphanumeric + underscores)")
+    create_parser.add_argument("--model", "-m", default="ollama/llama3", help="LLM model (provider/model)")
+    create_parser.add_argument("--squad", "-s", default="support",
+                               choices=["coding", "verification", "support", "translation"],
+                               help="Squad assignment")
+    create_parser.add_argument("--role", "-r", default="", help="Role description")
+    create_parser.add_argument("--capabilities", "-cap", default="", help="Comma-separated capabilities")
+    create_parser.add_argument("--description", "-d", default="", help="Short description")
+    create_parser.add_argument("--base-dir", default="workers", help="Parent directory for workers")
+    create_parser.add_argument("--overwrite", "-f", action="store_true", help="Overwrite existing files")
+
+    # worker add
+    add_parser = worker_subparsers.add_parser("add", help="Add a worker from an existing directory")
+    add_parser.add_argument("path", help="Path to worker directory")
+    add_parser.add_argument("--model", "-m", default="", help="Override model")
+    add_parser.add_argument("--squad", "-s", default="", help="Override squad")
+    add_parser.add_argument("--role", "-r", default="", help="Override role")
+
+    # worker validate
+    validate_parser = worker_subparsers.add_parser("validate", help="Validate a worker directory")
+    validate_parser.add_argument("path", help="Path to worker directory")
+
     # worker list
-    subparsers.add_parser("worker-list", help="List available workers")
+    worker_subparsers.add_parser("list", help="List available workers")
 
     # config validate
     subparsers.add_parser("config-validate", help="Validate kantorku.toml")
@@ -329,7 +592,19 @@ def main() -> None:
         cmd_serve(args)
     elif args.command == "init":
         cmd_init(args)
+    elif args.command == "worker":
+        if args.worker_command in ("create", "new"):
+            cmd_worker_create(args)
+        elif args.worker_command == "add":
+            cmd_worker_add(args)
+        elif args.worker_command == "validate":
+            cmd_worker_validate(args)
+        elif args.worker_command == "list":
+            cmd_worker_list(args)
+        else:
+            worker_parser.print_help()
     elif args.command == "worker-list":
+        # Backwards compat
         cmd_worker_list(args)
     elif args.command == "config-validate":
         cmd_config_validate(args)

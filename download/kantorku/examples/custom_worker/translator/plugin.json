@@ -1,0 +1,8 @@
+{
+  "id": "translator",
+  "model": "ollama/llama3",
+  "squad": "translation",
+  "role": "Language translator",
+  "capabilities": ["translation", "localization", "multilingual"],
+  "description": "Translates text between languages with context awareness"
+}

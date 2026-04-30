@@ -67,6 +67,8 @@ class HookType(enum.Enum):
     ON_LLM_CALL_START = "on_llm_call_start"
     ON_LLM_CALL_DONE = "on_llm_call_done"
     ON_LLM_STREAM_CHUNK = "on_llm_stream_chunk"
+    ON_WORKER_HIRED = "on_worker_hired"
+    ON_WORKER_FIRED = "on_worker_fired"
 
 
 # Type alias for hook callback functions
