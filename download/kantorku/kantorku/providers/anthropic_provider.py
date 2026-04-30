@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, AsyncIterator
 
 from kantorku.providers.base import BaseProvider
+from kantorku.provider_response import ProviderResponse
 
 
 class AnthropicProvider(BaseProvider):
@@ -36,6 +38,15 @@ class AnthropicProvider(BaseProvider):
         messages: list[dict[str, str]],
         **kwargs: Any,
     ) -> str:
+        response = await self.complete_with_usage(model=model, messages=messages, **kwargs)
+        return response.content
+
+    async def complete_with_usage(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> ProviderResponse:
         client = self._get_client()
 
         # Extract system message from messages
@@ -47,6 +58,7 @@ class AnthropicProvider(BaseProvider):
             else:
                 user_messages.append(msg)
 
+        start = time.monotonic()
         response = await client.messages.create(
             model=model,
             max_tokens=kwargs.get("max_tokens", 8192),
@@ -54,8 +66,11 @@ class AnthropicProvider(BaseProvider):
             messages=user_messages,
             temperature=kwargs.get("temperature", 0.7),
         )
+        latency_ms = (time.monotonic() - start) * 1000
 
-        return response.content[0].text
+        return ProviderResponse.from_anthropic_format(
+            response, provider_name="anthropic", latency_ms=latency_ms,
+        )
 
     async def complete_stream(
         self,

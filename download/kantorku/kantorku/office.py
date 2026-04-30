@@ -4,18 +4,27 @@ Office — Main entry point for kantorku.
 The Office is to kantorku what Crew is to CrewAI or StateGraph is to LangGraph.
 It orchestrates everything: workers, conductor, briefing room, context pool, memory.
 
+Now includes:
+- CostTracker integration (automatic cost tracking for all LLM calls)
+- LLMCache integration (avoid redundant API calls)
+- Observability integration (tracing + metrics for all operations)
+- Async context manager support (async with Office() as office)
+- Structured errors
+
 Usage:
     # From config file
     office = Office.from_config("kantorku.toml")
     result = await office.run("Buat rate limiter di Rust")
 
     # Programmatic
-    office = Office(
-        conductor_model="anthropic/claude-opus-4-6",
-    )
+    office = Office(conductor_model="anthropic/claude-opus-4-6")
     office.configure_provider("anthropic", api_key="sk-...")
     office.hire_worker("coder_backend", model="minimax/minimax-m2-7")
     result = await office.run("Implement authentication")
+
+    # Async context manager
+    async with Office.from_config("kantorku.toml") as office:
+        result = await office.run("Build rate limiter")
 """
 
 from __future__ import annotations
@@ -38,8 +47,14 @@ from kantorku.memory.ring1 import Ring1Memory
 from kantorku.memory.ring2 import Ring2Memory
 from kantorku.memory.ring3 import Ring3Memory
 from kantorku.providers.router import ProviderRouter
+from kantorku.providers.circuit_breaker import CircuitBreaker
+from kantorku.providers.retry import RetryPolicy
 from kantorku.worker.base import BaseWorker, Task, TaskResult
 from kantorku.worker.registry import WorkerRegistry
+from kantorku.cost import CostTracker
+from kantorku.cache import LLMCache
+from kantorku.observability import get_tracer, get_metrics
+from kantorku.errors import OfficeNotInitializedError, NoContractError
 
 
 class Office:
@@ -70,13 +85,37 @@ class Office:
         conductor_model: str = "anthropic/claude-opus-4-6",
         config: KantorkuConfig | None = None,
         hooks: Hooks | None = None,
+        enable_cache: bool = True,
+        cache_ttl: float = 3600.0,
+        enable_cost_tracking: bool = True,
+        circuit_breaker: CircuitBreaker | None = None,
+        retry_policy: RetryPolicy | None = None,
     ) -> None:
         self.config = config or KantorkuConfig(conductor_model=conductor_model)
         self.hooks = hooks or Hooks()
 
         # Core infrastructure
         self.bus = EventBus()
-        self.router = ProviderRouter()
+
+        # Cost tracker
+        self._enable_cost_tracking = enable_cost_tracking
+        self.cost_tracker = CostTracker() if enable_cost_tracking else None
+
+        # LLM cache
+        self._enable_cache = enable_cache
+        self.cache = LLMCache(backend="memory", ttl_seconds=cache_ttl) if enable_cache else None
+
+        # Router with integrated cost tracking, cache, circuit breaker
+        self.router = ProviderRouter(
+            cost_tracker=self.cost_tracker,
+            cache=self.cache,
+            circuit_breaker=circuit_breaker,
+            retry_policy=retry_policy,
+        )
+
+        # Observability
+        self._tracer = get_tracer()
+        self._metrics = get_metrics()
 
         # Conductor
         self.conductor = Conductor(
@@ -110,6 +149,15 @@ class Office:
         self.intake: Intake | None = None
 
         self._initialized = False
+
+    async def __aenter__(self) -> Office:
+        """Async context manager entry — auto-initialize."""
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Async context manager exit — auto-shutdown."""
+        await self.shutdown()
 
     @classmethod
     def from_config(cls, path: str | Path) -> Office:
@@ -162,15 +210,6 @@ class Office:
                 role="Language translator",
                 skill_md="You translate text...",
             )
-
-        Args:
-            worker_id: Unique identifier (e.g. "coder_backend")
-            model: LLM model assignment ("provider/model" format)
-            squad: Squad membership (coding, verification, support, translation)
-            role: Role description
-            skill_md: Skill description (injected into system prompt)
-            worker_class: Optional custom BaseWorker subclass
-            path: Optional path to worker directory (loads plugin.json + SKILL.md + worker.py)
         """
         from kantorku.worker.identity import WorkerIdentity
 
@@ -219,19 +258,6 @@ class Office:
 
         Drop a folder with plugin.json (+ SKILL.md + worker.py),
         call this, and the worker is immediately available for tasks.
-
-        This is the fastest way to add a worker at runtime:
-            worker = await office.hot_plug_worker("workers/my_new_bot/")
-            result = await worker.execute(task)
-
-        Args:
-            path: Path to worker directory containing plugin.json
-            model: Override model (if not set in plugin.json)
-            squad: Override squad (if not set in plugin.json)
-            role: Override role (if not set in plugin.json)
-
-        Returns:
-            The instantiated worker, ready to use
         """
         worker = self.registry.hot_plug(
             path=Path(path),
@@ -258,95 +284,91 @@ class Office:
         Initialize all office systems.
 
         Must be called before any other operations.
-        Sets up memory, pool, providers, and worker instances.
+        Sets up memory, pool, providers, cache, cost tracker, and worker instances.
         """
         if self._initialized:
             return
 
-        # Configure providers from config
-        self.router.configure_from_dict(self.config.providers)
+        with self._tracer.span("office.initialize"):
+            # Configure providers from config
+            self.router.configure_from_dict(self.config.providers)
 
-        # Register workers from config
-        workers_config = {
-            wid: {"model": w.model, "squad": w.squad, "role": w.role}
-            for wid, w in self.config.workers.items()
-        }
-        self.registry.discover_from_config(workers_config)
+            # Initialize cache
+            if self.cache:
+                await self.cache.initialize()
 
-        # Discover workers from multiple directories (plug-and-play)
-        # Order matters: later directories override earlier ones
-        discover_dirs = []
+            # Register workers from config
+            workers_config = {
+                wid: {"model": w.model, "squad": w.squad, "role": w.role}
+                for wid, w in self.config.workers.items()
+            }
+            self.registry.discover_from_config(workers_config)
 
-        # 1. Built-in workers (from kantorku package)
-        builtin_dir = Path(__file__).parent.parent / "workers"
-        if builtin_dir.exists():
-            discover_dirs.append(builtin_dir)
+            # Discover workers from multiple directories (plug-and-play)
+            discover_dirs = []
+            builtin_dir = Path(__file__).parent.parent / "workers"
+            if builtin_dir.exists():
+                discover_dirs.append(builtin_dir)
+            project_workers = Path("workers")
+            if project_workers.exists() and project_workers.resolve() != builtin_dir.resolve():
+                discover_dirs.append(project_workers)
+            if hasattr(self.config, 'workers_dir') and self.config.workers_dir:
+                ext_dir = Path(self.config.workers_dir)
+                if ext_dir.exists() and ext_dir.resolve() not in [d.resolve() for d in discover_dirs]:
+                    discover_dirs.append(ext_dir)
 
-        # 2. Project-level workers/ directory (current working directory)
-        project_workers = Path("workers")
-        if project_workers.exists() and project_workers.resolve() != builtin_dir.resolve():
-            discover_dirs.append(project_workers)
+            if discover_dirs:
+                self.registry.discover_workers_multi(discover_dirs)
 
-        # 3. External workers directory from config
-        if hasattr(self.config, 'workers_dir') and self.config.workers_dir:
-            ext_dir = Path(self.config.workers_dir)
-            if ext_dir.exists() and ext_dir.resolve() not in [d.resolve() for d in discover_dirs]:
-                discover_dirs.append(ext_dir)
+            # Discover workers from pip-installed packages (entry points)
+            try:
+                self.registry.discover_from_entry_points()
+            except Exception:
+                pass
 
-        if discover_dirs:
-            self.registry.discover_workers_multi(discover_dirs)
+            # Initialize memory
+            await self.ring1.initialize()
+            await self.ring2.initialize()
+            await self.ring3.initialize()
 
-        # 4. Discover workers from pip-installed packages (entry points)
-        try:
-            self.registry.discover_from_entry_points()
-        except Exception:
-            pass
+            # Set Ring1 on pool
+            self.pool.ring1 = self.ring1
 
-        # Initialize memory
-        await self.ring1.initialize()
-        await self.ring2.initialize()
-        await self.ring3.initialize()
+            # Set Ring1 on conductor for session persistence
+            self.conductor.set_ring1(self.ring1)
 
-        # Set Ring1 on pool
-        self.pool.ring1 = self.ring1
+            # Set Ring1 on all workers
+            for worker_id in self.registry.all_worker_ids:
+                worker = self.registry.hire(worker_id)
+                worker.set_ring1(self.ring1)
 
-        # Set Ring1 on conductor for session persistence
-        self.conductor.set_ring1(self.ring1)
+            # Initialize layers
+            self.hub = WorkerHub(
+                registry=self.registry,
+                bus=self.bus,
+                conductor=self.conductor,
+            )
+            self.briefing_room = BriefingRoom(
+                conductor=self.conductor,
+                hub=self.hub,
+                pool=self.pool,
+                registry=self.registry,
+                bus=self.bus,
+            )
+            intake_worker_cfg = self.config.workers.get("intake")
+            intake_model = intake_worker_cfg.model if intake_worker_cfg else "ollama/llama3"
+            self.intake = Intake(
+                router=self.router,
+                bus=self.bus,
+                model=intake_model,
+            )
 
-        # Set Ring1 on all workers
-        for worker_id in self.registry.all_worker_ids:
-            worker = self.registry.hire(worker_id)
-            worker.set_ring1(self.ring1)
+            # Start context pool
+            for pw in self.pool.instances:
+                pw.router = self.router
+            await self.pool.start()
 
-        # Initialize layers
-        self.hub = WorkerHub(
-            registry=self.registry,
-            bus=self.bus,
-            conductor=self.conductor,
-        )
-        self.briefing_room = BriefingRoom(
-            conductor=self.conductor,
-            hub=self.hub,
-            pool=self.pool,
-            registry=self.registry,
-            bus=self.bus,
-        )
-        # Resolve intake model safely
-        intake_worker_cfg = self.config.workers.get("intake")
-        intake_model = intake_worker_cfg.model if intake_worker_cfg else "ollama/llama3"
-        self.intake = Intake(
-            router=self.router,
-            bus=self.bus,
-            model=intake_model,
-        )
-
-        # Start context pool
-        # Inject router into pool workers
-        for pw in self.pool.instances:
-            pw.router = self.router
-        await self.pool.start()
-
-        self._initialized = True
+            self._initialized = True
 
     async def chat(
         self,
@@ -358,44 +380,31 @@ class Office:
 
         Yields events: manager_message or contract_ready.
         Multi-turn — call repeatedly until contract_ready appears.
-
-        Args:
-            session_id: Unique session identifier
-            message: User message
-
-        Yields:
-            Event dictionaries
         """
         if not self._initialized:
             await self.initialize()
 
-        # Optional: Run through Intake first
-        if self.intake:
-            intake_result = await self.intake.parse(message, session_id)
-            # Store intake data in session for Conductor to use
-            await self.ring1.store_session(session_id, {
-                "intake": intake_result.to_dict(),
-            })
+        with self._tracer.span(
+            "office.chat",
+            attributes={"session_id": session_id},
+        ):
+            # Optional: Run through Intake first
+            if self.intake:
+                intake_result = await self.intake.parse(message, session_id)
+                await self.ring1.store_session(session_id, {
+                    "intake": intake_result.to_dict(),
+                })
 
-        # Conductor understands client
-        async for event in self.conductor.understand_client(session_id, message):
-            yield event
+            # Conductor understands client
+            async for event in self.conductor.understand_client(session_id, message):
+                yield event
 
     async def revise(
         self,
         session_id: str,
         feedback: str,
     ) -> AsyncIterator[dict[str, Any]]:
-        """
-        Revise the current contract based on client feedback.
-
-        Args:
-            session_id: Session identifier
-            feedback: Client's revision request
-
-        Yields:
-            Event dictionaries
-        """
+        """Revise the current contract based on client feedback."""
         async for event in self.conductor.revise_contract(session_id, feedback):
             yield event
 
@@ -408,34 +417,32 @@ class Office:
 
         This triggers the full Panel 2 flow:
         briefing → prefetch → assign → execute → verify → done
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            Complete result with all task outputs
         """
         if not self._initialized:
             await self.initialize()
 
         contract = self.conductor.get_contract(session_id)
         if not contract:
-            return {"error": "No contract found for this session"}
+            raise NoContractError(session_id)
 
-        # Mark as working
-        await self.conductor.mark_working(session_id)
-        emitter = EventEmitter(self.bus, session_id)
-        await emitter.contract_accepted()
-        await self.hooks.trigger(HookType.ON_CONTRACT_ACCEPTED, {
-            "session_id": session_id, "contract": contract.to_dict()
-        })
+        with self._tracer.span(
+            "office.accept_and_run",
+            attributes={"session_id": session_id, "contract_title": contract.title},
+        ):
+            # Mark as working
+            await self.conductor.mark_working(session_id)
+            emitter = EventEmitter(self.bus, session_id)
+            await emitter.contract_accepted()
+            await self.hooks.trigger(HookType.ON_CONTRACT_ACCEPTED, {
+                "session_id": session_id, "contract": contract.to_dict()
+            })
 
-        # Run the full orchestration
-        result = await self._conduct(session_id, contract)
+            # Run the full orchestration
+            result = await self._conduct(session_id, contract)
 
-        # Mark as done
-        await self.conductor.mark_done(session_id)
-        return result
+            # Mark as done
+            await self.conductor.mark_done(session_id)
+            return result
 
     async def run(
         self,
@@ -448,52 +455,45 @@ class Office:
 
         This is the simplest API: send a task, get the complete result.
         Automatically handles contract negotiation if auto_accept=True.
-
-        Args:
-            message: Task description
-            session_id: Optional session ID (auto-generated if not provided)
-            auto_accept: If True, auto-accept the contract without asking
-
-        Returns:
-            Complete result dictionary
         """
         if not self._initialized:
             await self.initialize()
 
         session_id = session_id or uuid.uuid4().hex[:12]
 
-        # Chat until contract is ready
-        contract_data = None
-        async for event in self.chat(session_id, message):
-            if event.get("type") == "contract_ready":
-                contract_data = event
-            elif event.get("type") == "manager_message":
-                # If auto_accept, we need to provide more info
-                if not auto_accept:
-                    return {
-                        "status": "clarification_needed",
-                        "message": event["content"],
-                        "session_id": session_id,
-                    }
+        with self._tracer.span(
+            "office.run",
+            attributes={"session_id": session_id},
+        ):
+            # Chat until contract is ready
+            contract_data = None
+            async for event in self.chat(session_id, message):
+                if event.get("type") == "contract_ready":
+                    contract_data = event
+                elif event.get("type") == "manager_message":
+                    if not auto_accept:
+                        return {
+                            "status": "clarification_needed",
+                            "message": event["content"],
+                            "session_id": session_id,
+                        }
 
-        if not contract_data:
-            return {
-                "status": "no_contract",
-                "message": "Could not generate a contract from this message",
-                "session_id": session_id,
-            }
+            if not contract_data:
+                return {
+                    "status": "no_contract",
+                    "message": "Could not generate a contract from this message",
+                    "session_id": session_id,
+                }
 
-        # Auto-accept and run
-        return await self.accept_and_run(session_id)
+            # Auto-accept and run
+            return await self.accept_and_run(session_id)
 
     async def _conduct(
         self,
         session_id: str,
         contract: Contract,
     ) -> dict[str, Any]:
-        """
-        Full orchestration: brief → assign → execute → verify → done.
-        """
+        """Full orchestration: brief → assign → execute → verify → done."""
         emitter = EventEmitter(self.bus, session_id)
 
         # 1. Conductor drafts plan
@@ -514,7 +514,6 @@ class Office:
         results: dict[str, TaskResult] = {}
 
         for group in parallel_groups:
-            # Execute group in parallel
             group_tasks = []
             for todo_id in group:
                 todo = next((t for t in contract.todos if t.id == todo_id), None)
@@ -555,7 +554,6 @@ class Office:
 
                 for (todo_id, assigned_to, _, task), result in zip(group_tasks, parallel_results):
                     if isinstance(result, Exception):
-                        # Task threw an exception — attempt recovery
                         recovered = await self._recover_task(
                             session_id=session_id,
                             todo_id=todo_id,
@@ -568,7 +566,6 @@ class Office:
                         results[todo_id] = recovered
                     else:
                         results[todo_id] = result
-                        # If task returned failed status, attempt recovery
                         if result.status == "failed":
                             recovered = await self._recover_task(
                                 session_id=session_id,
@@ -703,12 +700,10 @@ class Office:
         """
         await emitter.error_logged(lesson=f"Task {todo_id} failed: {error}. Attempting recovery...")
 
-        # Ask Conductor for recovery strategy
         recovery = await self.conductor.recover_from_failure(session_id, task, error)
         strategy = recovery.get("strategy", "retry_same")
 
         if strategy == "retry_same":
-            # Retry with the same worker
             try:
                 worker = self.registry.hire(assigned_to)
                 await emitter.task_assigned(
@@ -728,7 +723,6 @@ class Office:
                 )
 
         elif strategy == "reassign":
-            # Reassign to a different worker
             new_worker_id = recovery.get("new_worker", "")
             if new_worker_id and new_worker_id in self.registry.all_worker_ids:
                 try:
@@ -749,7 +743,6 @@ class Office:
                     )
 
         elif strategy == "simplify":
-            # Break into subtasks
             subtasks = recovery.get("subtasks", [])
             if subtasks:
                 sub_results = []
@@ -775,7 +768,6 @@ class Office:
                             error="Subtask failed",
                         ))
 
-                # Combine subtask results
                 all_done = all(r.status == "done" for r in sub_results)
                 combined_output = "\n".join(r.output for r in sub_results if r.output)
                 return TaskResult(
@@ -796,21 +788,18 @@ class Office:
 
     def _assign_worker(self, todo: TodoItem, plan: dict[str, Any]) -> str:
         """Determine which worker should handle a todo."""
-        # Check plan for explicit assignment
         for group in plan.get("parallel_groups", []):
             if todo.id in group:
-                # Find relevant worker from plan
                 relevant = plan.get("relevant_workers", [])
                 if relevant:
                     return relevant[0]
 
-        # Fallback: assign based on description keywords
         desc = todo.description.lower()
         if any(k in desc for k in ["ui", "frontend", "react", "css", "component"]):
             return "coder_frontend"
         if any(k in desc for k in ["api", "websocket", "integration", "mcp", "glue"]):
             return "coder_wiring"
-        return "coder_backend"  # Default
+        return "coder_backend"
 
     def get_events(self, session_id: str, limit: int = 50) -> list[dict[str, Any]]:
         """Get recent events for a session."""
@@ -824,6 +813,24 @@ class Office:
         """Get context pool status."""
         return self.pool.get_status()
 
+    def get_cost_report(self) -> dict[str, Any]:
+        """Get cost report for all LLM calls."""
+        if self.cost_tracker:
+            return self.cost_tracker.get_report()
+        return {}
+
+    def get_circuit_breaker_status(self) -> dict[str, Any]:
+        """Get circuit breaker status for all providers."""
+        return self.router.get_circuit_breaker_status()
+
+    def get_metrics_summary(self) -> dict[str, Any]:
+        """Get observability metrics summary."""
+        return self._metrics.get_summary()
+
+    def get_observability_spans(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Get recent tracing spans."""
+        return self._tracer.get_spans(limit)
+
     async def cleanup_session(self, session_id: str) -> None:
         """Clean up all session resources."""
         await self.conductor.cleanup_session(session_id)
@@ -833,6 +840,8 @@ class Office:
     async def shutdown(self) -> None:
         """Gracefully shut down the office."""
         await self.pool.stop()
+        if self.cache:
+            await self.cache.close()
         await self.ring1.close()
         await self.ring2.close()
         await self.ring3.close()

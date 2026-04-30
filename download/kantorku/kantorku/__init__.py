@@ -29,14 +29,35 @@ from kantorku.events.emitter import EventEmitter
 from kantorku.config.settings import KantorkuConfig, WorkerConfig, PoolConfig
 from kantorku.hooks import Hooks, HookType
 from kantorku.providers.rate_limiter import RateLimiter
+from kantorku.providers.circuit_breaker import CircuitBreaker, CircuitState
+from kantorku.providers.retry import RetryPolicy, DEFAULT_RETRY_POLICY
 from kantorku.observability import get_tracer, get_metrics, Tracer, Metrics
 from kantorku.cost import CostTracker
 from kantorku.protocol import OfficeEvent, EventType, parse_client_message
 from kantorku.dag import DAGResolver, TaskNode, DAGCycleError
 from kantorku.cache import LLMCache
 from kantorku.delegation import DelegationManager, DelegationRequest, DelegationResult
+from kantorku.provider_response import ProviderResponse
+from kantorku.errors import (
+    KantorkuError,
+    ProviderError,
+    ProviderTimeoutError,
+    ProviderRateLimitError,
+    ProviderAuthError,
+    ProviderCircuitOpenError,
+    AllProvidersFailedError,
+    WorkerError,
+    WorkerTimeoutError,
+    WorkerNotReadyError,
+    OfficeError,
+    OfficeNotInitializedError,
+    ContractError,
+    NoContractError,
+    ConfigError,
+    WorkerNotFoundError,
+)
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     # Core
     "Office",
@@ -74,6 +95,12 @@ __all__ = [
     "HookType",
     # Rate Limiting
     "RateLimiter",
+    # Circuit Breaker
+    "CircuitBreaker",
+    "CircuitState",
+    # Retry
+    "RetryPolicy",
+    "DEFAULT_RETRY_POLICY",
     # Observability
     "Tracer",
     "Metrics",
@@ -95,4 +122,23 @@ __all__ = [
     "DelegationManager",
     "DelegationRequest",
     "DelegationResult",
+    # Provider Response
+    "ProviderResponse",
+    # Errors
+    "KantorkuError",
+    "ProviderError",
+    "ProviderTimeoutError",
+    "ProviderRateLimitError",
+    "ProviderAuthError",
+    "ProviderCircuitOpenError",
+    "AllProvidersFailedError",
+    "WorkerError",
+    "WorkerTimeoutError",
+    "WorkerNotReadyError",
+    "OfficeError",
+    "OfficeNotInitializedError",
+    "ContractError",
+    "NoContractError",
+    "ConfigError",
+    "WorkerNotFoundError",
 ]

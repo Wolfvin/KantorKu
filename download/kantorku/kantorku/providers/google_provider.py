@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, AsyncIterator
 
 from kantorku.providers.base import BaseProvider
+from kantorku.provider_response import ProviderResponse
 
 
 class GoogleProvider(BaseProvider):
@@ -36,6 +38,15 @@ class GoogleProvider(BaseProvider):
         messages: list[dict[str, str]],
         **kwargs: Any,
     ) -> str:
+        response = await self.complete_with_usage(model=model, messages=messages, **kwargs)
+        return response.content
+
+    async def complete_with_usage(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> ProviderResponse:
         client = self._get_client()
 
         # Convert messages to Gemini format
@@ -57,12 +68,17 @@ class GoogleProvider(BaseProvider):
         if "max_tokens" in kwargs:
             config["max_output_tokens"] = kwargs["max_tokens"]
 
+        start = time.monotonic()
         response = await client.aio.models.generate_content(
             model=model,
             contents=contents,
             config=config if config else None,
         )
-        return response.text
+        latency_ms = (time.monotonic() - start) * 1000
+
+        return ProviderResponse.from_google_format(
+            response, provider_name="google", latency_ms=latency_ms,
+        )
 
     async def complete_stream(
         self,
