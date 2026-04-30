@@ -1,0 +1,151 @@
+# =====================================================
+# KANTORKU.TOML — WORKER MODEL ASSIGNMENT
+# Verified: April 2026 | Multi-source benchmarks
+# =====================================================
+
+[office]
+conductor_model = "anthropic/claude-opus-4-6"
+# SWE-bench 80.8% | Arena Elo #2 (1095)
+# Decision-making + orchestration only
+# Expensive ($5/M) but low frequency usage
+
+# ─────────────────────────────────────
+# TRANSLATION LAYER — cheap & fast
+# ─────────────────────────────────────
+
+[workers.intake]
+model = "ollama/llama3"
+# Parsing only — doesn't need frontier
+
+[workers.narrator]
+model = "ollama/llama3"
+# Format output only — doesn't need frontier
+
+# ─────────────────────────────────────
+# CODING — 3 SPECIALIZATIONS
+# ─────────────────────────────────────
+
+[workers.coder_frontend]
+model = "anthropic/claude-sonnet-4-6"
+squad = "coding"
+role = "React/CSS/UI/Visual specialist"
+# WebDev Arena Elo: top 3
+# $1.50/M — reasonable for frontend quality
+
+[workers.coder_backend]
+model = "minimax/minimax-m2-7"
+squad = "coding"
+role = "Python/Rust/Systems specialist"
+# SWE-bench Pro 56.2% — #1 open-weight
+# $0.30/M — 16x cheaper than Claude Opus
+
+[workers.coder_wiring]
+model = "google/gemini-3-1-pro"
+squad = "coding"
+role = "API/WS/MCP/Glue specialist"
+# BFCL tool calling: 99.3 score (#1 tie)
+# 1M context — see entire codebase when wiring
+
+# ─────────────────────────────────────
+# VERIFICATION — 2 SPECIALIZATIONS
+# ─────────────────────────────────────
+
+[workers.verifier_designer]
+model = "google/gemini-3-1-pro"
+squad = "verification"
+role = "Visual/UX judge"
+# Multimodal: screenshot → judge visual quality
+
+[workers.verifier_engineer]
+model = "minimax/minimax-m2-5"
+squad = "verification"
+role = "Logic/test/security reviewer"
+# SWE-bench Verified 80.2% | $0.12/M
+
+# ─────────────────────────────────────
+# DEEPSEEK CONTEXT POOL
+# ─────────────────────────────────────
+
+[pool]
+model = "deepseek/deepseek-v3-2"
+instances = 3
+queue_type = "fifo"
+# LiveCodeBench 83.3% | $0.28/M
+# Context caching $0.028/M repeated prefixes
+
+# ─────────────────────────────────────
+# SUPPORT WORKERS
+# ─────────────────────────────────────
+
+[workers.debugger]
+model = "deepseek/deepseek-v3-2"
+squad = "support"
+role = "Root cause analysis"
+# Debugging = many iterations → needs cheap
+
+[workers.scout]
+model = "google/gemini-2-5-pro"
+squad = "support"
+role = "Research, real-time search"
+# Real-time search | 1M+ context
+
+[workers.auditor]
+model = "anthropic/claude-sonnet-4-6"
+squad = "support"
+role = "Code review, nuance"
+# Architectural reasoning
+
+[workers.scribe]
+model = "deepseek/deepseek-v4-flash"
+squad = "support"
+role = "Documentation"
+# Long context | cheap | docs don't need frontier
+
+[workers.summarizer]
+model = "deepseek/deepseek-v4-flash"
+squad = "support"
+role = "Long context compression"
+# 1M context | compress long histories
+
+[workers.sentinel]
+model = "ollama/llama3"
+squad = "support"
+role = "Error logging"
+# Logging only — local/free
+
+# ─────────────────────────────────────
+# PROVIDERS — credentials from env vars
+# ─────────────────────────────────────
+
+[providers.anthropic]
+api_key = "${ANTHROPIC_API_KEY}"
+
+[providers.google]
+api_key = "${GOOGLE_API_KEY}"
+
+[providers.minimax]
+api_key = "${MINIMAX_API_KEY}"
+
+[providers.deepseek]
+api_key = "${DEEPSEEK_API_KEY}"
+
+[providers.ollama]
+base_url = "http://localhost:11434/v1"
+
+# ─────────────────────────────────────
+# MEMORY
+# ─────────────────────────────────────
+
+[memory]
+ring1_path = "data/ring1.duckdb"
+ring2_path = "data/ring2.db"
+ring3_enabled = false
+ring3_path = "data/ring3"
+
+# ─────────────────────────────────────
+# SERVER
+# ─────────────────────────────────────
+
+[server]
+host = "0.0.0.0"
+port = 8000
