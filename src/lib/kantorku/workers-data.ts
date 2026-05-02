@@ -164,6 +164,7 @@ export const MEMORY_RINGS = [
 export const CONTRACT_STATE_LABELS: Record<ContractState, string> = {
   idle: 'Idle',
   manager_thinking: 'Manager Thinking...',
+  team_consult: 'Team Consult',
   clarifying: 'Clarifying Requirements',
   contract_presented: 'Contract Ready',
   team_review: 'Team Review',
@@ -171,6 +172,21 @@ export const CONTRACT_STATE_LABELS: Record<ContractState, string> = {
   client_feedback: 'Client Feedback',
   working: 'Working',
   done: 'Done',
+  failed: 'Failed',
+};
+
+export const CONTRACT_STATE_COLORS: Record<ContractState, string> = {
+  idle: 'border-slate-600/50 text-slate-400 bg-slate-800/30',
+  manager_thinking: 'border-amber-500/40 text-amber-300 bg-amber-500/10',
+  team_consult: 'border-violet-500/40 text-violet-300 bg-violet-500/10',
+  clarifying: 'border-amber-500/40 text-amber-300 bg-amber-500/10',
+  contract_presented: 'border-cyan-500/40 text-cyan-300 bg-cyan-500/10',
+  team_review: 'border-violet-500/40 text-violet-300 bg-violet-500/10',
+  todo_review: 'border-teal-500/40 text-teal-300 bg-teal-500/10',
+  client_feedback: 'border-amber-500/40 text-amber-300 bg-amber-500/10',
+  working: 'border-cyan-500/40 text-cyan-300 bg-cyan-500/10',
+  done: 'border-green-500/40 text-green-300 bg-green-500/10',
+  failed: 'border-red-500/40 text-red-300 bg-red-500/10',
 };
 
 export const MESSAGE_TYPE_COLORS: Record<string, string> = {

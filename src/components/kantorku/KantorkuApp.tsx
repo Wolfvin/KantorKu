@@ -1,11 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { LobbyZone } from './LobbyZone';
 import { WorkspaceZone } from './WorkspaceZone';
 import { DashboardZone } from './DashboardZone';
@@ -18,11 +25,73 @@ import {
   BarChart3,
   Wifi,
   WifiOff,
+  ChevronDown,
+  Plus,
+  FolderOpen,
 } from 'lucide-react';
 
+type MobileTab = 'lobby' | 'workspace' | 'dashboard';
+
 export function KantorkuApp() {
-  const { isBackendConnected, contractState } = useKantorkuStore();
-  const [mobileTab, setMobileTab] = useState<'lobby' | 'workspace' | 'dashboard'>('lobby');
+  const {
+    isBackendConnected,
+    contractState,
+    sessions,
+    activeSessionId,
+    setActiveSession,
+    panelLayout,
+    setPanelLayout,
+  } = useKantorkuStore();
+  const [mobileTab, setMobileTab] = useState<MobileTab>('lobby');
+
+  // ── Keyboard Shortcuts ──────────────────────────────────────
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setMobileTab('lobby');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          setMobileTab('workspace');
+        } else if (e.key === '3') {
+          e.preventDefault();
+          setMobileTab('dashboard');
+        }
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  // ── Panel Layout Persistence ────────────────────────────────
+  const handlePanelLayoutChange = useCallback(
+    (sizes: number[]) => {
+      if (sizes.length === 3) {
+        setPanelLayout({
+          lobby: sizes[0],
+          workspace: sizes[1],
+          dashboard: sizes[2],
+        });
+      }
+    },
+    [setPanelLayout]
+  );
+
+  // ── Session Info ────────────────────────────────────────────
+  const activeSession = sessions.find((s) => s.session_id === activeSessionId);
+  const sessionLabel = activeSession
+    ? activeSession.contract_title || activeSession.session_id.slice(0, 12)
+    : 'No Session';
+
+  const handleNewSessionFromSwitcher = useCallback(() => {
+    // The LobbyZone's handleNewSession will be called via the store reset
+    setActiveSession('');
+  }, [setActiveSession]);
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#0a0e1a] text-white overflow-hidden">
@@ -41,8 +110,69 @@ export function KantorkuApp() {
             variant="outline"
             className="text-[8px] px-1 py-0 h-4 font-mono border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hidden sm:inline-flex"
           >
-            v0.4.0
+            v0.8.0
           </Badge>
+
+          {/* Session Switcher */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border border-slate-700/50 bg-slate-800/50 hover:bg-slate-700/50 hover:border-cyan-500/30 transition-colors max-w-[140px]">
+                <FolderOpen className="h-2.5 w-2.5 text-cyan-400 flex-shrink-0" />
+                <span className="text-slate-300 truncate">{sessionLabel}</span>
+                <ChevronDown className="h-2.5 w-2.5 text-slate-500 flex-shrink-0" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="w-56 bg-slate-900 border-slate-700/50"
+            >
+              {sessions.length > 0 ? (
+                sessions.map((session) => (
+                  <DropdownMenuItem
+                    key={session.session_id}
+                    onClick={() => setActiveSession(session.session_id)}
+                    className={`text-xs font-mono cursor-pointer ${
+                      session.session_id === activeSessionId
+                        ? 'bg-cyan-500/10 text-cyan-300'
+                        : 'text-slate-300'
+                    }`}
+                  >
+                    <FolderOpen className="h-3 w-3 mr-2 flex-shrink-0" />
+                    <span className="truncate">
+                      {session.contract_title || session.session_id.slice(0, 16)}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={`ml-auto text-[7px] px-1 py-0 h-3 ${
+                        session.state === 'done'
+                          ? 'border-green-500/30 text-green-300'
+                          : session.state === 'failed'
+                          ? 'border-red-500/30 text-red-300'
+                          : session.state === 'working'
+                          ? 'border-cyan-500/30 text-cyan-300'
+                          : 'border-slate-600/50 text-slate-400'
+                      }`}
+                    >
+                      {session.state}
+                    </Badge>
+                  </DropdownMenuItem>
+                ))
+              ) : (
+                <div className="px-2 py-1.5 text-[10px] text-slate-500 font-mono">
+                  No sessions yet
+                </div>
+              )}
+              <DropdownMenuSeparator className="bg-slate-700/50" />
+              <DropdownMenuItem
+                onClick={handleNewSessionFromSwitcher}
+                className="text-xs font-mono text-cyan-400 cursor-pointer"
+              >
+                <Plus className="h-3 w-3 mr-2" />
+                New Session
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Badge
             variant="outline"
             className={`text-[8px] px-1 py-0 h-4 font-mono ${
@@ -58,6 +188,12 @@ export function KantorkuApp() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Keyboard shortcut hints (desktop only) */}
+          <div className="hidden lg:flex items-center gap-1 text-[8px] text-slate-600 font-mono">
+            <kbd className="px-0.5 py-0 rounded bg-slate-800 border border-slate-700/50">⌘1</kbd>
+            <kbd className="px-0.5 py-0 rounded bg-slate-800 border border-slate-700/50">⌘2</kbd>
+            <kbd className="px-0.5 py-0 rounded bg-slate-800 border border-slate-700/50">⌘3</kbd>
+          </div>
           <div className="flex items-center gap-1 text-[9px]">
             {isBackendConnected ? (
               <>
@@ -103,9 +239,17 @@ export function KantorkuApp() {
       <div className="flex-1 overflow-hidden">
         {/* Desktop 3-Panel Layout */}
         <div className="hidden sm:block h-full">
-          <ResizablePanelGroup direction="horizontal" className="h-full">
+          <ResizablePanelGroup
+            direction="horizontal"
+            className="h-full"
+            onLayout={handlePanelLayoutChange}
+          >
             {/* Lobby Zone */}
-            <ResizablePanel defaultSize={30} minSize={20} maxSize={45}>
+            <ResizablePanel
+              defaultSize={panelLayout.lobby}
+              minSize={20}
+              maxSize={45}
+            >
               <div className="h-full border-r border-cyan-900/20">
                 <LobbyZone />
               </div>
@@ -114,7 +258,10 @@ export function KantorkuApp() {
             <ResizableHandle className="bg-cyan-900/20 hover:bg-cyan-700/30 transition-colors w-0.5" />
 
             {/* Workspace Zone */}
-            <ResizablePanel defaultSize={45} minSize={30}>
+            <ResizablePanel
+              defaultSize={panelLayout.workspace}
+              minSize={30}
+            >
               <div className="h-full border-r border-cyan-900/20">
                 <WorkspaceZone />
               </div>
@@ -123,7 +270,11 @@ export function KantorkuApp() {
             <ResizableHandle className="bg-cyan-900/20 hover:bg-cyan-700/30 transition-colors w-0.5" />
 
             {/* Dashboard Zone */}
-            <ResizablePanel defaultSize={25} minSize={18} maxSize={40}>
+            <ResizablePanel
+              defaultSize={panelLayout.dashboard}
+              minSize={18}
+              maxSize={40}
+            >
               <div className="h-full">
                 <DashboardZone />
               </div>

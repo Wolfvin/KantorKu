@@ -2,21 +2,30 @@
 export type ContractState =
   | 'idle'
   | 'manager_thinking'
+  | 'team_consult'
   | 'clarifying'
   | 'contract_presented'
   | 'team_review'
   | 'todo_review'
   | 'client_feedback'
   | 'working'
-  | 'done';
+  | 'done'
+  | 'failed';
 
 // ── Contract & Todo ────────────────────────────────────────────────
 export interface TodoItem {
   id: string;
   description: string;
   assigned_to: string;
-  status: 'pending' | 'in_progress' | 'done' | 'failed';
+  status: 'pending' | 'in_progress' | 'done' | 'failed' | 'blocked';
   depends_on: string[];
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  estimated_time_ms?: number;
+  actual_time_ms?: number;
+  result?: string;
+  error?: string;
+  started_at?: string;
+  completed_at?: string;
 }
 
 export interface Contract {
@@ -28,8 +37,13 @@ export interface Contract {
   state: ContractState;
   client_messages: Array<{ role: string; content: string }>;
   manager_messages: Array<{ role: string; content: string }>;
-  team_feedback_rounds: Array<Record<string, unknown>>;
+  team_feedback_rounds: TeamFeedbackRound[];
   team_approved: boolean;
+  approval_gates: ApprovalGate[];
+  deadline?: string;
+  budget_limit?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // ── GroupChannel Message Types ─────────────────────────────────────
@@ -43,7 +57,14 @@ export type MessageType =
   | 'disagreement'
   | 'info'
   | 'manager_summary'
-  | 'manager_decision';
+  | 'manager_decision'
+  | 'volunteer'
+  | 'escalation'
+  | 'overhearing'
+  | 'delegation_request'
+  | 'delegation_response'
+  | 'brainstorm'
+  | 'context_switch';
 
 export interface GroupMessage {
   id: string;
@@ -61,6 +82,7 @@ export interface DiscussionRound {
   messages: GroupMessage[];
   summary: string;
   decisions: string[];
+  consensus_reached: boolean;
 }
 
 // ── Office Events ──────────────────────────────────────────────────
@@ -81,6 +103,10 @@ export interface OfficeEvent {
   lesson?: string;
   chunk?: string;
   full_text?: string;
+  trace_id?: string;
+  span_id?: string;
+  duration_ms?: number;
+  timestamp?: string;
   [key: string]: unknown;
 }
 
@@ -96,6 +122,13 @@ export interface WorkerIdentity {
   color?: string;
   status?: 'idle' | 'busy' | 'error' | 'offline';
   current_task?: string;
+  capabilities?: string[];
+  trust_score?: number;
+  total_tasks?: number;
+  success_rate?: number;
+  avg_latency_ms?: number;
+  hired_at?: string;
+  is_custom?: boolean;
 }
 
 // ── Intake ─────────────────────────────────────────────────────────
@@ -108,6 +141,8 @@ export interface IntakeResult {
   summary: string;
   key_requirements: string[];
   estimated_complexity: 'simple' | 'moderate' | 'complex' | 'very_complex';
+  estimated_workers?: string[];
+  estimated_duration_ms?: number;
 }
 
 // ── Cost & Metrics ─────────────────────────────────────────────────
@@ -117,6 +152,9 @@ export interface CostEntry {
   output_tokens: number;
   cost_usd: number;
   timestamp: string;
+  worker_id?: string;
+  session_id?: string;
+  trace_id?: string;
 }
 
 export interface CostReport {
@@ -125,13 +163,17 @@ export interface CostReport {
   total_output_tokens: number;
   entries: CostEntry[];
   by_model: Record<string, { cost: number; calls: number; tokens: number }>;
+  by_worker: Record<string, { cost: number; calls: number; tokens: number }>;
+  budget_remaining?: number;
 }
 
 export interface HealthStatus {
   is_healthy: boolean;
   message: string;
-  providers?: Record<string, { status: string; latency_ms: number }>;
-  workers?: Record<string, { status: string; current_task?: string }>;
+  providers?: Record<string, { status: string; latency_ms: number; error_rate: number }>;
+  workers?: Record<string, { status: string; current_task?: string; latency_ms?: number }>;
+  uptime_ms?: number;
+  last_check?: string;
 }
 
 export interface CircuitBreakerState {
@@ -139,6 +181,8 @@ export interface CircuitBreakerState {
   state: 'closed' | 'open' | 'half_open';
   failure_count: number;
   last_failure?: string;
+  last_success?: string;
+  recovery_timeout_ms?: number;
 }
 
 export interface MetricsSummary {
@@ -147,7 +191,17 @@ export interface MetricsSummary {
   total_cost: number;
   avg_latency_ms: number;
   success_rate: number;
+  p50_latency_ms: number;
+  p95_latency_ms: number;
+  p99_latency_ms: number;
   by_model: Record<string, unknown>;
+  time_series?: MetricDataPoint[];
+}
+
+export interface MetricDataPoint {
+  timestamp: string;
+  value: number;
+  label?: string;
 }
 
 // ── Chat Messages ──────────────────────────────────────────────────
@@ -157,6 +211,7 @@ export interface ClientChatMessage {
   content: string;
   timestamp: string;
   source?: string;
+  session_id?: string;
 }
 
 export interface WorkersChatMessage {
@@ -166,6 +221,7 @@ export interface WorkersChatMessage {
   content: string;
   timestamp: string;
   reply_to?: string;
+  session_id?: string;
 }
 
 // ── Briefing ───────────────────────────────────────────────────────
@@ -175,6 +231,8 @@ export interface BriefingResult {
   consensus_reached: boolean;
   concerns: Array<Record<string, unknown>>;
   decisions: string[];
+  volunteer_assignments?: Record<string, string>;
+  estimated_total_time_ms?: number;
 }
 
 // ── Session ────────────────────────────────────────────────────────
@@ -182,6 +240,10 @@ export interface Session {
   session_id: string;
   state: ContractState;
   contract_title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  total_cost: number;
 }
 
 // ── Memory Ring ────────────────────────────────────────────────────
@@ -191,18 +253,214 @@ export interface MemoryRing {
   description: string;
   size: number;
   color: string;
+  engine: string;
+}
+
+export interface MemoryEntry {
+  id: string;
+  ring: number;
+  key: string;
+  value: string;
+  timestamp: string;
+  session_id?: string;
+  tags?: string[];
+  access_count?: number;
+}
+
+// ── DAG (Task Dependencies) ────────────────────────────────────────
+export interface DAGNode {
+  id: string;
+  label: string;
+  status: 'pending' | 'in_progress' | 'done' | 'failed' | 'blocked';
+  assigned_to: string;
+  depth: number;
+}
+
+export interface DAGEdge {
+  from: string;
+  to: string;
+  type: 'depends_on' | 'delegates_to' | 'verifies';
+}
+
+// ── Middleware Pipeline ────────────────────────────────────────────
+export interface MiddlewareStep {
+  name: string;
+  type: 'auth' | 'logging' | 'rate_limit' | 'cost_guard' | 'cache' | 'retry' | 'circuit_breaker' | 'validation';
+  status: 'passed' | 'blocked' | 'skipped' | 'error';
+  duration_ms: number;
+  detail?: string;
+}
+
+// ── Observability / Tracing ────────────────────────────────────────
+export interface TraceEntry {
+  trace_id: string;
+  span_id: string;
+  parent_span_id?: string;
+  operation: string;
+  worker_id?: string;
+  model?: string;
+  start_time: string;
+  end_time?: string;
+  duration_ms?: number;
+  status: 'ok' | 'error' | 'timeout';
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface Span {
+  id: string;
+  name: string;
+  startTime: number;
+  endTime?: number;
+  duration?: number;
+  status: 'ok' | 'error' | 'running';
+  children?: Span[];
+  attributes?: Record<string, string>;
+}
+
+// ── Approval Gates ─────────────────────────────────────────────────
+export interface ApprovalGate {
+  id: string;
+  gate_type: 'team_review' | 'client_approval' | 'budget_check' | 'security_review';
+  status: 'pending' | 'approved' | 'rejected' | 'skipped';
+  approver: string;
+  reason?: string;
+  timestamp?: string;
+}
+
+// ── Delegation ─────────────────────────────────────────────────────
+export interface DelegationRequest {
+  id: string;
+  from_worker: string;
+  to_worker: string;
+  task_description: string;
+  reason: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  timestamp: string;
+}
+
+// ── Escalation ─────────────────────────────────────────────────────
+export interface EscalationEvent {
+  id: string;
+  from_worker: string;
+  reason: string;
+  severity: 'info' | 'warning' | 'critical';
+  timestamp: string;
+  resolved: boolean;
+}
+
+// ── Emotion & Trust ────────────────────────────────────────────────
+export interface WorkerEmotion {
+  worker_id: string;
+  emotion: 'confident' | 'uncertain' | 'frustrated' | 'excited' | 'neutral';
+  confidence: number;
+  timestamp: string;
+}
+
+export interface TrustScore {
+  worker_id: string;
+  score: number;
+  trend: 'improving' | 'stable' | 'declining';
+  history: Array<{ timestamp: string; score: number }>;
+}
+
+// ── Bulletin Board / SOP ───────────────────────────────────────────
+export interface BulletinBoardEntry {
+  id: string;
+  type: 'announcement' | 'sop' | 'rule' | 'alert';
+  title: string;
+  content: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  created_at: string;
+  active: boolean;
+}
+
+// ── Debrief ────────────────────────────────────────────────────────
+export interface DebriefResult {
+  contract_id: string;
+  session_id: string;
+  what_went_well: string[];
+  what_could_improve: string[];
+  lessons_learned: string[];
+  worker_feedback: Record<string, string>;
+  total_duration_ms: number;
+  total_cost: number;
+  timestamp: string;
+}
+
+// ── Team Feedback ──────────────────────────────────────────────────
+export interface TeamFeedbackRound {
+  round_number: number;
+  worker_id: string;
+  feedback_type: 'concern' | 'suggestion' | 'agreement' | 'disagreement';
+  content: string;
+  timestamp: string;
+}
+
+// ── Review & Revision ──────────────────────────────────────────────
+export interface ReviewRevision {
+  id: string;
+  contract_id: string;
+  reviewer: string;
+  review_type: 'code' | 'design' | 'security' | 'quality';
+  status: 'pending' | 'approved' | 'changes_requested';
+  comments: string[];
+  timestamp: string;
+}
+
+// ── Time Travel Snapshot ───────────────────────────────────────────
+export interface TimeTravelSnapshot {
+  id: string;
+  contract_id: string;
+  state: ContractState;
+  timestamp: string;
+  description: string;
+  data: Record<string, unknown>;
 }
 
 // ── API Response Types ─────────────────────────────────────────────
 export interface ChatApiResponse {
-  type: 'manager_message' | 'contract_ready';
+  type: 'manager_message' | 'contract_ready' | 'team_feedback';
   content?: string;
   contract?: Contract;
   intake?: IntakeResult;
+  team_feedback?: TeamFeedbackRound[];
 }
 
 export interface ExecuteApiResponse {
   session_id: string;
   events: OfficeEvent[];
   results: Record<string, unknown>;
+  trace_id?: string;
+  cost?: CostReport;
+  debrief?: DebriefResult;
+}
+
+export interface BriefingApiResponse {
+  rounds: DiscussionRound[];
+  consensus_reached: boolean;
+  decisions: string[];
+  volunteer_assignments: Record<string, string>;
+}
+
+// ── Context Switch / Impromptu ─────────────────────────────────────
+export interface ContextSwitchEvent {
+  id: string;
+  from_task: string;
+  to_task: string;
+  reason: string;
+  timestamp: string;
+  worker_id: string;
+}
+
+export interface ImpromptuTask {
+  id: string;
+  description: string;
+  requested_by: string;
+  priority: 'low' | 'medium' | 'high';
+  status: 'pending' | 'accepted' | 'declined';
+  volunteer?: string;
+  timestamp: string;
 }
