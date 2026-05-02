@@ -64,6 +64,8 @@ export function LobbyZone() {
     setCircuitBreakers,
     addMemoryEntry,
     answerQuestion,
+    setWorkerEmotion,
+    updateTrustScore,
   } = useKantorkuStore();
 
   const handleSendMessage = async (message: string) => {
@@ -202,27 +204,65 @@ export function LobbyZone() {
       timestamp: new Date().toISOString(),
     });
 
-    // Simulate worker feedback
-    const activeWorkers = contract.todos
-      .map((t) => t.assigned_to)
-      .filter((v, i, a) => v && a.indexOf(v) === i) as string[];
+    try {
+      const briefingResponse = await fetch('/api/briefing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contract,
+          session_id: activeSessionId || 'default',
+        }),
+      });
+      const briefingData = await briefingResponse.json();
 
-    for (const workerId of activeWorkers.slice(0, 3)) {
-      const todo = contract.todos.find((t) => t.assigned_to === workerId);
-      addTeamFeedback({
-        round_number: 1,
-        worker_id: workerId,
-        feedback_type: 'agreement',
-        content: `Ready to handle: ${todo?.description.slice(0, 40) || 'assigned task'}`,
-        timestamp: new Date().toISOString(),
+      if (briefingData.rounds) {
+        for (const round of briefingData.rounds) {
+          addDiscussionRound(round);
+          for (const msg of round.messages) {
+            addWorkersMessage({
+              id: `wmsg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              from_id: msg.from_id,
+              message_type: msg.message_type || 'speak',
+              content: msg.content,
+              timestamp: msg.timestamp || new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      if (briefingData.decisions) {
+        for (const decision of briefingData.decisions) {
+          addTeamFeedback({
+            round_number: 1,
+            worker_id: 'conductor',
+            feedback_type: 'agreement',
+            content: decision,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
+      setBriefingResult({
+        plan: {},
+        rounds_completed: briefingData.rounds?.length || 1,
+        consensus_reached: briefingData.consensus_reached ?? true,
+        concerns: briefingData.concerns || [],
+        decisions: briefingData.decisions || ['Proceed with plan'],
       });
-      addWorkersMessage({
-        id: `wmsg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        from_id: workerId,
-        message_type: 'agreement',
-        content: `I'm ready to handle: ${todo?.description.slice(0, 40) || 'assigned task'}`,
-        timestamp: new Date().toISOString(),
-      });
+    } catch {
+      // Fallback: simulate brief feedback
+      const activeWorkers = contract.todos
+        .map((t) => t.assigned_to)
+        .filter((v, i, a) => v && a.indexOf(v) === i) as string[];
+      for (const workerId of activeWorkers.slice(0, 3)) {
+        addWorkersMessage({
+          id: `wmsg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          from_id: workerId,
+          message_type: 'agreement',
+          content: 'Ready to contribute to this project.',
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
 
     await new Promise((r) => setTimeout(r, 800));
@@ -311,6 +351,21 @@ export function LobbyZone() {
     ]);
 
     try {
+      // Budget enforcement check
+      const currentCost = useKantorkuStore.getState().costReport?.total_cost || 0;
+      const budgetLimit = contract.budget_limit;
+      if (budgetLimit && currentCost > budgetLimit) {
+        addClientMessage({
+          id: `msg_${Date.now()}`,
+          role: 'manager',
+          content: `⚠️ Budget limit of $${budgetLimit.toFixed(2)} has been reached (current: $${currentCost.toFixed(4)}). Please increase the budget or simplify the scope before proceeding.`,
+          timestamp: new Date().toISOString(),
+        });
+        setContractState('contract_presented');
+        setWorking(false);
+        return;
+      }
+
       const response = await fetch('/api/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -430,6 +485,17 @@ export function LobbyZone() {
             updateWorkerStatus(event.from_id, 'error', undefined);
           }
 
+          // Process worker emotions
+          if (event.emotion && typeof event.emotion === 'object') {
+            const emo = event.emotion as { worker_id: string; emotion: string; confidence: number; timestamp: string };
+            setWorkerEmotion({
+              worker_id: emo.worker_id,
+              emotion: emo.emotion as 'confident' | 'uncertain' | 'frustrated' | 'excited' | 'neutral',
+              confidence: emo.confidence,
+              timestamp: emo.timestamp,
+            });
+          }
+
           // Add trace entries for events
           if (event.type === 'task_started' || event.type === 'task_done' || event.type === 'task_failed') {
             addTrace({
@@ -458,6 +524,25 @@ export function LobbyZone() {
         concerns: [],
         decisions: ['Proceed with current plan'],
       });
+
+      // Process trust score updates
+      if (data.trust_updates) {
+        for (const tu of data.trust_updates as Array<{ worker_id: string; score: number; trend: 'improving' | 'stable' | 'declining' }>) {
+          updateTrustScore(tu.worker_id, tu.score);
+        }
+      }
+
+      // Process emotions from execute response
+      if (data.emotions) {
+        for (const emo of data.emotions as Array<{ worker_id: string; emotion: string; confidence: number; timestamp: string }>) {
+          setWorkerEmotion({
+            worker_id: emo.worker_id,
+            emotion: emo.emotion as 'confident' | 'uncertain' | 'frustrated' | 'excited' | 'neutral',
+            confidence: emo.confidence,
+            timestamp: emo.timestamp,
+          });
+        }
+      }
 
       addDiscussionRound({
         round_number: 1,

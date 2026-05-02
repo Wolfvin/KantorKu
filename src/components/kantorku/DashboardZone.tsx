@@ -43,6 +43,7 @@ import {
   GitBranch,
   Timer,
   Target,
+  Plus,
 } from 'lucide-react';
 import { SQUADS } from '@/lib/kantorku/workers-data';
 import { WORKERS } from '@/lib/kantorku/workers-data';
@@ -846,6 +847,8 @@ function InfrastructureTab() {
     escalations,
     bulletinBoard,
     workers,
+    resolveEscalation,
+    addBulletinEntry,
   } = useKantorkuStore();
 
   const cbStateColors: Record<string, string> = {
@@ -854,8 +857,32 @@ function InfrastructureTab() {
     half_open: '#f59e0b',
   };
 
+  const [showBulletinForm, setShowBulletinForm] = useState(false);
+  const [bulletinTitle, setBulletinTitle] = useState('');
+  const [bulletinContent, setBulletinContent] = useState('');
+  const [bulletinType, setBulletinType] = useState<'announcement' | 'sop' | 'rule' | 'alert'>('announcement');
+  const [bulletinPriority, setBulletinPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+
   const activeBulletin = bulletinBoard.filter((b) => b.active);
   const unresolvedEscalations = escalations.filter((e) => !e.resolved);
+
+  const handleAddBulletin = () => {
+    if (!bulletinTitle.trim() || !bulletinContent.trim()) return;
+    addBulletinEntry({
+      id: `blt-${Date.now()}`,
+      type: bulletinType,
+      title: bulletinTitle.trim(),
+      content: bulletinContent.trim(),
+      priority: bulletinPriority,
+      created_at: new Date().toISOString(),
+      active: true,
+    });
+    setBulletinTitle('');
+    setBulletinContent('');
+    setBulletinType('announcement');
+    setBulletinPriority('medium');
+    setShowBulletinForm(false);
+  };
 
   return (
     <div className="flex flex-col h-full overflow-y-auto custom-scrollbar px-3 py-2 space-y-3">
@@ -1013,8 +1040,17 @@ function InfrastructureTab() {
               </div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-[9px] text-slate-500 font-mono">{esc.from_worker}</span>
-                {esc.resolved && (
+                {esc.resolved ? (
                   <span className="text-[9px] text-green-400 font-mono">resolved</span>
+                ) : (
+                  <button
+                    onClick={() => resolveEscalation(esc.id)}
+                    className="ml-auto flex items-center gap-0.5 text-[9px] text-slate-400 hover:text-green-400 transition-colors"
+                    title="Resolve escalation"
+                  >
+                    <CheckCircle2 className="h-3 w-3" />
+                    <span>Resolve</span>
+                  </button>
                 )}
               </div>
             </div>
@@ -1030,9 +1066,63 @@ function InfrastructureTab() {
           <CardTitle className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5">
             <Bell className="h-3 w-3 text-cyan-400" />
             BULLETIN BOARD ({activeBulletin.length} active)
+            <button
+              onClick={() => setShowBulletinForm(!showBulletinForm)}
+              className="ml-auto h-4 w-4 flex items-center justify-center rounded bg-slate-700/50 hover:bg-cyan-500/30 text-slate-400 hover:text-cyan-300 transition-colors"
+              title="Add bulletin"
+            >
+              <Plus className="h-2.5 w-2.5" />
+            </button>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-2.5 pt-1 max-h-40 overflow-y-auto custom-scrollbar space-y-1">
+          {showBulletinForm && (
+            <div className="p-2 rounded bg-slate-900/80 border border-cyan-500/20 space-y-1.5">
+              <input
+                type="text"
+                value={bulletinTitle}
+                onChange={(e) => setBulletinTitle(e.target.value)}
+                placeholder="Title"
+                className="w-full bg-slate-800/60 border border-slate-700/30 rounded px-1.5 py-0.5 text-[10px] text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/40"
+              />
+              <textarea
+                value={bulletinContent}
+                onChange={(e) => setBulletinContent(e.target.value)}
+                placeholder="Content"
+                rows={2}
+                className="w-full bg-slate-800/60 border border-slate-700/30 rounded px-1.5 py-0.5 text-[10px] text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/40 resize-none"
+              />
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={bulletinType}
+                  onChange={(e) => setBulletinType(e.target.value as 'announcement' | 'sop' | 'rule' | 'alert')}
+                  className="bg-slate-800/60 border border-slate-700/30 rounded px-1 py-0.5 text-[10px] text-slate-300 focus:outline-none focus:border-cyan-500/40"
+                >
+                  <option value="announcement">announcement</option>
+                  <option value="sop">sop</option>
+                  <option value="rule">rule</option>
+                  <option value="alert">alert</option>
+                </select>
+                <select
+                  value={bulletinPriority}
+                  onChange={(e) => setBulletinPriority(e.target.value as 'low' | 'medium' | 'high' | 'critical')}
+                  className="bg-slate-800/60 border border-slate-700/30 rounded px-1 py-0.5 text-[10px] text-slate-300 focus:outline-none focus:border-cyan-500/40"
+                >
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                  <option value="critical">critical</option>
+                </select>
+                <button
+                  onClick={handleAddBulletin}
+                  disabled={!bulletinTitle.trim() || !bulletinContent.trim()}
+                  className="ml-auto px-2 py-0.5 text-[10px] bg-cyan-500/20 text-cyan-300 rounded hover:bg-cyan-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Submit
+                </button>
+              </div>
+            </div>
+          )}
           {activeBulletin.length > 0 ? activeBulletin.map((entry) => (
             <div key={entry.id} className="p-1.5 rounded bg-slate-900/60 border border-slate-700/20">
               <div className="flex items-center justify-between">

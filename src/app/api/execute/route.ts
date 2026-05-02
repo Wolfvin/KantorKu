@@ -163,11 +163,13 @@ function createTrace(
   traceId: string,
   operation: string,
   workerId?: string,
-  model?: string
+  model?: string,
+  parentSpanId?: string
 ): TraceEntry {
   return {
     trace_id: traceId,
     span_id: `span_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    parent_span_id: parentSpanId,
     operation,
     worker_id: workerId,
     model,
@@ -222,6 +224,20 @@ ${deps ? `\nDependencies output:${deps}` : ''}
 Complete this task thoroughly and professionally. Provide your output as clear, actionable text.`;
 }
 
+// ── Determine worker emotion ──────────────────────────────────────
+function determineEmotion(
+  success: boolean,
+  durationMs: number,
+  hasDependencies: boolean,
+  isFirstAttempt: boolean
+): { emotion: string; confidence: number } {
+  if (!success) return { emotion: 'frustrated', confidence: 0.9 };
+  if (hasDependencies && isFirstAttempt) return { emotion: 'uncertain', confidence: 0.6 };
+  if (durationMs < 3000) return { emotion: 'excited', confidence: 0.9 };
+  if (success) return { emotion: 'confident', confidence: 0.85 };
+  return { emotion: 'neutral', confidence: 0.5 };
+}
+
 // ── Main Execution Orchestration ──────────────────────────────────
 export async function POST(req: NextRequest) {
   const executionStart = Date.now();
@@ -238,6 +254,9 @@ export async function POST(req: NextRequest) {
   };
   const escalations: EscalationEvent[] = [];
   const previousResults: Record<string, string> = {};
+  const emotions: Array<{ worker_id: string; emotion: string; confidence: number; timestamp: string }> = [];
+  const taskOutcomes: Record<string, { worker_id: string; success: boolean; duration_ms: number; has_deps: boolean }> = {};
+  const workersCompleted = new Set<string>();
 
   try {
     const body = await req.json();
@@ -254,6 +273,47 @@ export async function POST(req: NextRequest) {
     }
 
     const todos = contract.todos || [];
+
+    // Create root trace for this execution
+    const rootTrace = createTrace(traceId, 'execute_contract');
+    const rootSpanId = rootTrace.span_id;
+    traces.push(rootTrace);
+
+    // Budget enforcement
+    if (contract.budget_limit !== undefined && contract.budget_limit > 0) {
+      const estimatedCalls = (todos.length * 2) + 3;
+      const estimatedCostValue = estimatedCalls * estimateCost(1000, 500);
+      if (estimatedCostValue > contract.budget_limit) {
+        rootTrace.end_time = new Date().toISOString();
+        rootTrace.duration_ms = Date.now() - executionStart;
+        rootTrace.status = 'error';
+        const blockedStep: MiddlewareStep = {
+          name: 'cost_guard',
+          type: 'cost_guard',
+          status: 'blocked',
+          duration_ms: 1,
+          detail: `Estimated cost $${estimatedCostValue.toFixed(4)} would exceed budget limit $${contract.budget_limit}`,
+        };
+        return NextResponse.json(
+          {
+            error: 'Budget exceeded',
+            details: `Estimated cost $${estimatedCostValue.toFixed(4)} exceeds budget limit $${contract.budget_limit}`,
+            session_id,
+            events,
+            trace_id: traceId,
+            cost: costEntries,
+            traces,
+            escalations,
+            middleware: [blockedStep],
+            dag: { nodes: [], edges: [] },
+            trust_updates: [],
+            emotions,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     const ZAI = (await import('z-ai-web-dev-sdk')).default;
     const zai = await ZAI.create();
 
@@ -315,7 +375,7 @@ export async function POST(req: NextRequest) {
       temperature = 0.5
     ): Promise<{ text: string; inputTokens: number; outputTokens: number; model: string }> => {
       const callStart = Date.now();
-      const trace = createTrace(traceId, `worker_call:${workerId}`, workerId);
+      const trace = createTrace(traceId, `worker_call:${workerId}`, workerId, undefined, rootSpanId);
 
       try {
         const completion = await zai.chat.completions.create({
@@ -503,16 +563,27 @@ export async function POST(req: NextRequest) {
           },
         };
 
+        const emotionResult = determineEmotion(true, durationMs, todo.depends_on.length > 0, !workersCompleted.has(todo.assigned_to));
+        emotions.push({ worker_id: todo.assigned_to, emotion: emotionResult.emotion, confidence: emotionResult.confidence, timestamp: new Date().toISOString() });
+        taskOutcomes[todo.id] = { worker_id: todo.assigned_to, success: true, duration_ms: durationMs, has_deps: todo.depends_on.length > 0 };
+        workersCompleted.add(todo.assigned_to);
+
         addEvent({
           type: 'task_done',
           from_id: todo.assigned_to,
           content: result.text.substring(0, 300),
           duration_ms: durationMs,
+          emotion: { worker_id: todo.assigned_to, emotion: emotionResult.emotion, confidence: emotionResult.confidence, timestamp: new Date().toISOString() },
         });
       } catch {
         const durationMs = Date.now() - taskStart;
 
-        // Fallback: mark as done with simulated result
+        const emotionResult = determineEmotion(false, durationMs, todo.depends_on.length > 0, !workersCompleted.has(todo.assigned_to));
+        emotions.push({ worker_id: todo.assigned_to, emotion: emotionResult.emotion, confidence: emotionResult.confidence, timestamp: new Date().toISOString() });
+        taskOutcomes[todo.id] = { worker_id: todo.assigned_to, success: false, duration_ms: durationMs, has_deps: todo.depends_on.length > 0 };
+        workersCompleted.add(todo.assigned_to);
+
+        // Fallback: provide simulated result so execution can continue
         const fallbackOutput = `Completed: ${todo.description}`;
         previousResults[todo.id] = fallbackOutput;
         results[todo.id] = {
@@ -524,12 +595,40 @@ export async function POST(req: NextRequest) {
         };
 
         addEvent({
-          type: 'task_done',
+          type: 'task_failed',
           from_id: todo.assigned_to,
           content: fallbackOutput,
           duration_ms: durationMs,
+          emotion: { worker_id: todo.assigned_to, emotion: emotionResult.emotion, confidence: emotionResult.confidence, timestamp: new Date().toISOString() },
         });
       }
+    }
+
+    // ── Compute trust updates ─────────────────────────────────────
+    const trust_updates: Array<{ worker_id: string; score: number; trend: 'improving' | 'stable' | 'declining' }> = [];
+    const workerTaskResults: Record<string, { successes: number; failures: number }> = {};
+
+    for (const outcome of Object.values(taskOutcomes)) {
+      const wid = outcome.worker_id;
+      if (!workerTaskResults[wid]) workerTaskResults[wid] = { successes: 0, failures: 0 };
+      if (outcome.success) workerTaskResults[wid].successes++;
+      else workerTaskResults[wid].failures++;
+    }
+
+    for (const workerId of relevantWorkers) {
+      const workerResults = workerTaskResults[workerId] || { successes: 0, failures: 0 };
+      let score = 0.7;
+      let trend: 'improving' | 'stable' | 'declining' = 'stable';
+
+      if (workerResults.failures > 0) {
+        score = Math.max(0.0, 0.7 - 0.1 * workerResults.failures);
+        trend = 'declining';
+      } else if (workerResults.successes > 0) {
+        score = Math.min(1.0, 0.7 + 0.05);
+        trend = 'improving';
+      }
+
+      trust_updates.push({ worker_id: workerId, score, trend });
     }
 
     // ── Phase 4: Verification ───────────────────────────────────
@@ -680,12 +779,19 @@ Respond with JSON:
       content: `All tasks for "${contract.title}" have been completed successfully.`,
     });
 
+    // Finalize root trace
+    rootTrace.end_time = new Date().toISOString();
+    rootTrace.duration_ms = Date.now() - executionStart;
+    rootTrace.status = 'ok';
+
     // ── Build final response ────────────────────────────────────
     const apiResponse: ExecuteApiResponse & {
       dag: { nodes: DAGNode[]; edges: DAGEdge[] };
       middleware: MiddlewareStep[];
       traces: TraceEntry[];
       escalations: EscalationEvent[];
+      trust_updates: Array<{ worker_id: string; score: number; trend: 'improving' | 'stable' | 'declining' }>;
+      emotions: Array<{ worker_id: string; emotion: string; confidence: number; timestamp: string }>;
     } = {
       session_id,
       events,
@@ -697,6 +803,8 @@ Respond with JSON:
       middleware: middlewareSteps,
       traces,
       escalations,
+      trust_updates,
+      emotions,
     };
 
     return NextResponse.json(apiResponse);
@@ -704,12 +812,15 @@ Respond with JSON:
     console.error('[Execute API] Fatal error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    // Add error event
-    addEvent({
+    // Add error event (inline since addEvent is not in scope)
+    events.push({
       type: 'execution_failed',
       from_id: 'conductor',
       content: `Execution failed: ${errorMessage}`,
       error: errorMessage,
+      timestamp: new Date().toISOString(),
+      session_id: 'default',
+      trace_id: traceId,
     });
 
     return NextResponse.json(
@@ -722,6 +833,8 @@ Respond with JSON:
         cost: costEntries,
         traces,
         escalations,
+        trust_updates: [],
+        emotions,
       },
       { status: 500 }
     );

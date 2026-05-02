@@ -454,6 +454,8 @@ export interface ExecuteApiResponse {
   trace_id?: string;
   cost?: CostReport;
   debrief?: DebriefResult;
+  trust_updates?: Array<{ worker_id: string; score: number; trend: 'improving' | 'stable' | 'declining' }>;
+  emotions?: Array<{ worker_id: string; emotion: string; confidence: number; timestamp: string }>;
 }
 
 export interface BriefingApiResponse {
