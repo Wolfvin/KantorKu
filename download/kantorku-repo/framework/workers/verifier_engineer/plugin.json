@@ -1,0 +1,17 @@
+{
+  "id": "verifier_engineer",
+  "category": "verification",
+  "subcategory": "engineering",
+  "display_name": "Engineering Verifier",
+  "api": {
+    "provider": "minimax",
+    "model": "minimax-m2-5",
+    "api_key": "${MINIMAX_API_KEY}"
+  },
+  "squad": "verification",
+  "role": "Logic/Test/Security Judge",
+  "description": "Reviews code quality — logic correctness, test coverage, security vulnerabilities, performance, API compliance",
+  "tags": ["logic-review", "test-coverage", "security-audit", "performance-check", "code-quality", "engineering"],
+  "capabilities": ["logic-review", "test-coverage", "security-audit", "performance-check"],
+  "interacts_with": ["coder_backend", "coder_wiring", "rootcause", "auditor"]
+}

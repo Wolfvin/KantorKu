@@ -170,6 +170,13 @@ function ProviderKeyInput({ provider, onStatusChange }: { provider: ProviderConf
   const isConfigured = value.length > 0;
   const isOllama = provider.id === 'ollama';
 
+  const handleSave = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(provider.storageKey, value);
+      onStatusChange();
+    }
+  }, [value, provider.storageKey, onStatusChange]);
+
   const handleTest = useCallback(async () => {
     setTesting(true);
     setTestResult('idle');
@@ -188,6 +195,7 @@ function ProviderKeyInput({ provider, onStatusChange }: { provider: ProviderConf
         }).catch(() => null);
         setTestResult(resp?.ok ? 'success' : 'error');
       } else {
+        // Generic check — just verify key format
         setTestResult(value.length > 10 ? 'success' : 'error');
       }
     } catch {
@@ -324,9 +332,10 @@ export function SettingsDialog() {
     setRefreshTick((t) => t + 1);
   }, []);
 
-  const configuredCount = typeof window !== 'undefined'
-    ? PROVIDERS.filter((p) => (localStorage.getItem(p.storageKey) || '').length > 0).length
-    : 0;
+  const configuredCount = PROVIDERS.filter((p) => {
+    if (typeof window === 'undefined') return false;
+    return (localStorage.getItem(p.storageKey) || '').length > 0;
+  }).length;
 
   const handleSave = () => {
     setApiKey(tempKey);
@@ -374,6 +383,7 @@ export function SettingsDialog() {
       const confirmed = window.confirm('Are you sure you want to clear all data? This cannot be undone.');
       if (confirmed) {
         resetAll();
+        // Also clear provider keys
         PROVIDERS.forEach((p) => localStorage.removeItem(p.storageKey));
         setSettingsOpen(false);
       }
@@ -481,7 +491,7 @@ export function SettingsDialog() {
               <p className="text-[9px] text-slate-500 leading-relaxed">
                 <strong className="text-slate-400">Tips:</strong> For cheapest setup, use Z-AI SDK (free standalone mode) + Ollama (free, local) + DeepSeek (cheap at $0.28/M).
                 For best quality, use Anthropic + Google + MiniMax. Keys are stored in your browser localStorage only — never sent to our servers.
-                You can also set environment variables when using the Python backend.
+                You can also set environment variables ({PROVIDERS.map((p) => p.envVar).join(', ')}) when using the Python backend.
               </p>
             </div>
 
@@ -495,6 +505,7 @@ export function SettingsDialog() {
 
           {/* ── Tab: Connection ─────────────────────────────────────── */}
           <TabsContent value="connection" className="space-y-4 mt-3">
+            {/* Backend URL */}
             <div className="space-y-2">
               <Label className="text-xs text-slate-400 flex items-center gap-1">
                 <Globe className="h-3 w-3" />
@@ -535,6 +546,7 @@ export function SettingsDialog() {
 
             <Separator className="bg-slate-700/30" />
 
+            {/* Connection Status */}
             <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/60 border border-slate-700/30">
               <div className="flex items-center gap-2">
                 {isBackendConnected ? (
@@ -552,6 +564,7 @@ export function SettingsDialog() {
               <Switch checked={isBackendConnected} disabled />
             </div>
 
+            {/* Mode Explanation */}
             <div className="p-3 rounded-lg bg-slate-800/40 border border-slate-700/20 space-y-2">
               <p className="text-[10px] font-medium text-slate-300">Operating Modes</p>
               <div className="grid grid-cols-2 gap-2">
@@ -566,6 +579,7 @@ export function SettingsDialog() {
               </div>
             </div>
 
+            {/* Theme Toggle */}
             <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/60 border border-slate-700/30">
               <div className="flex items-center gap-2">
                 <Palette className="h-4 w-4 text-violet-400" />
@@ -619,6 +633,7 @@ export function SettingsDialog() {
 
             <Separator className="bg-slate-700/30" />
 
+            {/* Version & Update */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-slate-500 font-mono">Framework Version</span>
@@ -650,7 +665,7 @@ export function SettingsDialog() {
                   {updateInfo.upToDate ? (
                     <>
                       <CheckCircle2 className="h-3 w-3 text-green-400" />
-                      <span className="text-[10px] text-green-300">You&apos;re on the latest version (v{updateInfo.latest})</span>
+                      <span className="text-[10px] text-green-300">You're on the latest version (v{updateInfo.latest})</span>
                     </>
                   ) : (
                     <>
