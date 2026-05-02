@@ -232,6 +232,8 @@ interface KantorkuStore {
   setManagerThinking: (thinking: boolean) => void;
   isWorking: boolean;
   setWorking: (working: boolean) => void;
+  isStreaming: boolean;
+  setStreaming: (streaming: boolean) => void;
 
   // ── Backend Connection ────────────────────────────────────────
   isBackendConnected: boolean;
@@ -293,6 +295,7 @@ const initialState = {
   apiKey: '',
   isManagerThinking: false,
   isWorking: false,
+  isStreaming: false,
   isBackendConnected: false,
   settingsOpen: false,
   sseConnected: false,
@@ -736,6 +739,7 @@ export const useKantorkuStore = create<KantorkuStore>((set, get) => ({
   // ── Loading States ─────────────────────────────────────────
   setManagerThinking: (thinking) => set({ isManagerThinking: thinking }),
   setWorking: (working) => set({ isWorking: working }),
+  setStreaming: (streaming) => set({ isStreaming: streaming }),
 
   // ── Backend Connection ─────────────────────────────────────
   setBackendConnected: (connected) => set({ isBackendConnected: connected }),

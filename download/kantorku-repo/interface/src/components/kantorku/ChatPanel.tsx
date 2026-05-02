@@ -15,6 +15,7 @@ import { Send, Loader2, User, Bot, Search, RotateCcw, X } from 'lucide-react';
 import { MESSAGE_TYPE_COLORS, MESSAGE_TYPE_ICONS } from '@/lib/kantorku/workers-data';
 import { WORKERS } from '@/lib/kantorku/workers-data';
 import { ClientChatMessage, WorkersChatMessage, MessageType, InteractiveQuestion } from '@/lib/kantorku/types';
+import { useKantorkuStore } from '@/lib/kantorku/store';
 
 // ── Simple Markdown-like Renderer ───────────────────────────────────
 function SimpleMarkdown({ content }: { content: string }) {
@@ -222,10 +223,11 @@ export function ClientChatPanel({
   const [input, setInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const isStreaming = useKantorkuStore((s) => s.isStreaming);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isThinking]);
+  }, [messages, isThinking, isStreaming]);
 
   const handleSend = () => {
     const msg = input.trim();
@@ -345,14 +347,31 @@ export function ClientChatPanel({
             )}
           </div>
         ))}
-        {isThinking && (
+        {(isThinking || isStreaming) && (
           <div className="flex gap-2 justify-start">
             <div className="flex-shrink-0 h-6 w-6 rounded-full bg-cyan-500/20 flex items-center justify-center">
               <Bot className="h-3.5 w-3.5 text-cyan-400" />
             </div>
             <div className="bg-slate-800/80 border border-cyan-500/20 rounded-lg px-3 py-2.5 flex items-center gap-2">
-              <TypingIndicator />
-              <span className="text-[10px] text-cyan-400 ml-1">thinking</span>
+              {isStreaming ? (
+                <>
+                  <div className="flex items-center gap-1">
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="h-1.5 w-1.5 rounded-full bg-green-400"
+                        style={{ animation: `typingBounce 0.8s ease-in-out ${i * 0.15}s infinite` }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-green-400 ml-1 font-mono">streaming</span>
+                </>
+              ) : (
+                <>
+                  <TypingIndicator />
+                  <span className="text-[10px] text-cyan-400 ml-1">thinking</span>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -395,13 +414,13 @@ export function ClientChatPanel({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Describe your project..."
-            disabled={isThinking || disabled}
+            disabled={isThinking || isStreaming || disabled}
             className="bg-slate-800/60 border-slate-700/50 text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50"
           />
           <Button
             type="submit"
             size="sm"
-            disabled={isThinking || !input.trim() || disabled}
+            disabled={isThinking || isStreaming || disabled}
             className="bg-cyan-600 hover:bg-cyan-500 text-white px-3"
           >
             <Send className="h-3.5 w-3.5" />
