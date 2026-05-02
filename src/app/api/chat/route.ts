@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Contract, IntakeResult, TeamFeedbackRound, ChatApiResponse } from '@/lib/kantorku/types';
+import type { Contract, IntakeResult, TeamFeedbackRound, ChatApiResponse, InteractiveQuestion } from '@/lib/kantorku/types';
 
 // ── System Prompt ─────────────────────────────────────────────────
 const SYSTEM_PROMPT_CONDUCTOR = `You are the Manager (Conductor) of kantorku — a digital office where specialized AI workers collaborate to deliver projects.
@@ -90,12 +90,36 @@ If the client wants changes to a contract:
 - Revise the contract with the requested changes
 - Present the updated contract in the same JSON format
 
+## Asking Clarifying Questions with Options
+When you need to ask the client a clarifying question, you MUST use the interactive question format. This presents clickable options so the client can answer quickly.
+
+Use EXACTLY this format when asking a question:
+
+[ASK]
+question: Your question text here?
+A: Option A text
+B: Option B text
+C: Option C text
+D: Option D text (optional, add as many as needed)
+[/ASK]
+
+You can add any additional explanation or context BEFORE the [ASK] block.
+
+Rules for questions:
+- Always provide at least 2 options (A, B, etc.)
+- Keep option text concise and clear
+- Use this format when you need to understand: technology preferences, design choices, scope decisions, priority levels, architecture decisions, etc.
+- You may include a brief explanation before the [ASK] block
+- Do NOT use this format for rhetorical questions — only when you genuinely need the client's input
+- Example scenarios: "Which framework?", "What's the priority?", "Which design approach?", "What's the target audience?"
+
 ## Important
 - Be professional but friendly — you're the bridge between client and team
 - Don't over-ask — if the request is clear enough, proceed to contract
 - Always include intake classification in the contract response
 - For very simple requests, keep the todo list concise
-- For complex requests, break down thoroughly with proper dependencies`;
+- For complex requests, break down thoroughly with proper dependencies
+- USE the [ASK] format when you need clarification — it creates interactive buttons for the client`;
 
 // ── Helpers ───────────────────────────────────────────────────────
 function tryParseContract(text: string): {
@@ -122,6 +146,50 @@ function tryParseContract(text: string): {
     // Not JSON or not a contract
   }
   return { contractData: null, intakeData: null };
+}
+
+function tryParseQuestion(text: string): {
+  question: InteractiveQuestion | null;
+  cleanedContent: string;
+} {
+  const askMatch = text.match(/\[ASK\]([\s\S]*?)\[\/ASK\]/);
+  if (!askMatch) return { question: null, cleanedContent: text };
+
+  const askBlock = askMatch[1].trim();
+  const lines = askBlock.split('\n').map((l) => l.trim()).filter(Boolean);
+
+  let questionText = '';
+  const options: InteractiveQuestion['options'] = [];
+
+  for (const line of lines) {
+    const qMatch = line.match(/^question:\s*(.+)/i);
+    if (qMatch) {
+      questionText = qMatch[1].trim();
+      continue;
+    }
+    const optMatch = line.match(/^([A-Z]):\s*(.+)/);
+    if (optMatch) {
+      options.push({ label: optMatch[1], text: optMatch[2].trim() });
+    }
+  }
+
+  if (!questionText || options.length < 2) {
+    return { question: null, cleanedContent: text };
+  }
+
+  // Remove the [ASK]...[/ASK] block from the content to display
+  const cleanedContent = text.replace(/\[ASK\][\s\S]*?\[\/ASK\]/, '').trim();
+
+  return {
+    question: {
+      id: `q_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      question: questionText,
+      options,
+      allow_other: true,
+      answered: false,
+    },
+    cleanedContent,
+  };
 }
 
 function generateId(): string {
@@ -164,16 +232,16 @@ export async function POST(req: NextRequest) {
       ? `\n\n[Current Contract Context: "${current_contract.title}" with ${current_contract.todos.length} todos, state: ${current_contract.state}]`
       : '';
 
-    const messages = [
-      { role: 'system' as const, content: SYSTEM_PROMPT_CONDUCTOR + contextMessage },
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: SYSTEM_PROMPT_CONDUCTOR + contextMessage },
       ...history
         .filter((h) => h.role === 'user' || h.role === 'assistant')
         .slice(-20) // Keep last 20 messages for context window
         .map((h) => ({
-          role: h.role === 'assistant' ? 'assistant' : 'user',
+          role: (h.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
           content: h.content,
         })),
-      { role: 'user' as const, content: message },
+      { role: 'user', content: message },
     ];
 
     // Use z-ai-web-dev-sdk
@@ -289,6 +357,37 @@ export async function POST(req: NextRequest) {
           latency_ms: latencyMs,
         },
         latency_ms: latencyMs,
+      };
+
+      return NextResponse.json(apiResponse);
+    }
+
+    // Try to parse interactive question from response
+    const { question: parsedQuestion, cleanedContent } = tryParseQuestion(responseText);
+
+    // If question found, return it as a question-type response
+    if (parsedQuestion) {
+      const apiResponse: ChatApiResponse & {
+        token_usage: Record<string, unknown>;
+        cost: Record<string, unknown>;
+        latency_ms: number;
+        state_hint?: string;
+      } = {
+        type: 'question',
+        content: cleanedContent || parsedQuestion.question,
+        question: parsedQuestion,
+        token_usage: {
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          total_tokens: totalTokens,
+          model,
+        },
+        cost: {
+          cost_usd: costUsd,
+          latency_ms: latencyMs,
+        },
+        latency_ms: latencyMs,
+        state_hint: 'clarifying',
       };
 
       return NextResponse.json(apiResponse);

@@ -103,6 +103,7 @@ interface KantorkuStore {
   addClientMessage: (msg: ClientChatMessage) => void;
   clearClientMessages: () => void;
   searchClientMessages: (query: string) => ClientChatMessage[];
+  answerQuestion: (messageId: string, selectedOption: string, customAnswer?: string) => void;
 
   // ── Workers Chat (GroupChannel) ──────────────────────────────
   workersMessages: WorkersChatMessage[];
@@ -420,6 +421,26 @@ export const useKantorkuStore = create<KantorkuStore>((set, get) => ({
       (m) => m.content.toLowerCase().includes(q)
     );
   },
+  answerQuestion: (messageId, selectedOption, customAnswer) =>
+    set((state) => {
+      const updated = {
+        clientMessages: state.clientMessages.map((m) =>
+          m.id === messageId && m.question
+            ? {
+                ...m,
+                question: {
+                  ...m.question,
+                  answered: true,
+                  selected_option: selectedOption,
+                  custom_answer: customAnswer,
+                },
+              }
+            : m
+        ),
+      };
+      debouncedSave({ ...state, ...updated });
+      return updated;
+    }),
 
   // ── Workers Chat ───────────────────────────────────────────
   addWorkersMessage: (msg) =>

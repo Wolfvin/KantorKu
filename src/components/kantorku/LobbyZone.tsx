@@ -63,6 +63,7 @@ export function LobbyZone() {
     setHealthStatus,
     setCircuitBreakers,
     addMemoryEntry,
+    answerQuestion,
   } = useKantorkuStore();
 
   const handleSendMessage = async (message: string) => {
@@ -151,6 +152,16 @@ export function LobbyZone() {
           content: `The team has some feedback on this request. Let me share their thoughts...`,
           source: 'team_feedback',
           timestamp: new Date().toISOString(),
+        });
+      } else if (data.type === 'question' && data.question) {
+        // Manager is asking an interactive question with options
+        setContractState('clarifying');
+        addClientMessage({
+          id: `msg_${Date.now()}`,
+          role: 'manager',
+          content: data.content || data.question.question,
+          timestamp: new Date().toISOString(),
+          question: data.question,
         });
       } else if (data.type === 'manager_message' && data.content) {
         // Clarification needed
@@ -720,6 +731,19 @@ export function LobbyZone() {
     setBriefingResult(null);
   };
 
+  const handleAnswerQuestion = async (messageId: string, selectedOption: string, customAnswer?: string) => {
+    // Mark the question as answered in the store
+    answerQuestion(messageId, selectedOption, customAnswer);
+
+    // Build the response text based on what the user selected
+    const answerText = selectedOption === 'OTHER'
+      ? customAnswer || 'Other'
+      : selectedOption;
+
+    // Auto-send the answer as a user message to continue the conversation
+    await handleSendMessage(answerText);
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -873,6 +897,7 @@ export function LobbyZone() {
           isThinking={isManagerThinking}
           disabled={isWorking}
           onNewSession={handleNewSession}
+          onAnswerQuestion={handleAnswerQuestion}
         />
       </div>
 

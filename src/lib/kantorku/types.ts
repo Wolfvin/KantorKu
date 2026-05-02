@@ -204,6 +204,22 @@ export interface MetricDataPoint {
   label?: string;
 }
 
+// ── Interactive Question (AI asks user with options) ──────────────
+export interface QuestionOption {
+  label: string;  // 'A', 'B', 'C', etc.
+  text: string;   // 'React', 'Vue', etc.
+}
+
+export interface InteractiveQuestion {
+  id: string;
+  question: string;
+  options: QuestionOption[];
+  allow_other: boolean;  // Always true — user can type custom answer
+  answered?: boolean;    // Marked true once user selects an option
+  selected_option?: string;  // The label the user selected (e.g., 'A')
+  custom_answer?: string;    // If user chose "Other" and typed a response
+}
+
 // ── Chat Messages ──────────────────────────────────────────────────
 export interface ClientChatMessage {
   id: string;
@@ -212,6 +228,7 @@ export interface ClientChatMessage {
   timestamp: string;
   source?: string;
   session_id?: string;
+  question?: InteractiveQuestion;  // Present when manager asks with options
 }
 
 export interface WorkersChatMessage {
@@ -422,11 +439,12 @@ export interface TimeTravelSnapshot {
 
 // ── API Response Types ─────────────────────────────────────────────
 export interface ChatApiResponse {
-  type: 'manager_message' | 'contract_ready' | 'team_feedback';
+  type: 'manager_message' | 'contract_ready' | 'team_feedback' | 'team_consult' | 'question';
   content?: string;
   contract?: Contract;
   intake?: IntakeResult;
   team_feedback?: TeamFeedbackRound[];
+  question?: InteractiveQuestion;
 }
 
 export interface ExecuteApiResponse {

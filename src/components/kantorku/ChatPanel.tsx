@@ -14,7 +14,7 @@ import {
 import { Send, Loader2, User, Bot, Search, RotateCcw, X } from 'lucide-react';
 import { MESSAGE_TYPE_COLORS, MESSAGE_TYPE_ICONS } from '@/lib/kantorku/workers-data';
 import { WORKERS } from '@/lib/kantorku/workers-data';
-import { ClientChatMessage, WorkersChatMessage, MessageType } from '@/lib/kantorku/types';
+import { ClientChatMessage, WorkersChatMessage, MessageType, InteractiveQuestion } from '@/lib/kantorku/types';
 
 // ── Simple Markdown-like Renderer ───────────────────────────────────
 function SimpleMarkdown({ content }: { content: string }) {
@@ -90,6 +90,115 @@ function TypingIndicator() {
   );
 }
 
+// ── Interactive Question Options ─────────────────────────────────────
+function InteractiveQuestionCard({
+  question,
+  messageId,
+  onAnswer,
+}: {
+  question: InteractiveQuestion;
+  messageId: string;
+  onAnswer: (messageId: string, selectedOption: string, customAnswer?: string) => void;
+}) {
+  const [showOther, setShowOther] = useState(false);
+  const [otherText, setOtherText] = useState('');
+  const isAnswered = question.answered;
+  const selectedOption = question.selected_option;
+
+  const handleSelect = (label: string, text: string) => {
+    if (isAnswered) return;
+    onAnswer(messageId, label, text);
+    setShowOther(false);
+  };
+
+  const handleOtherSubmit = () => {
+    if (!otherText.trim() || isAnswered) return;
+    onAnswer(messageId, 'OTHER', otherText.trim());
+    setOtherText('');
+  };
+
+  return (
+    <div className="mt-2 p-2 rounded-lg bg-cyan-500/5 border border-cyan-500/20 space-y-1.5">
+      <div className="flex items-start gap-1.5">
+        <span className="text-xs mt-0.5">❓</span>
+        <p className="text-[11px] text-cyan-200 font-medium leading-relaxed">{question.question}</p>
+      </div>
+      <div className="space-y-1">
+        {question.options.map((opt) => {
+          const isSelected = selectedOption === opt.label;
+          return (
+            <button
+              key={opt.label}
+              onClick={() => handleSelect(opt.label, opt.text)}
+              disabled={isAnswered}
+              className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left text-[11px] transition-all duration-150
+                ${isAnswered
+                  ? isSelected
+                    ? 'bg-cyan-500/20 border border-cyan-500/40 text-cyan-200'
+                    : 'bg-slate-800/30 border border-slate-700/20 text-slate-500'
+                  : 'bg-slate-800/60 border border-slate-700/40 text-slate-200 hover:bg-cyan-500/15 hover:border-cyan-500/30 hover:text-cyan-100 cursor-pointer active:scale-[0.98]'}`}
+            >
+              <span className={`flex-shrink-0 h-5 w-5 rounded flex items-center justify-center text-[9px] font-bold font-mono
+                ${isAnswered
+                  ? isSelected
+                    ? 'bg-cyan-500/30 text-cyan-300'
+                    : 'bg-slate-700/40 text-slate-600'
+                  : 'bg-slate-700/60 text-slate-400'}`}>
+                {opt.label}
+              </span>
+              <span className="truncate">{opt.text}</span>
+              {isSelected && <span className="ml-auto text-cyan-400 text-[9px]">✓</span>}
+            </button>
+          );
+        })}
+      </div>
+      {/* Other option */}
+      {!isAnswered && question.allow_other && (
+        <>
+          {!showOther ? (
+            <button
+              onClick={() => setShowOther(true)}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left text-[11px] bg-slate-800/40 border border-slate-700/30 border-dashed text-slate-400 hover:bg-slate-800/60 hover:border-cyan-500/30 hover:text-cyan-300 cursor-pointer transition-all duration-150"
+            >
+              <span className="flex-shrink-0 h-5 w-5 rounded flex items-center justify-center text-[9px] font-bold font-mono bg-slate-700/40 text-slate-500">
+                ✎
+              </span>
+              <span>Other (type your answer)</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <Input
+                value={otherText}
+                onChange={(e) => setOtherText(e.target.value)}
+                placeholder="Type your answer..."
+                className="bg-slate-800/60 border-cyan-500/30 text-[11px] text-slate-200 placeholder:text-slate-600 h-7 px-2 focus:border-cyan-400"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleOtherSubmit();
+                }}
+              />
+              <Button
+                onClick={handleOtherSubmit}
+                disabled={!otherText.trim()}
+                size="sm"
+                className="bg-cyan-600 hover:bg-cyan-500 text-white px-2 h-7"
+              >
+                <Send className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+      {/* Show selected answer after answering */}
+      {isAnswered && selectedOption && (
+        <div className="text-[9px] text-cyan-400/60 font-mono pt-0.5 border-t border-cyan-500/10">
+          You selected: {selectedOption === 'OTHER' ? question.custom_answer : `${selectedOption} — ${question.options.find(o => o.label === selectedOption)?.text}`}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Client Chat Panel ───────────────────────────────────────────────
 interface ClientChatPanelProps {
   messages: ClientChatMessage[];
@@ -97,6 +206,7 @@ interface ClientChatPanelProps {
   isThinking: boolean;
   disabled?: boolean;
   onNewSession?: () => void;
+  onAnswerQuestion?: (messageId: string, selectedOption: string, customAnswer?: string) => void;
 }
 
 export function ClientChatPanel({
@@ -105,6 +215,7 @@ export function ClientChatPanel({
   isThinking,
   disabled,
   onNewSession,
+  onAnswerQuestion,
 }: ClientChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -213,6 +324,14 @@ export function ClientChatPanel({
                 </span>
               )}
               <SimpleMarkdown content={msg.content} />
+              {/* Interactive Question Options */}
+              {msg.question && onAnswerQuestion && (
+                <InteractiveQuestionCard
+                  question={msg.question}
+                  messageId={msg.id}
+                  onAnswer={onAnswerQuestion}
+                />
+              )}
               <div className="mt-1 text-right">
                 <span className="text-[8px] text-slate-600 font-mono">
                   {formatTime(msg.timestamp)}
