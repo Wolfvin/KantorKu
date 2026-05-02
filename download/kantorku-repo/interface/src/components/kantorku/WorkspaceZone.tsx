@@ -9,11 +9,13 @@ import { MemoryExplorerPanel } from './MemoryExplorerPanel';
 import { DAGVisualizationPanel } from './DAGVisualizationPanel';
 import { WorkerRegistryPanel } from './WorkerRegistryPanel';
 import { DebriefPanel } from './DebriefPanel';
+import { TodoReviewPanel } from './TodoReviewPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SQUADS } from '@/lib/kantorku/workers-data';
 import {
   Presentation, Users, Activity, MessageCircle,
   Brain, GitBranch, BookOpen, ClipboardCheck,
+  ClipboardList,
 } from 'lucide-react';
 
 export function WorkspaceZone() {
@@ -50,6 +52,10 @@ export function WorkspaceZone() {
             <TabsTrigger value="briefing" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Presentation className="h-3 w-3 mr-1" />
               Briefing
+            </TabsTrigger>
+            <TabsTrigger value="todoreview" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
+              <ClipboardList className="h-3 w-3 mr-1" />
+              Review
             </TabsTrigger>
             <TabsTrigger value="channel" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <MessageCircle className="h-3 w-3 mr-1" />
@@ -113,6 +119,11 @@ export function WorkspaceZone() {
           {/* Briefing Room */}
           <TabsContent value="briefing" className="flex-1 overflow-hidden mt-0">
             <BriefingRoomPanel />
+          </TabsContent>
+
+          {/* Todo Review */}
+          <TabsContent value="todoreview" className="flex-1 overflow-hidden mt-0">
+            <TodoReviewPanel />
           </TabsContent>
 
           {/* Group Channel */}

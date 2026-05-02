@@ -17,6 +17,7 @@ import { LobbyZone } from './LobbyZone';
 import { WorkspaceZone } from './WorkspaceZone';
 import { DashboardZone } from './DashboardZone';
 import { SettingsDialog, SettingsButton } from './SettingsDialog';
+import { OnboardingOverlay } from './OnboardingOverlay';
 import { useKantorkuStore } from '@/lib/kantorku/store';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -96,7 +97,7 @@ export function KantorkuApp() {
   return (
     <div className="h-screen w-screen flex flex-col bg-[#0a0e1a] text-white overflow-hidden">
       {/* Top Bar */}
-      <header className="flex-shrink-0 h-10 border-b border-cyan-900/30 bg-[#0a0e1a]/90 backdrop-blur-sm flex items-center justify-between px-3 z-50">
+      <header className="flex-shrink-0 h-10 border-b border-cyan-900/30 bg-[#0a0e1a]/90 backdrop-blur-sm flex items-center justify-between px-3 z-50" role="banner">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">
             <div className="h-5 w-5 rounded bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center">
@@ -212,7 +213,7 @@ export function KantorkuApp() {
       </header>
 
       {/* Mobile Tab Bar */}
-      <div className="flex-shrink-0 sm:hidden border-b border-cyan-900/30 bg-[#0a0e1a]/90">
+      <nav className="flex-shrink-0 sm:hidden border-b border-cyan-900/30 bg-[#0a0e1a]/90" aria-label="Main navigation">
         <div className="flex">
           {[
             { id: 'lobby' as const, icon: MessageSquare, label: 'Lobby' },
@@ -222,21 +223,23 @@ export function KantorkuApp() {
             <button
               key={id}
               onClick={() => setMobileTab(id)}
-              className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors ${
+              className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-[#0a0e1a] ${
                 mobileTab === id
                   ? 'text-cyan-400 border-b-2 border-cyan-400'
                   : 'text-slate-500'
               }`}
+              aria-label={`Switch to ${label}`}
+              aria-current={mobileTab === id ? 'page' : undefined}
             >
               <Icon className="h-4 w-4" />
               <span className="text-[9px] font-mono">{label}</span>
             </button>
           ))}
         </div>
-      </div>
+      </nav>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden" id="main-content" role="main">
         {/* Desktop 3-Panel Layout */}
         <div className="hidden sm:block h-full">
           <ResizablePanelGroup
@@ -292,6 +295,14 @@ export function KantorkuApp() {
 
       {/* Settings Dialog */}
       <SettingsDialog />
+
+      {/* Onboarding Overlay */}
+      <OnboardingOverlay />
+
+      {/* Skip to content link for accessibility */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-3 focus:py-1 focus:bg-cyan-600 focus:text-white focus:rounded focus:text-sm">
+        Skip to content
+      </a>
     </div>
   );
 }

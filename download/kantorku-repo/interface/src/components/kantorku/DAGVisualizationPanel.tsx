@@ -1,19 +1,18 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useKantorkuStore } from '@/lib/kantorku/store';
 import { DAGNode, DAGEdge, TodoItem } from '@/lib/kantorku/types';
-import { GitBranch, Circle, CheckCircle2, XCircle, AlertTriangle, Clock, ArrowDown, Zap, ZoomIn, ZoomOut, Layers, AlertCircle } from 'lucide-react';
+import { GitBranch, CheckCircle2, XCircle, AlertTriangle, Clock, ZoomIn, ZoomOut, Layers, Move } from 'lucide-react';
 
-const STATUS_STYLES: Record<string, { color: string; border: string; bg: string; icon: string; text: string }> = {
-  pending: { color: '#64748b', border: '#64748b40', bg: '#64748b10', icon: '⏳', text: 'Pending' },
-  in_progress: { color: '#06b6d4', border: '#06b6d440', bg: '#06b6d410', icon: '⚡', text: 'In Progress' },
-  done: { color: '#22c55e', border: '#22c55e40', bg: '#22c55e10', icon: '✅', text: 'Done' },
-  failed: { color: '#ef4444', border: '#ef444440', bg: '#ef444410', icon: '❌', text: 'Failed' },
-  blocked: { color: '#f59e0b', border: '#f59e0b40', bg: '#f59e0b10', icon: '🚫', text: 'Blocked' },
+const STATUS_STYLES: Record<string, { color: string; bg: string; text: string }> = {
+  pending: { color: '#64748b', bg: '#64748b15', text: 'Pending' },
+  in_progress: { color: '#06b6d4', bg: '#06b6d415', text: 'In Progress' },
+  done: { color: '#22c55e', bg: '#22c55e15', text: 'Done' },
+  failed: { color: '#ef4444', bg: '#ef444415', text: 'Failed' },
+  blocked: { color: '#f59e0b', bg: '#f59e0b15', text: 'Blocked' },
 };
 
 const EDGE_TYPE_COLORS: Record<string, string> = {
@@ -22,23 +21,7 @@ const EDGE_TYPE_COLORS: Record<string, string> = {
   verifies: '#22c55e',
 };
 
-function StatusIcon({ status }: { status: string }) {
-  const style = STATUS_STYLES[status] || STATUS_STYLES.pending;
-  switch (status) {
-    case 'in_progress':
-      return <Zap className="h-3 w-3" style={{ color: style.color }} />;
-    case 'done':
-      return <CheckCircle2 className="h-3 w-3" style={{ color: style.color }} />;
-    case 'failed':
-      return <XCircle className="h-3 w-3" style={{ color: style.color }} />;
-    case 'blocked':
-      return <AlertTriangle className="h-3 w-3" style={{ color: style.color }} />;
-    default:
-      return <Clock className="h-3 w-3" style={{ color: style.color }} />;
-  }
-}
-
-// Compute critical path (longest dependency chain)
+// Compute critical path
 function computeCriticalPath(nodes: DAGNode[], edges: DAGEdge[]): Set<string> {
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const adjList = new Map<string, string[]>();
@@ -56,7 +39,6 @@ function computeCriticalPath(nodes: DAGNode[], edges: DAGEdge[]): Set<string> {
     }
   });
 
-  // Topological sort with longest path tracking
   const longestPath = new Map<string, number>();
   const parent = new Map<string, string | null>();
   const queue: string[] = [];
@@ -71,11 +53,9 @@ function computeCriticalPath(nodes: DAGNode[], edges: DAGEdge[]): Set<string> {
 
   let endNode = '';
   let maxLen = 0;
-  const processed: string[] = [];
 
   while (queue.length > 0) {
     const curr = queue.shift()!;
-    processed.push(curr);
     const currLen = longestPath.get(curr) || 0;
     if (currLen > maxLen) {
       maxLen = currLen;
@@ -94,7 +74,6 @@ function computeCriticalPath(nodes: DAGNode[], edges: DAGEdge[]): Set<string> {
     }
   }
 
-  // Trace back from endNode
   const criticalPath = new Set<string>();
   let current: string | null = endNode;
   while (current) {
@@ -105,17 +84,28 @@ function computeCriticalPath(nodes: DAGNode[], edges: DAGEdge[]): Set<string> {
   return criticalPath;
 }
 
+interface NodePosition {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  node: DAGNode;
+}
+
 export function DAGVisualizationPanel() {
   const { dagNodes, dagEdges, contract } = useKantorkuStore();
-  const [expandedNode, setExpandedNode] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement>(null);
 
-  // Build visualization from DAG if available, otherwise from contract todos
+  // Build visualization from DAG or contract todos
   const { nodes, edges } = useMemo(() => {
     if (dagNodes.length > 0) {
       return { nodes: dagNodes, edges: dagEdges };
     }
-    // Fallback: build from contract todos
     if (contract && contract.todos.length > 0) {
       const todoNodes: DAGNode[] = contract.todos.map((todo: TodoItem, idx: number) => ({
         id: todo.id,
@@ -127,14 +117,9 @@ export function DAGVisualizationPanel() {
       const todoEdges: DAGEdge[] = [];
       contract.todos.forEach((todo: TodoItem) => {
         todo.depends_on.forEach((depId: string) => {
-          todoEdges.push({
-            from: depId,
-            to: todo.id,
-            type: 'depends_on',
-          });
+          todoEdges.push({ from: depId, to: todo.id, type: 'depends_on' });
         });
       });
-      // Calculate depth based on dependencies
       const depthMap = new Map<string, number>();
       const calcDepth = (id: string): number => {
         if (depthMap.has(id)) return depthMap.get(id)!;
@@ -148,44 +133,56 @@ export function DAGVisualizationPanel() {
         return maxDep + 1;
       };
       contract.todos.forEach((t: TodoItem) => calcDepth(t.id));
-      todoNodes.forEach((n) => {
-        n.depth = depthMap.get(n.id) || 0;
-      });
+      todoNodes.forEach((n) => { n.depth = depthMap.get(n.id) || 0; });
       return { nodes: todoNodes, edges: todoEdges };
     }
     return { nodes: [], edges: [] };
   }, [dagNodes, dagEdges, contract]);
 
-  // Group nodes by depth level
-  const depthGroups = useMemo(() => {
-    const groups: Map<number, DAGNode[]> = new Map();
+  // Layout: assign positions based on depth levels
+  const nodePositions = useMemo((): NodePosition[] => {
+    if (nodes.length === 0) return [];
+
+    const depthGroups = new Map<number, DAGNode[]>();
     nodes.forEach((node) => {
       const depth = node.depth || 0;
-      if (!groups.has(depth)) groups.set(depth, []);
-      groups.get(depth)!.push(node);
+      if (!depthGroups.has(depth)) depthGroups.set(depth, []);
+      depthGroups.get(depth)!.push(node);
     });
-    return Array.from(groups.entries()).sort(([a], [b]) => a - b);
+
+    const nodeW = 180;
+    const nodeH = 60;
+    const hGap = 40;
+    const vGap = 60;
+    const padding = 40;
+    const positions: NodePosition[] = [];
+
+    const sortedDepths = Array.from(depthGroups.entries()).sort(([a], [b]) => a - b);
+
+    sortedDepths.forEach(([depth, groupNodes]) => {
+      const totalWidth = groupNodes.length * (nodeW + hGap) - hGap;
+      const startX = padding + (depth * (nodeW + hGap * 2));
+
+      groupNodes.forEach((node, idx) => {
+        positions.push({
+          x: startX,
+          y: padding + idx * (nodeH + vGap),
+          width: nodeW,
+          height: nodeH,
+          node,
+        });
+      });
+    });
+
+    return positions;
   }, [nodes]);
 
-  // Build edge lookup for quick access
-  const incomingEdges = useMemo(() => {
-    const map: Map<string, DAGEdge[]> = new Map();
-    edges.forEach((edge) => {
-      if (!map.has(edge.to)) map.set(edge.to, []);
-      map.get(edge.to)!.push(edge);
-    });
+  // Build lookup map
+  const posMap = useMemo(() => {
+    const map = new Map<string, NodePosition>();
+    nodePositions.forEach((p) => map.set(p.node.id, p));
     return map;
-  }, [edges]);
-
-  // Outgoing edges lookup
-  const outgoingEdges = useMemo(() => {
-    const map: Map<string, DAGEdge[]> = new Map();
-    edges.forEach((edge) => {
-      if (!map.has(edge.from)) map.set(edge.from, []);
-      map.get(edge.from)!.push(edge);
-    });
-    return map;
-  }, [edges]);
+  }, [nodePositions]);
 
   // Critical path
   const criticalPath = useMemo(() => computeCriticalPath(nodes, edges), [nodes, edges]);
@@ -193,26 +190,60 @@ export function DAGVisualizationPanel() {
   // Status counts
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    nodes.forEach((n) => {
-      counts[n.status] = (counts[n.status] || 0) + 1;
-    });
+    nodes.forEach((n) => { counts[n.status] = (counts[n.status] || 0) + 1; });
     return counts;
   }, [nodes]);
 
-  // Find todo details from contract
+  // SVG viewBox
+  const svgSize = useMemo(() => {
+    if (nodePositions.length === 0) return { width: 400, height: 300 };
+    const maxX = Math.max(...nodePositions.map((p) => p.x + p.width)) + 60;
+    const maxY = Math.max(...nodePositions.map((p) => p.y + p.height)) + 60;
+    return { width: Math.max(maxX, 400), height: Math.max(maxY, 300) };
+  }, [nodePositions]);
+
+  // Get todo details from contract
   const getTodoDetails = (nodeId: string) => {
     if (!contract) return null;
     return contract.todos.find((t) => t.id === nodeId) || null;
   };
 
-  // Edge label lookup
-  const edgeLabels = useMemo(() => {
-    const labels: Map<string, DAGEdge> = new Map();
-    edges.forEach((e) => {
-      labels.set(`${e.from}->${e.to}`, e);
-    });
-    return labels;
-  }, [edges]);
+  // Pan handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsPanning(true);
+    setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  }, [pan]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning) return;
+    setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
+  }, [isPanning, panStart]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsPanning(false);
+  }, []);
+
+  // Wheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoom((z) => Math.max(0.3, Math.min(2, z + delta)));
+  }, []);
+
+  const selectedTodo = selectedNode ? getTodoDetails(selectedNode) : null;
+  const selectedPos = selectedNode ? posMap.get(selectedNode) : null;
+
+  if (nodes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-slate-500">
+        <GitBranch className="h-8 w-8 text-slate-600/50 mb-2" />
+        <p className="text-[11px] text-center text-slate-600">
+          No task graph available.<br />
+          Start a contract to see dependencies.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -221,264 +252,316 @@ export function DAGVisualizationPanel() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <GitBranch className="h-3.5 w-3.5 text-teal-400" />
-            <span className="text-[10px] font-mono text-slate-400 uppercase">Task Dependency Graph</span>
+            <span className="text-[10px] font-mono text-slate-400 uppercase">Task DAG</span>
             <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-teal-500/30 text-teal-300 font-mono">
               {nodes.length} nodes
             </Badge>
           </div>
-          {/* Zoom controls */}
           <div className="flex items-center gap-1">
             <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-amber-500/30 text-amber-300 font-mono">
               🔥 {criticalPath.size} critical
             </Badge>
             <div className="flex items-center gap-0.5 border border-slate-700/50 rounded">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-5 w-5 p-0 text-slate-500 hover:text-cyan-400"
-                onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}
-              >
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-slate-500 hover:text-cyan-400" onClick={() => setZoom(Math.max(0.3, zoom - 0.15))} aria-label="Zoom out">
                 <ZoomOut className="h-3 w-3" />
               </Button>
               <span className="text-[8px] text-slate-500 font-mono w-8 text-center">{(zoom * 100).toFixed(0)}%</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-5 w-5 p-0 text-slate-500 hover:text-cyan-400"
-                onClick={() => setZoom(Math.min(1.5, zoom + 0.1))}
-              >
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-slate-500 hover:text-cyan-400" onClick={() => setZoom(Math.min(2, zoom + 0.15))} aria-label="Zoom in">
                 <ZoomIn className="h-3 w-3" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-slate-500 hover:text-cyan-400" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} aria-label="Reset view">
+                <Move className="h-3 w-3" />
               </Button>
             </div>
           </div>
         </div>
         {/* Status summary */}
-        {nodes.length > 0 && (
-          <div className="flex items-center gap-2 mt-1.5">
-            {Object.entries(statusCounts).map(([status, count]) => {
-              const style = STATUS_STYLES[status] || STATUS_STYLES.pending;
-              return (
-                <Badge
-                  key={status}
-                  variant="outline"
-                  className="text-[8px] px-1.5 py-0 h-4 font-mono"
-                  style={{
-                    borderColor: style.border,
-                    color: style.color,
-                    backgroundColor: style.bg,
-                  }}
-                >
-                  {style.icon} {count} {style.text.toLowerCase()}
-                </Badge>
-              );
-            })}
-          </div>
-        )}
+        <div className="flex items-center gap-2 mt-1.5">
+          {Object.entries(statusCounts).map(([status, count]) => {
+            const style = STATUS_STYLES[status] || STATUS_STYLES.pending;
+            return (
+              <Badge key={status} variant="outline" className="text-[8px] px-1.5 py-0 h-4 font-mono"
+                style={{ borderColor: `${style.color}40`, color: style.color, backgroundColor: style.bg }}>
+                {count} {style.text.toLowerCase()}
+              </Badge>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Graph Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2 space-y-1">
-        {nodes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-500">
-            <GitBranch className="h-8 w-8 text-slate-600/50 mb-2" />
-            <p className="text-[10px] text-center text-slate-600">
-              No task graph available.<br />
-              Start a contract to see dependencies.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3 origin-top-left transition-transform duration-200" style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
-            {depthGroups.map(([depth, groupNodes]) => {
-              const isParallel = groupNodes.length > 1;
-              return (
-                <div key={depth}>
-                  {/* Depth Level Label */}
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div className="h-5 px-1.5 rounded bg-slate-800/60 border border-slate-700/30 flex items-center gap-1">
-                      <span className="text-[9px] font-mono text-cyan-400">Depth {depth}</span>
-                    </div>
-                    {isParallel && (
-                      <Badge variant="outline" className="text-[7px] px-1 py-0 h-3 border-violet-500/30 text-violet-300 font-mono">
-                        <Layers className="h-2 w-2 mr-0.5" />
-                        {groupNodes.length} parallel
-                      </Badge>
-                    )}
-                    {depth > 0 && (
-                      <div className="flex items-center gap-0.5 flex-1">
-                        <div className="h-px flex-1 bg-slate-700/30" />
-                        <ArrowDown className="h-3 w-3 text-slate-600" />
-                      </div>
-                    )}
-                  </div>
+      {/* SVG Canvas */}
+      <div className="flex-1 overflow-hidden relative cursor-grab active:cursor-grabbing" style={{ background: 'radial-gradient(circle at 50% 50%, #0f172a, #0a0e1a)' }}>
+        <svg
+          ref={svgRef}
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${svgSize.width} ${svgSize.height}`}
+          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', transition: isPanning ? 'none' : 'transform 0.1s ease' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+          role="img"
+          aria-label="Task dependency graph"
+        >
+          {/* Arrow marker definitions */}
+          <defs>
+            {Object.entries(EDGE_TYPE_COLORS).map(([type, color]) => (
+              <marker key={type} id={`arrow-${type}`} markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                <path d="M0,0 L8,3 L0,6" fill={color} />
+              </marker>
+            ))}
+            <marker id="arrow-critical" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <path d="M0,0 L8,3 L0,6" fill="#f59e0b" />
+            </marker>
+          </defs>
 
-                  {/* Edge labels between depths */}
-                  {depth > 0 && (
-                    <div className="ml-4 mb-1 flex flex-wrap gap-1">
-                      {groupNodes.map((node) => {
-                        const deps = incomingEdges.get(node.id) || [];
-                        return deps.map((dep) => {
-                          const edgeKey = `${dep.from}->${dep.to}`;
-                          const edge = edgeLabels.get(edgeKey);
-                          if (!edge) return null;
-                          const color = EDGE_TYPE_COLORS[edge.type] || '#94a3b8';
-                          return (
-                            <div key={edgeKey} className="flex items-center gap-0.5">
-                              <div className="h-0.5 w-3 rounded" style={{ backgroundColor: color }} />
-                              <span className="text-[7px] font-mono" style={{ color }}>
-                                {dep.from} → {dep.type}
-                              </span>
-                            </div>
-                          );
-                        });
-                      })}
-                    </div>
-                  )}
+          {/* Grid pattern */}
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" strokeWidth="0.5" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grid)" opacity="0.5" />
 
-                  {/* Nodes at this depth */}
-                  <div className={`grid gap-1.5 ml-2 ${isParallel ? 'grid-cols-2' : ''}`}>
-                    {groupNodes.map((node) => {
-                      const style = STATUS_STYLES[node.status] || STATUS_STYLES.pending;
-                      const deps = incomingEdges.get(node.id) || [];
-                      const isCritical = criticalPath.has(node.id);
-                      const isExpanded = expandedNode === node.id;
-                      const todoDetails = getTodoDetails(node.id);
+          {/* Edges */}
+          {edges.map((edge, idx) => {
+            const fromPos = posMap.get(edge.from);
+            const toPos = posMap.get(edge.to);
+            if (!fromPos || !toPos) return null;
 
-                      return (
-                        <Card
-                          key={node.id}
-                          className={`bg-slate-800/40 backdrop-blur-sm transition-all duration-200 cursor-pointer ${
-                            isCritical
-                              ? 'border-amber-500/50 border-2 shadow-[0_0_8px_rgba(245,158,11,0.15)]'
-                              : 'border-slate-700/20 hover:border-slate-600/50'
-                          }`}
-                          style={{
-                            borderLeftWidth: '3px',
-                            borderLeftColor: isCritical ? '#f59e0b' : style.color,
-                          }}
-                          onClick={() => setExpandedNode(isExpanded ? null : node.id)}
-                        >
-                          <CardContent className="p-2">
-                            <div className="flex items-start gap-2">
-                              <StatusIcon status={node.status} />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                  <span className="text-[10px] font-mono text-white font-medium truncate">
-                                    {node.id}
-                                  </span>
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[7px] px-1 py-0 h-3 flex-shrink-0"
-                                    style={{
-                                      borderColor: style.border,
-                                      color: style.color,
-                                      backgroundColor: style.bg,
-                                    }}
-                                  >
-                                    {style.text}
-                                  </Badge>
-                                  {isCritical && (
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[7px] px-1 py-0 h-3 border-amber-500/40 text-amber-300 bg-amber-500/10"
-                                    >
-                                      🔥 Critical
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-[9px] text-slate-400 leading-tight break-words line-clamp-2">
-                                  {node.label}
-                                </p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  {node.assigned_to && (
-                                    <span className="text-[8px] text-cyan-400/70 font-mono">
-                                      👤 {node.assigned_to}
-                                    </span>
-                                  )}
-                                  {deps.length > 0 && (
-                                    <span className="text-[8px] text-slate-600 font-mono">
-                                      ← {deps.map((d) => d.from).join(', ')}
-                                    </span>
-                                  )}
-                                </div>
+            const fromX = fromPos.x + fromPos.width;
+            const fromY = fromPos.y + fromPos.height / 2;
+            const toX = toPos.x;
+            const toY = toPos.y + toPos.height / 2;
 
-                                {/* Expanded node details */}
-                                {isExpanded && (
-                                  <div className="mt-2 pt-1.5 border-t border-slate-700/20 space-y-1">
-                                    <div className="grid grid-cols-2 gap-1">
-                                      <div className="p-1 rounded bg-slate-900/60">
-                                        <p className="text-[7px] text-slate-500 uppercase">Description</p>
-                                        <p className="text-[8px] text-slate-300">{todoDetails?.description || node.label}</p>
-                                      </div>
-                                      <div className="p-1 rounded bg-slate-900/60">
-                                        <p className="text-[7px] text-slate-500 uppercase">Worker</p>
-                                        <p className="text-[8px] text-slate-300 font-mono">{todoDetails?.assigned_to || node.assigned_to || '—'}</p>
-                                      </div>
-                                      <div className="p-1 rounded bg-slate-900/60">
-                                        <p className="text-[7px] text-slate-500 uppercase">Model</p>
-                                        <p className="text-[8px] text-slate-300 font-mono truncate">{todoDetails?.assigned_to || '—'}</p>
-                                      </div>
-                                      <div className="p-1 rounded bg-slate-900/60">
-                                        <p className="text-[7px] text-slate-500 uppercase">Status</p>
-                                        <p className="text-[8px] font-mono" style={{ color: style.color }}>{style.text}</p>
-                                      </div>
-                                    </div>
-                                    {todoDetails?.result && (
-                                      <div className="p-1 rounded bg-slate-900/40">
-                                        <p className="text-[7px] text-slate-500 uppercase">Result</p>
-                                        <p className="text-[8px] text-green-300/80 break-words">{todoDetails.result}</p>
-                                      </div>
-                                    )}
-                                    {todoDetails?.error && (
-                                      <div className="p-1 rounded bg-red-500/5 border border-red-500/20">
-                                        <p className="text-[7px] text-red-400 uppercase">Error</p>
-                                        <p className="text-[8px] text-red-300 break-words">{todoDetails.error}</p>
-                                      </div>
-                                    )}
-                                    {(todoDetails?.estimated_time_ms || todoDetails?.actual_time_ms) && (
-                                      <div className="flex items-center gap-2">
-                                        {todoDetails.estimated_time_ms && (
-                                          <span className="text-[8px] text-slate-500 font-mono">Est: {todoDetails.estimated_time_ms}ms</span>
-                                        )}
-                                        {todoDetails.actual_time_ms && (
-                                          <span className="text-[8px] text-cyan-400 font-mono">Actual: {todoDetails.actual_time_ms}ms</span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
+            const isCriticalEdge = criticalPath.has(edge.from) && criticalPath.has(edge.to);
+            const color = isCriticalEdge ? '#f59e0b' : EDGE_TYPE_COLORS[edge.type] || '#94a3b8';
+            const strokeWidth = isCriticalEdge ? 2.5 : 1.5;
+
+            // Bezier curve
+            const midX = (fromX + toX) / 2;
+            const path = `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`;
+
+            return (
+              <path
+                key={`edge-${idx}`}
+                d={path}
+                fill="none"
+                stroke={color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={isCriticalEdge ? '6,3' : 'none'}
+                markerEnd={`url(#arrow-${isCriticalEdge ? 'critical' : edge.type})`}
+                opacity={0.7}
+              />
+            );
+          })}
+
+          {/* Nodes */}
+          {nodePositions.map((pos) => {
+            const style = STATUS_STYLES[pos.node.status] || STATUS_STYLES.pending;
+            const isCritical = criticalPath.has(pos.node.id);
+            const isSelected = selectedNode === pos.node.id;
+            const isInProgress = pos.node.status === 'in_progress';
+
+            return (
+              <g
+                key={pos.node.id}
+                onClick={(e) => { e.stopPropagation(); setSelectedNode(isSelected ? null : pos.node.id); }}
+                style={{ cursor: 'pointer' }}
+              >
+                {/* Glow effect for in_progress */}
+                {isInProgress && (
+                  <rect
+                    x={pos.x - 3}
+                    y={pos.y - 3}
+                    width={pos.width + 6}
+                    height={pos.height + 6}
+                    rx={10}
+                    fill="none"
+                    stroke={style.color}
+                    strokeWidth={1.5}
+                    opacity={0.4}
+                  >
+                    <animate attributeName="opacity" values="0.2;0.6;0.2" dur="2s" repeatCount="indefinite" />
+                  </rect>
+                )}
+
+                {/* Critical path glow */}
+                {isCritical && (
+                  <rect
+                    x={pos.x - 2}
+                    y={pos.y - 2}
+                    width={pos.width + 4}
+                    height={pos.height + 4}
+                    rx={9}
+                    fill="none"
+                    stroke="#f59e0b"
+                    strokeWidth={1}
+                    opacity={0.3}
+                  />
+                )}
+
+                {/* Main rect */}
+                <rect
+                  x={pos.x}
+                  y={pos.y}
+                  width={pos.width}
+                  height={pos.height}
+                  rx={8}
+                  fill={isSelected ? '#1e293b' : '#0f172a'}
+                  stroke={isSelected ? style.color : isCritical ? '#f59e0b80' : `${style.color}60`}
+                  strokeWidth={isSelected ? 2 : isCritical ? 1.5 : 1}
+                />
+
+                {/* Left accent bar */}
+                <rect
+                  x={pos.x}
+                  y={pos.y + 8}
+                  width={3}
+                  height={pos.height - 16}
+                  rx={1.5}
+                  fill={isCritical ? '#f59e0b' : style.color}
+                />
+
+                {/* Status indicator */}
+                <circle
+                  cx={pos.x + 16}
+                  cy={pos.y + 16}
+                  r={5}
+                  fill={style.bg}
+                  stroke={style.color}
+                  strokeWidth={1}
+                />
+                {pos.node.status === 'done' && (
+                  <path d={`M${pos.x + 13},${pos.y + 16} L${pos.x + 15.5},${pos.y + 18.5} L${pos.x + 19},${pos.y + 13.5}`} fill="none" stroke={style.color} strokeWidth={1.5} />
+                )}
+                {pos.node.status === 'failed' && (
+                  <path d={`M${pos.x + 13.5},${pos.y + 13.5} L${pos.x + 18.5},${pos.y + 18.5} M${pos.x + 18.5},${pos.y + 13.5} L${pos.x + 13.5},${pos.y + 18.5}`} fill="none" stroke={style.color} strokeWidth={1.5} />
+                )}
+                {pos.node.status === 'in_progress' && (
+                  <circle cx={pos.x + 16} cy={pos.y + 16} r={2.5} fill={style.color}>
+                    <animate attributeName="r" values="2;3.5;2" dur="1.5s" repeatCount="indefinite" />
+                  </circle>
+                )}
+                {pos.node.status === 'pending' && (
+                  <circle cx={pos.x + 16} cy={pos.y + 16} r={2} fill={style.color} opacity={0.5} />
+                )}
+
+                {/* Node ID */}
+                <text
+                  x={pos.x + 26}
+                  y={pos.y + 18}
+                  fill="white"
+                  fontSize="10"
+                  fontFamily="monospace"
+                  fontWeight="600"
+                >
+                  {pos.node.id}
+                </text>
+
+                {/* Critical badge */}
+                {isCritical && (
+                  <text x={pos.x + pos.width - 8} y={pos.y + 14} fill="#f59e0b" fontSize="8" fontFamily="monospace">🔥</text>
+                )}
+
+                {/* Description (truncated) */}
+                <text
+                  x={pos.x + 26}
+                  y={pos.y + 33}
+                  fill="#94a3b8"
+                  fontSize="8"
+                  fontFamily="sans-serif"
+                >
+                  {pos.node.label.length > 22 ? pos.node.label.slice(0, 22) + '…' : pos.node.label}
+                </text>
+
+                {/* Worker assignment */}
+                {pos.node.assigned_to && (
+                  <text
+                    x={pos.x + 26}
+                    y={pos.y + 47}
+                    fill="#06b6d4"
+                    fontSize="8"
+                    fontFamily="monospace"
+                    opacity={0.7}
+                  >
+                    👤 {pos.node.assigned_to}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Node Detail Panel */}
+        {selectedNode && selectedTodo && (
+          <div className="absolute bottom-3 left-3 right-3 bg-slate-900/95 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 shadow-xl max-w-xs">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-mono text-white font-semibold">{selectedTodo.id}</span>
+                <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5"
+                  style={{ borderColor: `${STATUS_STYLES[selectedTodo.status]?.color}40`, color: STATUS_STYLES[selectedTodo.status]?.color }}>
+                  {STATUS_STYLES[selectedTodo.status]?.text}
+                </Badge>
+              </div>
+              <button onClick={() => setSelectedNode(null)} className="text-slate-500 hover:text-slate-300 text-xs" aria-label="Close details">✕</button>
+            </div>
+            <p className="text-[11px] text-slate-300 leading-relaxed mb-1.5">{selectedTodo.description}</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="p-1.5 rounded bg-slate-800/60">
+                <p className="text-[8px] text-slate-500 uppercase">Worker</p>
+                <p className="text-[9px] text-cyan-300 font-mono">{selectedTodo.assigned_to || '—'}</p>
+              </div>
+              <div className="p-1.5 rounded bg-slate-800/60">
+                <p className="text-[8px] text-slate-500 uppercase">Priority</p>
+                <p className="text-[9px] text-slate-300 font-mono">{selectedTodo.priority || '—'}</p>
+              </div>
+              {selectedTodo.estimated_time_ms && (
+                <div className="p-1.5 rounded bg-slate-800/60">
+                  <p className="text-[8px] text-slate-500 uppercase">Estimated</p>
+                  <p className="text-[9px] text-slate-300 font-mono">{selectedTodo.estimated_time_ms}ms</p>
                 </div>
-              );
-            })}
-
-            {/* Edge Legend */}
-            {edges.length > 0 && (
-              <div className="mt-3 p-2 rounded-lg bg-slate-800/30 border border-slate-700/15">
-                <span className="text-[9px] font-mono text-slate-500 uppercase">Edge Types</span>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {['depends_on', 'delegates_to', 'verifies'].map((type) => {
-                    const typeEdges = edges.filter((e) => e.type === type);
-                    if (typeEdges.length === 0) return null;
-                    return (
-                      <div key={type} className="flex items-center gap-1">
-                        <div className="h-0.5 w-4 rounded" style={{ backgroundColor: EDGE_TYPE_COLORS[type] }} />
-                        <span className="text-[8px] font-mono" style={{ color: EDGE_TYPE_COLORS[type] }}>
-                          {type} ({typeEdges.length})
-                        </span>
-                      </div>
-                    );
-                  })}
+              )}
+              {selectedTodo.actual_time_ms && (
+                <div className="p-1.5 rounded bg-slate-800/60">
+                  <p className="text-[8px] text-slate-500 uppercase">Actual</p>
+                  <p className="text-[9px] text-cyan-300 font-mono">{selectedTodo.actual_time_ms}ms</p>
                 </div>
+              )}
+            </div>
+            {selectedTodo.error && (
+              <div className="mt-1.5 p-1.5 rounded bg-red-500/10 border border-red-500/20">
+                <p className="text-[8px] text-red-400 uppercase">Error</p>
+                <p className="text-[9px] text-red-300 break-words">{selectedTodo.error}</p>
               </div>
             )}
           </div>
         )}
+      </div>
+
+      {/* Legend */}
+      <div className="flex-shrink-0 px-3 py-1.5 border-t border-slate-700/30 bg-slate-900/40">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-[8px] font-mono text-slate-500 uppercase">Edge Types:</span>
+          {Object.entries(EDGE_TYPE_COLORS).map(([type, color]) => {
+            const typeCount = edges.filter((e) => e.type === type).length;
+            if (typeCount === 0) return null;
+            return (
+              <div key={type} className="flex items-center gap-1">
+                <div className="h-0.5 w-4 rounded" style={{ backgroundColor: color }} />
+                <span className="text-[8px] font-mono" style={{ color }}>{type} ({typeCount})</span>
+              </div>
+            );
+          })}
+          {criticalPath.size > 1 && (
+            <div className="flex items-center gap-1">
+              <div className="h-0.5 w-4 rounded bg-amber-500" style={{ borderTop: '2px dashed #f59e0b' }} />
+              <span className="text-[8px] font-mono text-amber-400">critical path</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

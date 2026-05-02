@@ -108,7 +108,7 @@ You can add any additional explanation or context BEFORE the [ASK] block.
 Rules for questions:
 - Always provide at least 2 options (A, B, etc.)
 - Keep option text concise and clear
-- Use this format when you need to understand: technology preferences, design choices, scope decisions, priority levels, architecture decisions, etc.
+- Use this format when you need to understand: technology preferences, design choices, scope decisions, priority levels, architecture decisions
 - You may include a brief explanation before the [ASK] block
 - Do NOT use this format for rhetorical questions — only when you genuinely need the client's input
 - Example scenarios: "Which framework?", "What's the priority?", "Which design approach?", "What's the target audience?"
@@ -202,7 +202,186 @@ function estimateCost(inputTokens: number, outputTokens: number): number {
   return (inputTokens / 1000) * 0.01 + (outputTokens / 1000) * 0.03;
 }
 
-// ── Route Handler ─────────────────────────────────────────────────
+// ── Build the final JSON response from full streamed text ─────────
+function buildResponseFromText(
+  responseText: string,
+  startTime: number,
+  inputTokens: number,
+  outputTokens: number,
+  model: string,
+  session_id: string,
+  message: string,
+  history: Array<{ role: string; content: string }>,
+  current_contract: Contract | null,
+): Response {
+  const totalTokens = inputTokens + outputTokens;
+  const costUsd = estimateCost(inputTokens, outputTokens);
+  const latencyMs = Date.now() - startTime;
+
+  // Try to parse contract from response
+  const { contractData, intakeData } = tryParseContract(responseText);
+
+  if (contractData) {
+    const todos = (contractData.todos as Array<Record<string, unknown>> || []).map(
+      (t, i) => ({
+        id: `todo_${i + 1}`,
+        description: (t.description as string) || '',
+        assigned_to: (t.assigned_to as string) || '',
+        status: 'pending' as const,
+        depends_on: (t.depends_on as string[]) || [],
+        priority: (t.priority as 'low' | 'medium' | 'high' | 'critical') || 'medium',
+        estimated_time_ms: (t.estimated_time_ms as number) || undefined,
+      })
+    );
+
+    const intake: IntakeResult = intakeData
+      ? {
+          original_message: message,
+          type: (intakeData.type as IntakeResult['type']) || 'new_request',
+          urgency: (intakeData.urgency as IntakeResult['urgency']) || 'medium',
+          domain: (intakeData.domain as string[]) || [],
+          technologies: (intakeData.technologies as string[]) || [],
+          summary: (intakeData.summary as string) || '',
+          key_requirements: (intakeData.key_requirements as string[]) || [],
+          estimated_complexity:
+            (intakeData.estimated_complexity as IntakeResult['estimated_complexity']) || 'moderate',
+          estimated_workers: (intakeData.estimated_workers as string[]) || undefined,
+          estimated_duration_ms:
+            (intakeData.estimated_duration_ms as number) || undefined,
+        }
+      : {
+          original_message: message,
+          type: 'new_request',
+          urgency: 'medium',
+          domain: [],
+          technologies: [],
+          summary: message.substring(0, 100),
+          key_requirements: [],
+          estimated_complexity: 'moderate',
+        };
+
+    const contract: Contract = {
+      id: generateId(),
+      session_id,
+      title: (contractData.title as string) || 'Untitled Contract',
+      description: (contractData.description as string) || '',
+      todos,
+      state: 'contract_presented',
+      client_messages: [...history, { role: 'user', content: message }],
+      manager_messages: [{ role: 'assistant', content: responseText }],
+      team_feedback_rounds: [],
+      team_approved: false,
+      approval_gates: [
+        {
+          id: 'gate_client_approval',
+          gate_type: 'client_approval',
+          status: 'pending',
+          approver: 'client',
+        },
+        {
+          id: 'gate_team_review',
+          gate_type: 'team_review',
+          status: 'pending',
+          approver: 'team',
+        },
+      ],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const apiResponse: ChatApiResponse & {
+      token_usage: Record<string, unknown>;
+      cost: Record<string, unknown>;
+      latency_ms: number;
+    } = {
+      type: 'contract_ready',
+      contract,
+      intake,
+      token_usage: {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        total_tokens: totalTokens,
+        model,
+      },
+      cost: {
+        cost_usd: costUsd,
+        latency_ms: latencyMs,
+      },
+      latency_ms: latencyMs,
+    };
+
+    return new Response(JSON.stringify(apiResponse), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Try to parse interactive question from response
+  const { question: parsedQuestion, cleanedContent } = tryParseQuestion(responseText);
+
+  if (parsedQuestion) {
+    const apiResponse: ChatApiResponse & {
+      token_usage: Record<string, unknown>;
+      cost: Record<string, unknown>;
+      latency_ms: number;
+      state_hint?: string;
+    } = {
+      type: 'question',
+      content: cleanedContent || parsedQuestion.question,
+      question: parsedQuestion,
+      token_usage: {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        total_tokens: totalTokens,
+        model,
+      },
+      cost: {
+        cost_usd: costUsd,
+        latency_ms: latencyMs,
+      },
+      latency_ms: latencyMs,
+      state_hint: 'clarifying',
+    };
+
+    return new Response(JSON.stringify(apiResponse), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Check if the response indicates team consultation
+  const isTeamConsult =
+    responseText.toLowerCase().includes('consult') ||
+    responseText.toLowerCase().includes('team') ||
+    responseText.toLowerCase().includes('discuss with');
+
+  // Regular manager message
+  const apiResponse: ChatApiResponse & {
+    token_usage: Record<string, unknown>;
+    cost: Record<string, unknown>;
+    latency_ms: number;
+    state_hint?: string;
+  } = {
+    type: isTeamConsult ? 'team_consult' : 'manager_message',
+    content: responseText,
+    token_usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens,
+      model,
+    },
+    cost: {
+      cost_usd: costUsd,
+      latency_ms: latencyMs,
+    },
+    latency_ms: latencyMs,
+    state_hint: isTeamConsult ? 'team_consult' : 'clarifying',
+  };
+
+  return new Response(JSON.stringify(apiResponse), {
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+// ── Route Handler with Streaming Support ──────────────────────────
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
@@ -213,11 +392,13 @@ export async function POST(req: NextRequest) {
       history = [],
       session_id = 'default',
       current_contract = null,
+      stream = false,
     } = body as {
       message?: string;
       history?: Array<{ role: string; content: string }>;
       session_id?: string;
       current_contract?: Contract | null;
+      stream?: boolean;
     };
 
     if (!message || typeof message !== 'string') {
@@ -236,7 +417,7 @@ export async function POST(req: NextRequest) {
       { role: 'system', content: SYSTEM_PROMPT_CONDUCTOR + contextMessage },
       ...history
         .filter((h) => h.role === 'user' || h.role === 'assistant')
-        .slice(-20) // Keep last 20 messages for context window
+        .slice(-20)
         .map((h) => ({
           role: (h.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
           content: h.content,
@@ -247,6 +428,87 @@ export async function POST(req: NextRequest) {
     // Use z-ai-web-dev-sdk
     const ZAI = (await import('z-ai-web-dev-sdk')).default;
     const zai = await ZAI.create();
+
+    // ── Streaming Mode ──────────────────────────────────────────
+    if (stream) {
+      const streamResponse = await zai.chat.completions.create({
+        messages,
+        temperature: 0.7,
+        stream: true,
+      });
+
+      const encoder = new TextEncoder();
+      let fullText = '';
+      let tokenCount = { input: 0, output: 0 };
+      let modelName = 'unknown';
+
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of streamResponse) {
+              const content = chunk.choices?.[0]?.delta?.content || '';
+              if (content) {
+                fullText += content;
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`)
+                );
+              }
+              // Capture usage from the last chunk if available
+              if (chunk.usage) {
+                tokenCount.input = chunk.usage.prompt_tokens || 0;
+                tokenCount.output = chunk.usage.completion_tokens || 0;
+              }
+              if (chunk.model) {
+                modelName = chunk.model;
+              }
+            }
+
+            // Estimate tokens if not provided by API
+            if (tokenCount.input === 0) {
+              tokenCount.input = Math.floor(messages.reduce((s, m) => s + m.content.length, 0) / 4);
+            }
+            if (tokenCount.output === 0) {
+              tokenCount.output = Math.floor(fullText.length / 4);
+            }
+
+            // Send the final parsed response
+            const finalResponse = buildResponseFromText(
+              fullText,
+              startTime,
+              tokenCount.input,
+              tokenCount.output,
+              modelName,
+              session_id,
+              message,
+              history,
+              current_contract,
+            );
+            const finalJson = await finalResponse.text();
+
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: 'done', response: JSON.parse(finalJson) })}\n\n`)
+            );
+            controller.close();
+          } catch (streamError) {
+            console.error('[Chat API] Stream error:', streamError);
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: 'error', message: streamError instanceof Error ? streamError.message : 'Stream error' })}\n\n`)
+            );
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
+    // ── Non-Streaming Mode (fallback) ───────────────────────────
     const completion = await zai.chat.completions.create({
       messages,
       temperature: 0.7,
@@ -256,173 +518,22 @@ export async function POST(req: NextRequest) {
       completion.choices?.[0]?.message?.content ||
       'I apologize, I could not process that. Could you please rephrase?';
 
-    // Track token usage from API response
     const usage = completion.usage;
     const inputTokens = usage?.prompt_tokens || 0;
     const outputTokens = usage?.completion_tokens || 0;
-    const totalTokens = usage?.total_tokens || inputTokens + outputTokens;
-    const costUsd = estimateCost(inputTokens, outputTokens);
-    const latencyMs = Date.now() - startTime;
     const model = completion.model || 'unknown';
 
-    // Try to parse contract from response
-    const { contractData, intakeData } = tryParseContract(responseText);
-
-    if (contractData) {
-      // Build contract from parsed data
-      const todos = (contractData.todos as Array<Record<string, unknown>> || []).map(
-        (t, i) => ({
-          id: `todo_${i + 1}`,
-          description: (t.description as string) || '',
-          assigned_to: (t.assigned_to as string) || '',
-          status: 'pending' as const,
-          depends_on: (t.depends_on as string[]) || [],
-          priority: (t.priority as 'low' | 'medium' | 'high' | 'critical') || 'medium',
-          estimated_time_ms: (t.estimated_time_ms as number) || undefined,
-        })
-      );
-
-      // Build intake result
-      const intake: IntakeResult = intakeData
-        ? {
-            original_message: message,
-            type: (intakeData.type as IntakeResult['type']) || 'new_request',
-            urgency: (intakeData.urgency as IntakeResult['urgency']) || 'medium',
-            domain: (intakeData.domain as string[]) || [],
-            technologies: (intakeData.technologies as string[]) || [],
-            summary: (intakeData.summary as string) || '',
-            key_requirements: (intakeData.key_requirements as string[]) || [],
-            estimated_complexity:
-              (intakeData.estimated_complexity as IntakeResult['estimated_complexity']) || 'moderate',
-            estimated_workers: (intakeData.estimated_workers as string[]) || undefined,
-            estimated_duration_ms:
-              (intakeData.estimated_duration_ms as number) || undefined,
-          }
-        : {
-            original_message: message,
-            type: 'new_request',
-            urgency: 'medium',
-            domain: [],
-            technologies: [],
-            summary: message.substring(0, 100),
-            key_requirements: [],
-            estimated_complexity: 'moderate',
-          };
-
-      const contract: Contract = {
-        id: generateId(),
-        session_id,
-        title: (contractData.title as string) || 'Untitled Contract',
-        description: (contractData.description as string) || '',
-        todos,
-        state: 'contract_presented',
-        client_messages: [...history, { role: 'user', content: message }],
-        manager_messages: [{ role: 'assistant', content: responseText }],
-        team_feedback_rounds: [],
-        team_approved: false,
-        approval_gates: [
-          {
-            id: 'gate_client_approval',
-            gate_type: 'client_approval',
-            status: 'pending',
-            approver: 'client',
-          },
-          {
-            id: 'gate_team_review',
-            gate_type: 'team_review',
-            status: 'pending',
-            approver: 'team',
-          },
-        ],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const apiResponse: ChatApiResponse & {
-        token_usage: Record<string, unknown>;
-        cost: Record<string, unknown>;
-        latency_ms: number;
-      } = {
-        type: 'contract_ready',
-        contract,
-        intake,
-        token_usage: {
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          total_tokens: totalTokens,
-          model,
-        },
-        cost: {
-          cost_usd: costUsd,
-          latency_ms: latencyMs,
-        },
-        latency_ms: latencyMs,
-      };
-
-      return NextResponse.json(apiResponse);
-    }
-
-    // Try to parse interactive question from response
-    const { question: parsedQuestion, cleanedContent } = tryParseQuestion(responseText);
-
-    // If question found, return it as a question-type response
-    if (parsedQuestion) {
-      const apiResponse: ChatApiResponse & {
-        token_usage: Record<string, unknown>;
-        cost: Record<string, unknown>;
-        latency_ms: number;
-        state_hint?: string;
-      } = {
-        type: 'question',
-        content: cleanedContent || parsedQuestion.question,
-        question: parsedQuestion,
-        token_usage: {
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          total_tokens: totalTokens,
-          model,
-        },
-        cost: {
-          cost_usd: costUsd,
-          latency_ms: latencyMs,
-        },
-        latency_ms: latencyMs,
-        state_hint: 'clarifying',
-      };
-
-      return NextResponse.json(apiResponse);
-    }
-
-    // Check if the response indicates team consultation
-    const isTeamConsult =
-      responseText.toLowerCase().includes('consult') ||
-      responseText.toLowerCase().includes('team') ||
-      responseText.toLowerCase().includes('discuss with');
-
-    // Regular manager message
-    const apiResponse: ChatApiResponse & {
-      token_usage: Record<string, unknown>;
-      cost: Record<string, unknown>;
-      latency_ms: number;
-      state_hint?: string;
-    } = {
-      type: isTeamConsult ? 'team_consult' : 'manager_message',
-      content: responseText,
-      token_usage: {
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        total_tokens: totalTokens,
-        model,
-      },
-      cost: {
-        cost_usd: costUsd,
-        latency_ms: latencyMs,
-      },
-      latency_ms: latencyMs,
-      state_hint: isTeamConsult ? 'team_consult' : 'clarifying',
-    };
-
-    return NextResponse.json(apiResponse);
+    return buildResponseFromText(
+      responseText,
+      startTime,
+      inputTokens,
+      outputTokens,
+      model,
+      session_id,
+      message,
+      history,
+      current_contract,
+    );
   } catch (error: unknown) {
     console.error('[Chat API] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

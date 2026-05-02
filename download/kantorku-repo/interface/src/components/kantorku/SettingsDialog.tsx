@@ -51,7 +51,8 @@ import {
   Bot,
 } from 'lucide-react';
 import { useKantorkuStore } from '@/lib/kantorku/store';
-import { useState, useCallback } from 'react';
+import { useWebSocket, ConnectionState } from '@/hooks/use-websocket';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 // ── Provider Definitions ──────────────────────────────────────────
 interface ProviderConfig {
@@ -288,6 +289,100 @@ function ProviderKeyInput({ provider, onStatusChange }: { provider: ProviderConf
   );
 }
 
+// ── WebSocket Connection Section ──────────────────────────────────
+function WebSocketConnectionSection({ backendUrl }: { backendUrl: string }) {
+  const [wsEnabled, setWsEnabled] = useState(false);
+  const [wsUrl, setWsUrl] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('kantorku_ws_url') || '';
+    }
+    return '';
+  });
+  const { connectionState, disconnect, reconnect } = useWebSocket({
+    url: wsUrl,
+    enabled: wsEnabled,
+  });
+
+  const handleToggle = useCallback(() => {
+    if (wsEnabled) {
+      setWsEnabled(false);
+      disconnect();
+    } else {
+      // Derive WS URL from backend URL
+      const derivedUrl = wsUrl || backendUrl.replace(/^http/, 'ws') + '/ws';
+      setWsUrl(derivedUrl);
+      localStorage.setItem('kantorku_ws_url', derivedUrl);
+      setWsEnabled(true);
+    }
+  }, [wsEnabled, wsUrl, backendUrl, disconnect]);
+
+  const stateColors: Record<ConnectionState, string> = {
+    connecting: 'text-amber-400',
+    connected: 'text-green-400',
+    disconnected: 'text-slate-500',
+  };
+
+  const stateDots: Record<ConnectionState, string> = {
+    connecting: 'bg-amber-400 shadow-[0_0_6px_#f59e0b] animate-pulse',
+    connected: 'bg-green-400 shadow-[0_0_6px_#10b981]',
+    disconnected: 'bg-slate-600',
+  };
+
+  return (
+    <div className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/30 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Server className="h-4 w-4 text-cyan-400" />
+          <div>
+            <p className="text-xs text-slate-300">WebSocket Connection</p>
+            <p className="text-[10px] text-slate-500">Real-time updates from Python backend</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className={`h-2 w-2 rounded-full ${stateDots[connectionState]}`} />
+          <span className={`text-[9px] font-mono ${stateColors[connectionState]}`}>
+            {connectionState.toUpperCase()}
+          </span>
+          <Switch
+            checked={wsEnabled}
+            onCheckedChange={handleToggle}
+            aria-label="Toggle WebSocket connection"
+          />
+        </div>
+      </div>
+
+      {wsEnabled && (
+        <>
+          <div className="flex gap-2">
+            <Input
+              value={wsUrl}
+              onChange={(e) => {
+                setWsUrl(e.target.value);
+                localStorage.setItem('kantorku_ws_url', e.target.value);
+              }}
+              placeholder="ws://localhost:8000/ws"
+              className="bg-slate-900/60 border-slate-700/50 text-[11px] text-slate-200 h-7 flex-1"
+              aria-label="WebSocket URL"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={reconnect}
+              className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 text-[10px] px-2 h-7"
+              aria-label="Reconnect WebSocket"
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+          </div>
+          <p className="text-[9px] text-slate-600">
+            WebSocket enables real-time task updates, worker messages, and contract state changes from the Python backend.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Main Settings Dialog ──────────────────────────────────────────
 export function SettingsDialog() {
   const {
@@ -506,6 +601,7 @@ export function SettingsDialog() {
                   onChange={(e) => setBackendUrl(e.target.value)}
                   placeholder="http://localhost:8000"
                   className="bg-slate-800/60 border-slate-700/50 text-xs text-slate-200 flex-1"
+                  aria-label="Backend URL"
                 />
                 <Button
                   onClick={handleConnectionTest}
@@ -513,6 +609,7 @@ export function SettingsDialog() {
                   size="sm"
                   disabled={testStatus === 'testing'}
                   className="border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10 text-xs px-3"
+                  aria-label="Test backend connection"
                 >
                   {testStatus === 'testing' ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -535,6 +632,11 @@ export function SettingsDialog() {
 
             <Separator className="bg-slate-700/30" />
 
+            {/* WebSocket Connection */}
+            <WebSocketConnectionSection backendUrl={backendUrl} />
+
+            <Separator className="bg-slate-700/30" />
+
             <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/60 border border-slate-700/30">
               <div className="flex items-center gap-2">
                 {isBackendConnected ? (
@@ -549,7 +651,10 @@ export function SettingsDialog() {
                   </p>
                 </div>
               </div>
-              <Switch checked={isBackendConnected} disabled />
+              <div className="flex items-center gap-1.5">
+                <div className={`h-2 w-2 rounded-full ${isBackendConnected ? 'bg-green-400 shadow-[0_0_6px_#10b981]' : 'bg-amber-400 shadow-[0_0_6px_#f59e0b]'}`} />
+                <span className="text-[9px] font-mono text-slate-500">{isBackendConnected ? 'ONLINE' : 'OFFLINE'}</span>
+              </div>
             </div>
 
             <div className="p-3 rounded-lg bg-slate-800/40 border border-slate-700/20 space-y-2">

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CONTRACT_STATE_LABELS, CONTRACT_STATE_COLORS } from '@/lib/kantorku/workers-data';
 import type { ChatApiResponse, ExecuteApiResponse, TeamFeedbackRound, DebriefResult, Contract, TodoItem } from '@/lib/kantorku/types';
+import { toast } from 'sonner';
 import {
   MessageSquare,
   Zap,
@@ -88,7 +89,7 @@ export function LobbyZone() {
         body: JSON.stringify({ message }),
       }).then((r) => r.json()).catch(() => null);
 
-      // Send to chat API
+      // Send to chat API with streaming
       const history = clientMessages.map((m) => ({
         role: m.role === 'manager' ? 'assistant' : 'user',
         content: m.content,
@@ -101,10 +102,88 @@ export function LobbyZone() {
           message,
           history,
           session_id: activeSessionId || 'default',
+          stream: true,
         }),
       });
 
-      const data: ChatApiResponse = await response.json();
+      // Check if response is SSE stream
+      const contentType = response.headers.get('content-type') || '';
+      let data: ChatApiResponse | null = null;
+
+      if (contentType.includes('text/event-stream') && response.body) {
+        // ── Consume SSE Stream ─────────────────────────────────
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let streamingContent = '';
+        let streamingMsgId = `msg_stream_${Date.now()}`;
+
+        // Create a placeholder streaming message
+        addClientMessage({
+          id: streamingMsgId,
+          role: 'manager',
+          content: '',
+          timestamp: new Date().toISOString(),
+        });
+
+        let buffer = '';
+
+        while (reader) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          // Parse SSE lines
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr) continue;
+
+            try {
+              const sseData = JSON.parse(jsonStr);
+
+              if (sseData.type === 'chunk') {
+                streamingContent += sseData.content;
+                // Update the streaming message in place
+                const store = useKantorkuStore.getState();
+                const updatedMessages = store.clientMessages.map((m) =>
+                  m.id === streamingMsgId
+                    ? { ...m, content: streamingContent }
+                    : m
+                );
+                useKantorkuStore.setState({ clientMessages: updatedMessages });
+              } else if (sseData.type === 'done' && sseData.response) {
+                data = sseData.response as ChatApiResponse;
+              } else if (sseData.type === 'error') {
+                toast.error('LLM Stream Error', { description: sseData.message });
+              }
+            } catch {
+              // Ignore parse errors for individual SSE chunks
+            }
+          }
+        }
+
+        // Remove the streaming placeholder message
+        const storeAfterStream = useKantorkuStore.getState();
+        useKantorkuStore.setState({
+          clientMessages: storeAfterStream.clientMessages.filter(
+            (m) => m.id !== streamingMsgId
+          ),
+        });
+
+        // If we never got a 'done' event with a parsed response, fall back
+        if (!data) {
+          data = {
+            type: 'manager_message',
+            content: streamingContent,
+          };
+        }
+      } else {
+        // Non-streaming fallback
+        data = await response.json();
+      }
 
       // Process intake result
       const intakeData = await intakePromise;
@@ -127,6 +206,10 @@ export function LobbyZone() {
           from_id: 'conductor',
           content: data.contract.title,
           session_id: activeSessionId || 'default',
+        });
+        toast.success('📋 Contract ready for review', {
+          description: data.contract.title,
+          duration: 5000,
         });
 
         // Create session if new
@@ -155,6 +238,7 @@ export function LobbyZone() {
           source: 'team_feedback',
           timestamp: new Date().toISOString(),
         });
+        toast.info('👥 Team consultation in progress');
       } else if (data.type === 'question' && data.question) {
         // Manager is asking an interactive question with options
         setContractState('clarifying');
@@ -164,6 +248,10 @@ export function LobbyZone() {
           content: data.content || data.question.question,
           timestamp: new Date().toISOString(),
           question: data.question,
+        });
+        toast.info('❓ Manager has a question', {
+          description: data.question.question,
+          duration: 6000,
         });
       } else if (data.type === 'manager_message' && data.content) {
         // Clarification needed
@@ -186,6 +274,9 @@ export function LobbyZone() {
         role: 'manager',
         content: 'I apologize, something went wrong. Please try again.',
         timestamp: new Date().toISOString(),
+      });
+      toast.error('❌ Chat error', {
+        description: error instanceof Error ? error.message : 'Unknown error',
       });
     } finally {
       setManagerThinking(false);
@@ -248,6 +339,9 @@ export function LobbyZone() {
         consensus_reached: briefingData.consensus_reached ?? true,
         concerns: briefingData.concerns || [],
         decisions: briefingData.decisions || ['Proceed with plan'],
+      });
+      toast.success('💬 Briefing complete', {
+        description: `${briefingData.rounds?.length || 1} rounds completed`,
       });
     } catch {
       // Fallback: simulate brief feedback
@@ -457,6 +551,7 @@ export function LobbyZone() {
             }
             updateWorkerStatus(event.from_id, 'idle', undefined);
             addLatencyEntry(Math.random() * 300 + 50, event.from_id);
+            toast.success(`✅ ${event.from_id} completed task`);
           }
 
           // Handle task_failed events
@@ -483,6 +578,9 @@ export function LobbyZone() {
               });
             }
             updateWorkerStatus(event.from_id, 'error', undefined);
+            toast.error(`❌ ${event.from_id} task failed`, {
+              description: (event.error as string) || 'Unknown error',
+            });
           }
 
           // Process worker emotions
@@ -580,6 +678,9 @@ export function LobbyZone() {
         timestamp: new Date().toISOString(),
       };
       setDebriefResult(debrief);
+      toast.info('📊 Debrief generated', {
+        description: hasFailed ? `${failedTodos.length} tasks failed` : `All ${completedTodos.length} tasks completed`,
+      });
 
       // Mark contract as done (or failed if any task failed)
       const hasFailed = failedTodos.length > 0;
@@ -647,6 +748,9 @@ export function LobbyZone() {
         role: 'manager',
         content: 'Execution failed. Please check the dashboard for details and try again.',
         timestamp: new Date().toISOString(),
+      });
+      toast.error('❌ Execution failed', {
+        description: error instanceof Error ? error.message : 'Unknown execution error',
       });
     } finally {
       setWorking(false);
