@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -18,6 +18,7 @@ import { WorkspaceZone } from './WorkspaceZone';
 import { DashboardZone } from './DashboardZone';
 import { SettingsDialog, SettingsButton } from './SettingsDialog';
 import { OnboardingOverlay } from './OnboardingOverlay';
+import { ErrorBoundary } from './ErrorBoundary';
 import { useKantorkuStore } from '@/lib/kantorku/store';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -29,9 +30,12 @@ import {
   ChevronDown,
   Plus,
   FolderOpen,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 type MobileTab = 'lobby' | 'workspace' | 'dashboard';
+type ThemeMode = 'dark' | 'light' | 'system';
 
 export function KantorkuApp() {
   const {
@@ -44,6 +48,51 @@ export function KantorkuApp() {
     setPanelLayout,
   } = useKantorkuStore();
   const [mobileTab, setMobileTab] = useState<MobileTab>('lobby');
+
+  // ── Theme Management ──────────────────────────────────────────
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') return 'dark';
+    return (localStorage.getItem('kantorku_theme') as ThemeMode) || 'dark';
+  });
+
+  const resolvedTheme = useMemo(() => {
+    if (theme === 'system') {
+      if (typeof window !== 'undefined') {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      return 'dark';
+    }
+    return theme;
+  }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', resolvedTheme);
+    if (resolvedTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [resolvedTheme]);
+
+  useEffect(() => {
+    localStorage.setItem('kantorku_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      if (prev === 'dark') return 'light';
+      if (prev === 'light') return 'system';
+      return 'dark';
+    });
+  }, []);
+
+  // Expose theme to SettingsDialog
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__kantorku_theme = theme;
+    (window as unknown as Record<string, (t: ThemeMode) => void>).__kantorku_setTheme = setTheme;
+  }, [theme]);
+
+  const isLightTheme = resolvedTheme === 'light';
 
   // ── Keyboard Shortcuts ──────────────────────────────────────
   const handleKeyDown = useCallback(
@@ -95,9 +144,9 @@ export function KantorkuApp() {
   }, [setActiveSession]);
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#0a0e1a] text-white overflow-hidden">
+    <div className={`h-screen w-screen flex flex-col overflow-hidden ${isLightTheme ? 'bg-[#f8fafc] text-slate-900' : 'bg-[#0a0e1a] text-white'}`}>
       {/* Top Bar */}
-      <header className="flex-shrink-0 h-10 border-b border-cyan-900/30 bg-[#0a0e1a]/90 backdrop-blur-sm flex items-center justify-between px-3 z-50" role="banner">
+      <header className={`flex-shrink-0 h-10 border-b backdrop-blur-sm flex items-center justify-between px-3 z-50 ${isLightTheme ? 'border-cyan-200/50 bg-white/90' : 'border-cyan-900/30 bg-[#0a0e1a]/90'}`} role="banner">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">
             <div className="h-5 w-5 rounded bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center">
@@ -144,7 +193,7 @@ export function KantorkuApp() {
                     </span>
                     <Badge
                       variant="outline"
-                      className={`ml-auto text-[7px] px-1 py-0 h-3 ${
+                      className={`ml-auto text-[9px] px-1 py-0 h-3 ${
                         session.state === 'done'
                           ? 'border-green-500/30 text-green-300'
                           : session.state === 'failed'
@@ -190,10 +239,10 @@ export function KantorkuApp() {
 
         <div className="flex items-center gap-2">
           {/* Keyboard shortcut hints (desktop only) */}
-          <div className="hidden lg:flex items-center gap-1 text-[8px] text-slate-600 font-mono">
-            <kbd className="px-0.5 py-0 rounded bg-slate-800 border border-slate-700/50">⌘1</kbd>
-            <kbd className="px-0.5 py-0 rounded bg-slate-800 border border-slate-700/50">⌘2</kbd>
-            <kbd className="px-0.5 py-0 rounded bg-slate-800 border border-slate-700/50">⌘3</kbd>
+          <div className={`hidden lg:flex items-center gap-1 text-[8px] font-mono ${isLightTheme ? 'text-slate-400' : 'text-slate-600'}`}>
+            <kbd className={`px-0.5 py-0 rounded border ${isLightTheme ? 'bg-slate-100 border-slate-200' : 'bg-slate-800 border-slate-700/50'}`}>⌘1</kbd>
+            <kbd className={`px-0.5 py-0 rounded border ${isLightTheme ? 'bg-slate-100 border-slate-200' : 'bg-slate-800 border-slate-700/50'}`}>⌘2</kbd>
+            <kbd className={`px-0.5 py-0 rounded border ${isLightTheme ? 'bg-slate-100 border-slate-200' : 'bg-slate-800 border-slate-700/50'}`}>⌘3</kbd>
           </div>
           <div className="flex items-center gap-1 text-[9px]">
             {isBackendConnected ? (
@@ -208,12 +257,30 @@ export function KantorkuApp() {
               </>
             )}
           </div>
-          <SettingsButton />
+          {/* Theme toggle */}
+          <button
+            onClick={toggleTheme}
+            className={`p-1.5 rounded-md transition-colors ${isLightTheme ? 'hover:bg-slate-200' : 'hover:bg-slate-700/50'}`}
+            title={`Theme: ${theme} (click to cycle)`}
+            aria-label={`Switch theme, current: ${theme}`}
+          >
+            {theme === 'dark' ? (
+              <Moon className="h-4 w-4 text-cyan-400" />
+            ) : theme === 'light' ? (
+              <Sun className="h-4 w-4 text-amber-500" />
+            ) : (
+              <div className="h-4 w-4 relative">
+                <Sun className="h-3 w-3 text-amber-400 absolute top-0 left-0" />
+                <Moon className="h-3 w-3 text-cyan-400 absolute bottom-0 right-0" />
+              </div>
+            )}
+          </button>
+          <SettingsButton isLightTheme={isLightTheme} />
         </div>
       </header>
 
       {/* Mobile Tab Bar */}
-      <nav className="flex-shrink-0 sm:hidden border-b border-cyan-900/30 bg-[#0a0e1a]/90" aria-label="Main navigation">
+      <nav className={`flex-shrink-0 sm:hidden border-b backdrop-blur-sm ${isLightTheme ? 'border-cyan-200/50 bg-white/90' : 'border-cyan-900/30 bg-[#0a0e1a]/90'}`} aria-label="Main navigation">
         <div className="flex">
           {[
             { id: 'lobby' as const, icon: MessageSquare, label: 'Lobby' },
@@ -223,16 +290,16 @@ export function KantorkuApp() {
             <button
               key={id}
               onClick={() => setMobileTab(id)}
-              className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-[#0a0e1a] ${
+              className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400 ${isLightTheme ? 'focus:ring-offset-white' : 'focus:ring-offset-2 focus:ring-offset-[#0a0e1a]'} ${
                 mobileTab === id
-                  ? 'text-cyan-400 border-b-2 border-cyan-400'
-                  : 'text-slate-500'
+                  ? `text-cyan-400 border-b-2 border-cyan-400 ${isLightTheme ? 'bg-cyan-50' : ''}`
+                  : isLightTheme ? 'text-slate-400' : 'text-slate-500'
               }`}
               aria-label={`Switch to ${label}`}
               aria-current={mobileTab === id ? 'page' : undefined}
             >
               <Icon className="h-4 w-4" />
-              <span className="text-[9px] font-mono">{label}</span>
+              <span className={`text-[9px] font-mono ${isLightTheme && mobileTab !== id ? 'text-slate-500' : ''}`}>{label}</span>
             </button>
           ))}
         </div>
@@ -253,24 +320,28 @@ export function KantorkuApp() {
               minSize={20}
               maxSize={45}
             >
-              <div className="h-full border-r border-cyan-900/20">
-                <LobbyZone />
+              <div className={`h-full border-r ${isLightTheme ? 'border-cyan-200/30' : 'border-cyan-900/20'}`}>
+                <ErrorBoundary fallbackTitle="Lobby Error">
+                  <LobbyZone />
+                </ErrorBoundary>
               </div>
             </ResizablePanel>
 
-            <ResizableHandle className="bg-cyan-900/20 hover:bg-cyan-700/30 transition-colors w-0.5" />
+            <ResizableHandle className={`${isLightTheme ? 'bg-cyan-200/20 hover:bg-cyan-300/30' : 'bg-cyan-900/20 hover:bg-cyan-700/30'} transition-colors w-0.5`} />
 
             {/* Workspace Zone */}
             <ResizablePanel
               defaultSize={panelLayout.workspace}
               minSize={30}
             >
-              <div className="h-full border-r border-cyan-900/20">
-                <WorkspaceZone />
+              <div className={`h-full border-r ${isLightTheme ? 'border-cyan-200/30' : 'border-cyan-900/20'}`}>
+                <ErrorBoundary fallbackTitle="Workspace Error">
+                  <WorkspaceZone />
+                </ErrorBoundary>
               </div>
             </ResizablePanel>
 
-            <ResizableHandle className="bg-cyan-900/20 hover:bg-cyan-700/30 transition-colors w-0.5" />
+            <ResizableHandle className={`${isLightTheme ? 'bg-cyan-200/20 hover:bg-cyan-300/30' : 'bg-cyan-900/20 hover:bg-cyan-700/30'} transition-colors w-0.5`} />
 
             {/* Dashboard Zone */}
             <ResizablePanel
@@ -279,7 +350,9 @@ export function KantorkuApp() {
               maxSize={40}
             >
               <div className="h-full">
-                <DashboardZone />
+                <ErrorBoundary fallbackTitle="Dashboard Error">
+                  <DashboardZone />
+                </ErrorBoundary>
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>
@@ -287,9 +360,9 @@ export function KantorkuApp() {
 
         {/* Mobile Single-Panel Layout */}
         <div className="sm:hidden h-full">
-          {mobileTab === 'lobby' && <LobbyZone />}
-          {mobileTab === 'workspace' && <WorkspaceZone />}
-          {mobileTab === 'dashboard' && <DashboardZone />}
+          {mobileTab === 'lobby' && <ErrorBoundary fallbackTitle="Lobby Error"><LobbyZone /></ErrorBoundary>}
+          {mobileTab === 'workspace' && <ErrorBoundary fallbackTitle="Workspace Error"><WorkspaceZone /></ErrorBoundary>}
+          {mobileTab === 'dashboard' && <ErrorBoundary fallbackTitle="Dashboard Error"><DashboardZone /></ErrorBoundary>}
         </div>
       </div>
 

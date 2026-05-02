@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { WorkerIdentity, WorkerEmotion } from '@/lib/kantorku/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -83,13 +83,13 @@ function AnimatedTrustScore({ score, trend }: { score: number; trend?: string })
         <Minus className="h-2 w-2 text-slate-600" />
       )}
       {isAnimating && (
-        <span className="text-[7px] text-cyan-400 animate-pulse">●</span>
+        <span className="text-[9px] text-cyan-400 animate-pulse">●</span>
       )}
     </div>
   );
 }
 
-export function WorkerCard({ worker, compact = false }: WorkerCardProps) {
+export const WorkerCard = React.memo(function WorkerCard({ worker, compact = false }: WorkerCardProps) {
   const { trustScores, workerEmotions, delegations } = useKantorkuStore();
   const [expanded, setExpanded] = useState(false);
 
@@ -198,12 +198,12 @@ export function WorkerCard({ worker, compact = false }: WorkerCardProps) {
             {worker.capabilities && worker.capabilities.length > 0 && (
               <div className="flex flex-wrap gap-0.5 mt-1.5">
                 {worker.capabilities.slice(0, 3).map((cap, i) => (
-                  <Badge key={i} variant="outline" className="text-[7px] px-0.5 py-0 h-3 border-slate-700/50 text-slate-500">
+                  <Badge key={i} variant="outline" className="text-[9px] px-0.5 py-0 h-3 border-slate-700/50 text-slate-500">
                     {cap}
                   </Badge>
                 ))}
                 {worker.capabilities.length > 3 && (
-                  <span className="text-[7px] text-slate-600">+{worker.capabilities.length - 3}</span>
+                  <span className="text-[9px] text-slate-600">+{worker.capabilities.length - 3}</span>
                 )}
               </div>
             )}
@@ -282,7 +282,7 @@ export function WorkerCard({ worker, compact = false }: WorkerCardProps) {
                     <p className="text-[8px] text-slate-500 uppercase mb-0.5">All Capabilities</p>
                     <div className="flex flex-wrap gap-0.5">
                       {worker.capabilities.map((cap, i) => (
-                        <Badge key={i} variant="outline" className="text-[7px] px-0.5 py-0 h-3 border-slate-700/50 text-slate-500">
+                        <Badge key={i} variant="outline" className="text-[9px] px-0.5 py-0 h-3 border-slate-700/50 text-slate-500">
                           {cap}
                         </Badge>
                       ))}
@@ -326,7 +326,7 @@ export function WorkerCard({ worker, compact = false }: WorkerCardProps) {
                           </span>
                           <Badge
                             variant="outline"
-                            className="text-[6px] px-0.5 py-0 h-2.5"
+                            className="text-[9px] px-0.5 py-0 h-2.5"
                             style={{
                               borderColor: d.status === 'accepted' ? '#22c55e40' : d.status === 'rejected' ? '#ef444440' : '#f59e0b40',
                               color: d.status === 'accepted' ? '#4ade80' : d.status === 'rejected' ? '#f87171' : '#fbbf24',
@@ -350,4 +350,4 @@ export function WorkerCard({ worker, compact = false }: WorkerCardProps) {
       </CardContent>
     </Card>
   );
-}
+});

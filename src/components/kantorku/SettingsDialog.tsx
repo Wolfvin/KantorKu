@@ -675,11 +675,34 @@ export function SettingsDialog() {
               <div className="flex items-center gap-2">
                 <Palette className="h-4 w-4 text-violet-400" />
                 <div>
-                  <p className="text-xs text-slate-300">Dark Theme</p>
-                  <p className="text-[10px] text-slate-500">Cyberpunk dark mode (always on)</p>
+                  <p className="text-xs text-slate-300">Tema</p>
+                  <p className="text-[10px] text-slate-500">Pilih tampilan gelap, terang, atau sistem</p>
                 </div>
               </div>
-              <Switch checked={true} disabled />
+              <div className="flex items-center gap-1.5">
+                {(['dark', 'light', 'system'] as const).map((t) => {
+                  const currentTheme = typeof window !== 'undefined'
+                    ? (window as unknown as Record<string, unknown>).__kantorku_theme as string || 'dark'
+                    : 'dark';
+                  const setThemeFn = typeof window !== 'undefined'
+                    ? (window as unknown as Record<string, (t: string) => void>).__kantorku_setTheme
+                    : null;
+                  const isActive = currentTheme === t;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setThemeFn?.(t)}
+                      className={`px-2 py-1 rounded text-[9px] font-mono transition-colors ${
+                        isActive
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                          : 'text-slate-500 hover:text-slate-300 border border-slate-700/30'
+                      }`}
+                    >
+                      {t === 'dark' ? '🌙 Gelap' : t === 'light' ? '☀️ Terang' : '🖥️ Sistem'}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <Button
@@ -794,15 +817,15 @@ export function SettingsDialog() {
   );
 }
 
-export function SettingsButton() {
+export function SettingsButton({ isLightTheme }: { isLightTheme?: boolean }) {
   const { setSettingsOpen } = useKantorkuStore();
   return (
     <button
       onClick={() => setSettingsOpen(true)}
-      className="p-1.5 rounded-md hover:bg-slate-700/50 transition-colors"
+      className={`p-1.5 rounded-md transition-colors ${isLightTheme ? 'hover:bg-slate-200' : 'hover:bg-slate-700/50'}`}
       title="Settings"
     >
-      <Settings className="h-4 w-4 text-slate-400" />
+      <Settings className={`h-4 w-4 ${isLightTheme ? 'text-slate-500' : 'text-slate-400'}`} />
     </button>
   );
 }

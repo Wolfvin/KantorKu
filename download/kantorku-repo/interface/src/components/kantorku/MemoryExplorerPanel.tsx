@@ -371,7 +371,7 @@ function EntryCard({ entry, ringStyle, showRelevance }: { entry: MemoryEntry & {
               {showRelevance && entry.relevance !== undefined && (
                 <Badge
                   variant="outline"
-                  className="text-[7px] px-0.5 py-0 h-3 border-pink-500/30 text-pink-300 font-mono"
+                  className="text-[9px] px-0.5 py-0 h-3 border-pink-500/30 text-pink-300 font-mono"
                 >
                   {(entry.relevance * 100).toFixed(0)}% match
                 </Badge>
@@ -379,12 +379,12 @@ function EntryCard({ entry, ringStyle, showRelevance }: { entry: MemoryEntry & {
               {entry.tags && entry.tags.length > 0 && (
                 <div className="flex gap-0.5">
                   {entry.tags.slice(0, 2).map((tag, i) => (
-                    <Badge key={i} variant="outline" className="text-[7px] px-0.5 py-0 h-3 border-slate-700/50 text-slate-500">
+                    <Badge key={i} variant="outline" className="text-[9px] px-0.5 py-0 h-3 border-slate-700/50 text-slate-500">
                       {tag}
                     </Badge>
                   ))}
                   {entry.tags.length > 2 && (
-                    <span className="text-[7px] text-slate-600">+{entry.tags.length - 2}</span>
+                    <span className="text-[9px] text-slate-600">+{entry.tags.length - 2}</span>
                   )}
                 </div>
               )}

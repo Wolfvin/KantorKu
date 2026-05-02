@@ -298,7 +298,7 @@ export function WorkerRegistryPanel() {
                       <span className={`h-1.5 w-1.5 rounded-full ${statusStyle.dot}`} />
                       <span className="text-[11px] font-mono text-white font-medium">{worker.id}</span>
                       {worker.is_custom && (
-                        <Badge variant="outline" className="text-[7px] px-0.5 py-0 h-3 border-amber-500/30 text-amber-300">
+                        <Badge variant="outline" className="text-[9px] px-0.5 py-0 h-3 border-amber-500/30 text-amber-300">
                           custom
                         </Badge>
                       )}
@@ -324,7 +324,7 @@ export function WorkerRegistryPanel() {
                         {worker.status || 'idle'}
                       </Badge>
                       {worker.current_task && (
-                        <Badge variant="outline" className="text-[7px] px-0.5 py-0 h-3 border-cyan-500/30 text-cyan-300 truncate max-w-[100px]">
+                        <Badge variant="outline" className="text-[9px] px-0.5 py-0 h-3 border-cyan-500/30 text-cyan-300 truncate max-w-[100px]">
                           {worker.current_task}
                         </Badge>
                       )}

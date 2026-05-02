@@ -1,22 +1,52 @@
 'use client';
 
+import { lazy, Suspense } from 'react';
 import { useKantorkuStore } from '@/lib/kantorku/store';
 import { WorkerCard } from './WorkerCard';
 import { BriefingRoomPanel } from './BriefingRoomPanel';
 import { GroupChannelPanel } from './GroupChannelPanel';
 import { OfficeEventLog } from './OfficeEventLog';
-import { MemoryExplorerPanel } from './MemoryExplorerPanel';
-import { DAGVisualizationPanel } from './DAGVisualizationPanel';
 import { WorkerRegistryPanel } from './WorkerRegistryPanel';
-import { DebriefPanel } from './DebriefPanel';
 import { TodoReviewPanel } from './TodoReviewPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SQUADS } from '@/lib/kantorku/workers-data';
 import {
   Presentation, Users, Activity, MessageCircle,
   Brain, GitBranch, BookOpen, ClipboardCheck,
-  ClipboardList,
+  ClipboardList, Eye, MessageSquare, ScrollText,
+  ListOrdered, Loader2,
 } from 'lucide-react';
+
+// Lazy-loaded panels (not needed on initial render)
+const MemoryExplorerPanel = lazy(() =>
+  import('./MemoryExplorerPanel').then((m) => ({ default: m.MemoryExplorerPanel }))
+);
+const DAGVisualizationPanel = lazy(() =>
+  import('./DAGVisualizationPanel').then((m) => ({ default: m.DAGVisualizationPanel }))
+);
+const DebriefPanelLazy = lazy(() =>
+  import('./DebriefPanel').then((m) => ({ default: m.DebriefPanel }))
+);
+const TaskQueuePanel = lazy(() =>
+  import('./TaskQueuePanel').then((m) => ({ default: m.TaskQueuePanel }))
+);
+const WorkerHubPanel = lazy(() =>
+  import('./WorkerHubPanel').then((m) => ({ default: m.WorkerHubPanel }))
+);
+const SessionTranscriptPanel = lazy(() =>
+  import('./SessionTranscriptPanel').then((m) => ({ default: m.SessionTranscriptPanel }))
+);
+const ReviewRevisionPanel = lazy(() =>
+  import('./ReviewRevisionPanel').then((m) => ({ default: m.ReviewRevisionPanel }))
+);
+
+function LazyFallback() {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <Loader2 className="h-5 w-5 text-cyan-400 animate-spin" />
+    </div>
+  );
+}
 
 export function WorkspaceZone() {
   const { workers, officeEvents } = useKantorkuStore();
@@ -34,7 +64,7 @@ export function WorkspaceZone() {
             <h2 className="text-sm font-semibold text-white">RUANG KERJA</h2>
           </div>
           <div className="flex items-center gap-2 text-[10px]">
-            <span className="text-cyan-400 font-mono">{busyWorkers} busy</span>
+            <span className="text-cyan-400 font-mono">{busyWorkers} sibuk</span>
             <span className="text-slate-600">|</span>
             <span className="text-green-400 font-mono">{idleWorkers} idle</span>
           </div>
@@ -80,6 +110,23 @@ export function WorkspaceZone() {
             <TabsTrigger value="debrief" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <ClipboardCheck className="h-3 w-3 mr-1" />
               Debrief
+            </TabsTrigger>
+            {/* New tabs */}
+            <TabsTrigger value="reviews" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
+              <Eye className="h-3 w-3 mr-1" />
+              Revisi
+            </TabsTrigger>
+            <TabsTrigger value="workerhub" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
+              <MessageSquare className="h-3 w-3 mr-1" />
+              DM
+            </TabsTrigger>
+            <TabsTrigger value="transcript" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
+              <ScrollText className="h-3 w-3 mr-1" />
+              Transkrip
+            </TabsTrigger>
+            <TabsTrigger value="taskqueue" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
+              <ListOrdered className="h-3 w-3 mr-1" />
+              Antrian
             </TabsTrigger>
           </TabsList>
 
@@ -136,14 +183,18 @@ export function WorkspaceZone() {
             <OfficeEventLog events={officeEvents} />
           </TabsContent>
 
-          {/* Memory Explorer */}
+          {/* Memory Explorer (lazy) */}
           <TabsContent value="memory" className="flex-1 overflow-hidden mt-0">
-            <MemoryExplorerPanel />
+            <Suspense fallback={<LazyFallback />}>
+              <MemoryExplorerPanel />
+            </Suspense>
           </TabsContent>
 
-          {/* DAG Visualization */}
+          {/* DAG Visualization (lazy) */}
           <TabsContent value="dag" className="flex-1 overflow-hidden mt-0">
-            <DAGVisualizationPanel />
+            <Suspense fallback={<LazyFallback />}>
+              <DAGVisualizationPanel />
+            </Suspense>
           </TabsContent>
 
           {/* Worker Registry */}
@@ -153,7 +204,37 @@ export function WorkspaceZone() {
 
           {/* Debrief */}
           <TabsContent value="debrief" className="flex-1 overflow-hidden mt-0">
-            <DebriefPanel />
+            <Suspense fallback={<LazyFallback />}>
+              <DebriefPanelLazy />
+            </Suspense>
+          </TabsContent>
+
+          {/* Review & Revision (lazy) */}
+          <TabsContent value="reviews" className="flex-1 overflow-hidden mt-0">
+            <Suspense fallback={<LazyFallback />}>
+              <ReviewRevisionPanel />
+            </Suspense>
+          </TabsContent>
+
+          {/* WorkerHub DM (lazy) */}
+          <TabsContent value="workerhub" className="flex-1 overflow-hidden mt-0">
+            <Suspense fallback={<LazyFallback />}>
+              <WorkerHubPanel />
+            </Suspense>
+          </TabsContent>
+
+          {/* Session Transcript (lazy) */}
+          <TabsContent value="transcript" className="flex-1 overflow-hidden mt-0">
+            <Suspense fallback={<LazyFallback />}>
+              <SessionTranscriptPanel />
+            </Suspense>
+          </TabsContent>
+
+          {/* Task Queue (lazy) */}
+          <TabsContent value="taskqueue" className="flex-1 overflow-hidden mt-0">
+            <Suspense fallback={<LazyFallback />}>
+              <TaskQueuePanel />
+            </Suspense>
           </TabsContent>
         </Tabs>
       </div>

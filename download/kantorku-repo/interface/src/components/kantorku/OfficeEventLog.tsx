@@ -3,7 +3,7 @@
 import { OfficeEvent } from '@/lib/kantorku/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useEffect, useRef, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { Filter, ChevronDown, ChevronRight, Clock, AlertTriangle, AlertCircle, Info, XCircle, CheckCircle2 } from 'lucide-react';
 
 interface OfficeEventLogProps {
@@ -55,7 +55,7 @@ function formatTimestamp(ts?: string): string {
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 }
 
-export function OfficeEventLog({ events }: OfficeEventLogProps) {
+export const OfficeEventLog = React.memo(function OfficeEventLog({ events }: OfficeEventLogProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('all');
   const [workerFilter, setWorkerFilter] = useState<string>('all');
@@ -118,7 +118,7 @@ export function OfficeEventLog({ events }: OfficeEventLogProps) {
               <span className="text-[8px] text-slate-500 font-mono">Type:</span>
               <Badge
                 variant="outline"
-                className={`text-[7px] px-1 py-0 h-3.5 cursor-pointer font-mono ${
+                className={`text-[9px] px-1 py-0 h-3.5 cursor-pointer font-mono ${
                   eventTypeFilter === 'all'
                     ? 'border-cyan-500/40 text-cyan-300 bg-cyan-500/10'
                     : 'border-slate-700/30 text-slate-500 hover:border-slate-500/40'
@@ -131,7 +131,7 @@ export function OfficeEventLog({ events }: OfficeEventLogProps) {
                 <Badge
                   key={type}
                   variant="outline"
-                  className={`text-[7px] px-1 py-0 h-3.5 cursor-pointer font-mono ${
+                  className={`text-[9px] px-1 py-0 h-3.5 cursor-pointer font-mono ${
                     eventTypeFilter === type
                       ? ''
                       : 'border-slate-700/30 text-slate-500 hover:border-slate-500/40 opacity-70'
@@ -153,7 +153,7 @@ export function OfficeEventLog({ events }: OfficeEventLogProps) {
                 <span className="text-[8px] text-slate-500 font-mono">From:</span>
                 <Badge
                   variant="outline"
-                  className={`text-[7px] px-1 py-0 h-3.5 cursor-pointer font-mono ${
+                  className={`text-[9px] px-1 py-0 h-3.5 cursor-pointer font-mono ${
                     workerFilter === 'all'
                       ? 'border-cyan-500/40 text-cyan-300 bg-cyan-500/10'
                       : 'border-slate-700/30 text-slate-500 hover:border-slate-500/40'
@@ -166,7 +166,7 @@ export function OfficeEventLog({ events }: OfficeEventLogProps) {
                   <Badge
                     key={id}
                     variant="outline"
-                    className={`text-[7px] px-1 py-0 h-3.5 cursor-pointer font-mono ${
+                    className={`text-[9px] px-1 py-0 h-3.5 cursor-pointer font-mono ${
                       workerFilter === id
                         ? 'border-cyan-500/40 text-cyan-300 bg-cyan-500/10'
                         : 'border-slate-700/30 text-slate-500 hover:border-slate-500/40 opacity-70'
@@ -329,4 +329,4 @@ export function OfficeEventLog({ events }: OfficeEventLogProps) {
       </div>
     </div>
   );
-}
+});

@@ -491,7 +491,7 @@ function TraceTimeline({ traces, selectedTraceId, onSelectTrace }: { traces: Tra
   return (
     <div className="space-y-0.5">
       {/* Time axis labels */}
-      <div className="flex justify-between text-[7px] text-slate-600 font-mono">
+      <div className="flex justify-between text-[9px] text-slate-600 font-mono">
         <span>{new Date(minTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
         <span>{new Date(maxTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
       </div>
@@ -507,7 +507,7 @@ function TraceTimeline({ traces, selectedTraceId, onSelectTrace }: { traces: Tra
             className={`flex items-center gap-1 cursor-pointer rounded-sm transition-colors ${isSelected ? 'bg-cyan-500/10' : 'hover:bg-slate-700/20'}`}
             onClick={() => onSelectTrace(trace.trace_id)}
           >
-            <span className="text-[7px] text-slate-500 font-mono w-20 truncate flex-shrink-0" title={trace.operation}>
+            <span className="text-[9px] text-slate-500 font-mono w-20 truncate flex-shrink-0" title={trace.operation}>
               {trace.operation}
             </span>
             <div className="flex-1 h-3 bg-slate-900/60 rounded-sm relative">
@@ -523,7 +523,7 @@ function TraceTimeline({ traces, selectedTraceId, onSelectTrace }: { traces: Tra
                 title={`${trace.operation} ${trace.duration_ms ?? '?'}ms`}
               />
             </div>
-            <span className="text-[7px] font-mono flex-shrink-0" style={{ color: statusColor }}>
+            <span className="text-[9px] font-mono flex-shrink-0" style={{ color: statusColor }}>
               {trace.duration_ms ?? '?'}ms
             </span>
           </div>

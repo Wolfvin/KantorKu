@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Check, RotateCcw, X, Clock, Loader2, ArrowRight, DollarSign, AlertTriangle, Shield, ChevronDown, ChevronRight, RefreshCw, Eye } from 'lucide-react';
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 
 interface ContractCardProps {
@@ -42,7 +42,7 @@ const priorityIcons: Record<string, string> = {
   critical: '◆',
 };
 
-export function ContractCard({ contract, onAccept, onRevise, onReject, onRetryTodo, isWorking }: ContractCardProps) {
+export const ContractCard = React.memo(function ContractCard({ contract, onAccept, onRevise, onReject, onRetryTodo, isWorking }: ContractCardProps) {
   const { approvalGates } = useKantorkuStore();
   const [showDetails, setShowDetails] = useState(false);
   const [showRevisionDialog, setShowRevisionDialog] = useState(false);
@@ -500,4 +500,4 @@ export function ContractCard({ contract, onAccept, onRevise, onReject, onRetryTo
       </CardContent>
     </Card>
   );
-}
+});

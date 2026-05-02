@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { useKantorkuStore } from '@/lib/kantorku/store';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +10,7 @@ import {
   Clock, DollarSign, User, FileText, Calendar,
 } from 'lucide-react';
 
-export function DebriefPanel() {
+export const DebriefPanel = React.memo(function DebriefPanel() {
   const { debriefResult, contract, workers } = useKantorkuStore();
 
   const getWorkerEmoji = (id: string) => {
@@ -113,7 +114,7 @@ export function DebriefPanel() {
             <div className="flex items-center gap-1.5">
               <ThumbsUp className="h-3 w-3 text-green-400" />
               <CardTitle className="text-[10px] text-green-300 font-mono uppercase">What Went Well</CardTitle>
-              <Badge variant="outline" className="text-[7px] px-0.5 py-0 h-3 border-green-500/30 text-green-300">
+              <Badge variant="outline" className="text-[9px] px-0.5 py-0 h-3 border-green-500/30 text-green-300">
                 {debrief.what_went_well.length}
               </Badge>
             </div>
@@ -140,7 +141,7 @@ export function DebriefPanel() {
             <div className="flex items-center gap-1.5">
               <AlertTriangle className="h-3 w-3 text-amber-400" />
               <CardTitle className="text-[10px] text-amber-300 font-mono uppercase">What Could Improve</CardTitle>
-              <Badge variant="outline" className="text-[7px] px-0.5 py-0 h-3 border-amber-500/30 text-amber-300">
+              <Badge variant="outline" className="text-[9px] px-0.5 py-0 h-3 border-amber-500/30 text-amber-300">
                 {debrief.what_could_improve.length}
               </Badge>
             </div>
@@ -167,7 +168,7 @@ export function DebriefPanel() {
             <div className="flex items-center gap-1.5">
               <Lightbulb className="h-3 w-3 text-cyan-400" />
               <CardTitle className="text-[10px] text-cyan-300 font-mono uppercase">Lessons Learned</CardTitle>
-              <Badge variant="outline" className="text-[7px] px-0.5 py-0 h-3 border-cyan-500/30 text-cyan-300">
+              <Badge variant="outline" className="text-[9px] px-0.5 py-0 h-3 border-cyan-500/30 text-cyan-300">
                 {debrief.lessons_learned.length}
               </Badge>
             </div>
@@ -195,7 +196,7 @@ export function DebriefPanel() {
               <div className="flex items-center gap-1.5">
                 <User className="h-3 w-3 text-violet-400" />
                 <CardTitle className="text-[10px] text-violet-300 font-mono uppercase">Worker Feedback</CardTitle>
-                <Badge variant="outline" className="text-[7px] px-0.5 py-0 h-3 border-violet-500/30 text-violet-300">
+                <Badge variant="outline" className="text-[9px] px-0.5 py-0 h-3 border-violet-500/30 text-violet-300">
                   {Object.keys(debrief.worker_feedback).length}
                 </Badge>
               </div>
@@ -240,4 +241,4 @@ export function DebriefPanel() {
       </div>
     </div>
   );
-}
+});

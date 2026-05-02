@@ -211,7 +211,7 @@ export function TodoReviewPanel() {
                               Effort: {review.estimated_effort}
                             </span>
                             {review.todo.priority && (
-                              <Badge variant="outline" className={`text-[7px] px-1 py-0 h-3 ${
+                              <Badge variant="outline" className={`text-[9px] px-1 py-0 h-3 ${
                                 review.todo.priority === 'critical' ? 'border-red-500/30 text-red-300' :
                                 review.todo.priority === 'high' ? 'border-amber-500/30 text-amber-300' :
                                 'border-slate-600/50 text-slate-400'

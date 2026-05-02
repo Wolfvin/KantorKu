@@ -182,7 +182,7 @@ export function BriefingRoomPanel() {
                             </span>
                             <Badge
                               variant="outline"
-                              className="text-[7px] px-0.5 py-0 h-3"
+                              className="text-[9px] px-0.5 py-0 h-3"
                               style={{
                                 borderColor: `${msgColor}40`,
                                 color: msgColor,
