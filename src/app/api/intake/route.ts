@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { IntakeResult } from '@/lib/kantorku/types';
 import { logger } from '@/lib/kantorku/logger';
+import { handleApiError } from '@/lib/kantorku/errors';
 import { z } from 'zod';
 
 // ── System Prompt ─────────────────────────────────────────────────
@@ -215,17 +216,16 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: error.issues.map((i) => i.message) },
-        { status: 400 }
-      );
+    // For validation errors, return proper error response via handleApiError
+    if (typeof error === 'object' && error !== null && 'issues' in error && Array.isArray((error as { issues: unknown }).issues)) {
+      return handleApiError(error, 'intake');
     }
+
+    // For other errors, log and return fallback classification
+    // Intake is non-critical; the system can proceed with defaults
     logger.error('intake', 'Error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    // Return a fallback classification instead of erroring out
-    // Intake is non-critical; the system can proceed with defaults
     const fallbackBody = typeof (error as Record<string, unknown>)?.message === 'string'
       ? ((error as Record<string, unknown>).message as string)
       : '';

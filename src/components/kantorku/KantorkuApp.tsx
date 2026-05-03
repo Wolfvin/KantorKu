@@ -20,6 +20,7 @@ import { SettingsDialog, SettingsButton } from './SettingsDialog';
 import { OnboardingOverlay } from './OnboardingOverlay';
 import { ErrorBoundary } from './ErrorBoundary';
 import { useKantorkuStore } from '@/lib/kantorku/store';
+import { useTranslations } from '@/i18n';
 import { Badge } from '@/components/ui/badge';
 import {
   MessageSquare,
@@ -32,6 +33,7 @@ import {
   FolderOpen,
   Sun,
   Moon,
+  Globe,
 } from 'lucide-react';
 
 type MobileTab = 'lobby' | 'workspace' | 'dashboard';
@@ -48,6 +50,7 @@ export function KantorkuApp() {
     setPanelLayout,
   } = useKantorkuStore();
   const [mobileTab, setMobileTab] = useState<MobileTab>('lobby');
+  const { t, locale, setLocale } = useTranslations();
 
   // ── Theme Management ──────────────────────────────────────────
   const [theme, setTheme] = useState<ThemeMode>(() => {
@@ -130,7 +133,7 @@ export function KantorkuApp() {
   const activeSession = sessions.find((s) => s.session_id === activeSessionId);
   const sessionLabel = activeSession
     ? activeSession.contract_title || activeSession.session_id.slice(0, 12)
-    : 'No Session';
+    : t('common.noSession');
 
   const handleNewSessionFromSwitcher = useCallback(() => {
     // The LobbyZone's handleNewSession will be called via the store reset
@@ -203,7 +206,7 @@ export function KantorkuApp() {
                 ))
               ) : (
                 <div className="px-2 py-1.5 text-[10px] text-slate-500 font-mono">
-                  No sessions yet
+                  {t('common.noSessions')}
                 </div>
               )}
               <DropdownMenuSeparator className="bg-slate-700/50" />
@@ -212,7 +215,7 @@ export function KantorkuApp() {
                 className="text-xs font-mono text-cyan-400 cursor-pointer"
               >
                 <Plus className="h-3 w-3 mr-2" />
-                New Session
+                {t('common.newSession')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -242,15 +245,24 @@ export function KantorkuApp() {
             {isBackendConnected ? (
               <>
                 <Wifi className="h-3 w-3 text-green-400" />
-                <span className="text-green-400 font-mono hidden sm:inline">CONNECTED</span>
+                <span className="text-green-400 font-mono hidden sm:inline">{t('health.connected')}</span>
               </>
             ) : (
               <>
                 <WifiOff className="h-3 w-3 text-amber-400" />
-                <span className="text-amber-400 font-mono hidden sm:inline">STANDALONE</span>
+                <span className="text-amber-400 font-mono hidden sm:inline">{t('health.standalone')}</span>
               </>
             )}
           </div>
+          {/* Locale toggle */}
+          <button
+            onClick={() => setLocale(locale === 'en' ? 'id' : 'en')}
+            className={`p-1.5 rounded-md transition-colors ${isLightTheme ? 'hover:bg-slate-200' : 'hover:bg-slate-700/50'}`}
+            title={`Language: ${locale === 'en' ? 'English' : 'Bahasa Indonesia'} (click to switch)`}
+            aria-label={`Switch language, current: ${locale}`}
+          >
+            <Globe className="h-4 w-4 text-cyan-400" />
+          </button>
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
@@ -277,9 +289,9 @@ export function KantorkuApp() {
       <nav className={`flex-shrink-0 sm:hidden border-b backdrop-blur-sm ${isLightTheme ? 'border-cyan-200/50 bg-white/90' : 'border-cyan-900/30 bg-[#0a0e1a]/90'}`} aria-label="Main navigation">
         <div className="flex">
           {[
-            { id: 'lobby' as const, icon: MessageSquare, label: 'Lobby' },
-            { id: 'workspace' as const, icon: Briefcase, label: 'Workspace' },
-            { id: 'dashboard' as const, icon: BarChart3, label: 'Dashboard' },
+            { id: 'lobby' as const, icon: MessageSquare, label: t('zones.lobby') },
+            { id: 'workspace' as const, icon: Briefcase, label: t('zones.workspace') },
+            { id: 'dashboard' as const, icon: BarChart3, label: t('zones.dashboard') },
           ].map(({ id, icon: Icon, label }) => (
             <button
               key={id}
@@ -368,7 +380,7 @@ export function KantorkuApp() {
 
       {/* Skip to content link for accessibility */}
       <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-3 focus:py-1 focus:bg-cyan-600 focus:text-white focus:rounded focus:text-sm">
-        Skip to content
+        {t('accessibility.skipToContent')}
       </a>
     </div>
   );

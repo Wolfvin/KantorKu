@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import type { Contract, IntakeResult, TeamFeedbackRound, ChatApiResponse, InteractiveQuestion } from '@/lib/kantorku/types';
 import { logger } from '@/lib/kantorku/logger';
+import { handleApiError } from '@/lib/kantorku/errors';
 import { z } from 'zod';
 
 // ── System Prompt ─────────────────────────────────────────────────
@@ -534,25 +535,6 @@ export async function POST(req: NextRequest) {
       current_contract,
     );
   } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: error.issues.map((i) => i.message) },
-        { status: 400 }
-      );
-    }
-    logger.error('chat', 'Error', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT');
-    const isRateLimit = errorMessage.includes('429') || errorMessage.includes('rate');
-
-    return NextResponse.json(
-      {
-        error: 'Failed to process message',
-        details: errorMessage,
-        type: isTimeout ? 'timeout' : isRateLimit ? 'rate_limit' : 'internal_error',
-        retry_after_ms: isRateLimit ? 5000 : undefined,
-      },
-      { status: isRateLimit ? 429 : isTimeout ? 504 : 500 }
-    );
+    return handleApiError(error, 'chat');
   }
 }

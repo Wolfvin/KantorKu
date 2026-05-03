@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { HealthStatus } from '@/lib/kantorku/types';
 import { WORKERS } from '@/lib/kantorku/workers-data';
 import { logger } from '@/lib/kantorku/logger';
+import { InternalError, isAppError } from '@/lib/kantorku/errors';
 
 // ── System start time for uptime tracking ─────────────────────────
 const SYSTEM_START_TIME = Date.now();
@@ -121,13 +122,17 @@ export async function GET() {
       status: providerHealthy ? 200 : 503,
     });
   } catch (error: unknown) {
-    logger.error('health', 'Error', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    // Wrap with InternalError for consistent logging and classification
+    const appError = isAppError(error)
+      ? error
+      : new InternalError(error instanceof Error ? error.message : 'Unknown error');
+    logger.error('health', appError.message, appError);
 
+    // Keep the special health check response format
     return NextResponse.json(
       {
         is_healthy: false,
-        message: `Health check failed: ${errorMessage}`,
+        message: `Health check failed: ${appError.message}`,
         uptime_ms: Date.now() - SYSTEM_START_TIME,
         last_check: new Date().toISOString(),
       } satisfies HealthStatus,

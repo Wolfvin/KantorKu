@@ -1,6 +1,7 @@
 'use client';
 
 import { useKantorkuStore } from '@/lib/kantorku/store';
+import { useTranslations } from '@/i18n';
 import { useContractLifecycle } from '@/hooks/use-contract-lifecycle';
 import { ClientChatPanel } from './ChatPanel';
 import { ContractCard } from './ContractCard';
@@ -25,20 +26,21 @@ import {
 
 function IntakeSection() {
   const intakeResult = useKantorkuStore((s) => s.intakeResult);
+  const { t } = useTranslations();
   if (!intakeResult) return null;
 
   return (
     <div className="flex-shrink-0 mx-3 mt-2 p-2 rounded-md bg-slate-800/60 border border-slate-700/30">
       <div className="flex items-center gap-1.5 mb-1">
         <Zap className="h-3 w-3 text-amber-400" />
-        <span className="text-[10px] text-amber-400 font-mono font-semibold">INTAKE</span>
+        <span className="text-[10px] text-amber-400 font-mono font-semibold">{t('lobby.intake')}</span>
       </div>
       <div className="flex flex-wrap gap-1">
         <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-amber-500/30 text-amber-300">{intakeResult.type}</Badge>
         <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-cyan-500/30 text-cyan-300">{intakeResult.urgency}</Badge>
         <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-violet-500/30 text-violet-300">{intakeResult.estimated_complexity}</Badge>
         {intakeResult.estimated_workers && intakeResult.estimated_workers.length > 0 && (
-          <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-teal-500/30 text-teal-300">~{intakeResult.estimated_workers.length} workers</Badge>
+          <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-teal-500/30 text-teal-300">{t('lobby.workersCount', { count: intakeResult.estimated_workers.length })}</Badge>
         )}
         {intakeResult.estimated_duration_ms && (
           <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-slate-500/30 text-slate-300">~{(intakeResult.estimated_duration_ms / 1000).toFixed(0)}s</Badge>
@@ -52,13 +54,14 @@ function IntakeSection() {
 function TeamFeedbackSection() {
   const contractState = useKantorkuStore((s) => s.contractState);
   const teamFeedback = useKantorkuStore((s) => s.teamFeedback);
+  const { t } = useTranslations();
   if (contractState !== 'team_consult' || teamFeedback.length === 0) return null;
 
   return (
     <div className="flex-shrink-0 mx-3 mt-2 p-2 rounded-md bg-violet-500/10 border border-violet-500/30">
       <div className="flex items-center gap-1.5 mb-1.5">
         <Users className="h-3 w-3 text-violet-400" />
-        <span className="text-[10px] text-violet-400 font-mono font-semibold">TEAM FEEDBACK</span>
+        <span className="text-[10px] text-violet-400 font-mono font-semibold">{t('lobby.teamFeedback')}</span>
       </div>
       <div className="space-y-1 max-h-24 overflow-y-auto custom-scrollbar">
         {teamFeedback.map((fb, i) => (
@@ -80,13 +83,14 @@ function TeamFeedbackSection() {
 function ApprovalGatesSection() {
   const contractState = useKantorkuStore((s) => s.contractState);
   const approvalGates = useKantorkuStore((s) => s.approvalGates);
+  const { t } = useTranslations();
   if (contractState !== 'team_review' || approvalGates.length === 0) return null;
 
   return (
     <div className="flex-shrink-0 mx-3 mt-2 p-2 rounded-md bg-teal-500/10 border border-teal-500/30">
       <div className="flex items-center gap-1.5 mb-1.5">
         <CheckCircle2 className="h-3 w-3 text-teal-400" />
-        <span className="text-[10px] text-teal-400 font-mono font-semibold">APPROVAL GATES</span>
+        <span className="text-[10px] text-teal-400 font-mono font-semibold">{t('lobby.approvalGates')}</span>
       </div>
       <div className="space-y-1">
         {approvalGates.map((gate) => (
@@ -106,28 +110,29 @@ function ApprovalGatesSection() {
 function DebriefSection() {
   const contractState = useKantorkuStore((s) => s.contractState);
   const debriefResult = useKantorkuStore((s) => s.debriefResult);
+  const { t } = useTranslations();
   if (contractState !== 'done' || !debriefResult) return null;
 
   return (
     <div className="flex-shrink-0 mx-3 mt-2 p-2 rounded-md bg-green-500/10 border border-green-500/30">
       <div className="flex items-center gap-1.5 mb-1.5">
         <FileText className="h-3 w-3 text-green-400" />
-        <span className="text-[10px] text-green-400 font-mono font-semibold">DEBRIEF</span>
+        <span className="text-[10px] text-green-400 font-mono font-semibold">{t('lobby.debrief')}</span>
       </div>
       <div className="grid grid-cols-2 gap-1.5 mb-1.5">
         <div className="text-center p-1.5 rounded bg-slate-900/60">
           <p className="text-xs font-bold text-cyan-300 font-mono">{(debriefResult.total_duration_ms / 1000).toFixed(1)}s</p>
-          <p className="text-[8px] text-slate-500">Duration</p>
+          <p className="text-[8px] text-slate-500">{t('lobby.duration')}</p>
         </div>
         <div className="text-center p-1.5 rounded bg-slate-900/60">
           <p className="text-xs font-bold text-green-300 font-mono">${debriefResult.total_cost.toFixed(4)}</p>
-          <p className="text-[8px] text-slate-500">Cost</p>
+          <p className="text-[8px] text-slate-500">{t('lobby.cost')}</p>
         </div>
       </div>
       <div className="space-y-1">
         {debriefResult.what_went_well.length > 0 && (
           <div>
-            <span className="text-[9px] text-green-400 font-mono">✓ Went Well</span>
+            <span className="text-[9px] text-green-400 font-mono">✓ {t('lobby.wentWell')}</span>
             {debriefResult.what_went_well.map((w, i) => (
               <p key={`ww-${i}`} className="text-[9px] text-slate-400 ml-2">• {w}</p>
             ))}
@@ -135,7 +140,7 @@ function DebriefSection() {
         )}
         {debriefResult.lessons_learned.length > 0 && (
           <div>
-            <span className="text-[9px] text-amber-400 font-mono">💡 Lessons</span>
+            <span className="text-[9px] text-amber-400 font-mono">💡 {t('lobby.lessons')}</span>
             {debriefResult.lessons_learned.map((l, i) => (
               <p key={`ll-${i}`} className="text-[9px] text-slate-400 ml-2">• {l}</p>
             ))}
@@ -149,13 +154,14 @@ function DebriefSection() {
 function TodoReviewSection() {
   const contractState = useKantorkuStore((s) => s.contractState);
   const contract = useKantorkuStore((s) => s.contract);
+  const { t } = useTranslations();
   if (contractState !== 'todo_review' || !contract) return null;
 
   return (
     <div className="flex-shrink-0 mx-3 mt-2 p-2 rounded-md bg-teal-500/10 border border-teal-500/30">
       <div className="flex items-center gap-1.5 mb-1.5">
         <CheckCircle2 className="h-3 w-3 text-teal-400" />
-        <span className="text-[10px] text-teal-400 font-mono font-semibold">TODO REVIEW</span>
+        <span className="text-[10px] text-teal-400 font-mono font-semibold">{t('lobby.todoReview')}</span>
       </div>
       <div className="space-y-0.5 max-h-20 overflow-y-auto custom-scrollbar">
         {contract.todos.map((todo) => (
@@ -172,14 +178,15 @@ function TodoReviewSection() {
 
 function ClientFeedbackPhase() {
   const contractState = useKantorkuStore((s) => s.contractState);
+  const { t } = useTranslations();
   if (contractState !== 'client_feedback') return null;
 
   return (
     <div className="flex-shrink-0 mx-3 mt-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30">
       <div className="flex items-center gap-1.5">
         <ThumbsUp className="h-3 w-3 text-amber-400" />
-        <span className="text-[10px] text-amber-400 font-mono font-semibold">CONFIRMED</span>
-        <span className="text-[9px] text-amber-300/60 ml-1">Proceeding to execution...</span>
+        <span className="text-[10px] text-amber-400 font-mono font-semibold">{t('lobby.confirmed')}</span>
+        <span className="text-[9px] text-amber-300/60 ml-1">{t('lobby.proceeding')}</span>
       </div>
     </div>
   );
@@ -188,9 +195,10 @@ function ClientFeedbackPhase() {
 function FailedTodosSection({ onRetry }: { onRetry: (todoId: string) => void }) {
   const contractState = useKantorkuStore((s) => s.contractState);
   const contract = useKantorkuStore((s) => s.contract);
+  const { t } = useTranslations();
   if (contractState !== 'failed' || !contract) return null;
 
-  const failedTodos = contract.todos.filter((t) => t.status === 'failed');
+  const failedTodos = contract.todos.filter((todo) => todo.status === 'failed');
   if (failedTodos.length === 0) return null;
 
   return (
@@ -204,7 +212,7 @@ function FailedTodosSection({ onRetry }: { onRetry: (todoId: string) => void }) 
           </div>
           <Button onClick={() => onRetry(todo.id)} size="sm" variant="outline" className="h-6 text-[9px] border-amber-500/40 text-amber-300 hover:bg-amber-500/10 px-2">
             <RefreshCcw className="h-2.5 w-2.5 mr-1" />
-            Retry
+            {t('common.retry')}
           </Button>
         </div>
       ))}
@@ -235,6 +243,7 @@ export function LobbyZone() {
     handleReject,
     handleAnswerQuestion,
   } = useContractLifecycle();
+  const { t } = useTranslations();
 
   return (
     <div className="flex flex-col h-full">
@@ -243,14 +252,14 @@ export function LobbyZone() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-cyan-400" />
-            <h2 className="text-sm font-semibold text-white">LOBBY</h2>
+            <h2 className="text-sm font-semibold text-white">{t('zones.lobby')}</h2>
           </div>
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => undo()}
               disabled={!canUndo()}
               className={`p-1 rounded-md transition-colors ${canUndo() ? 'text-slate-400 hover:text-cyan-400 hover:bg-slate-700/50' : 'text-slate-700 cursor-not-allowed'}`}
-              title="Undo"
+              title={t('common.undo')}
             >
               <Undo2 className="h-3.5 w-3.5" />
             </button>
@@ -258,7 +267,7 @@ export function LobbyZone() {
               onClick={() => redo()}
               disabled={!canRedo()}
               className={`p-1 rounded-md transition-colors ${canRedo() ? 'text-slate-400 hover:text-cyan-400 hover:bg-slate-700/50' : 'text-slate-700 cursor-not-allowed'}`}
-              title="Redo"
+              title={t('common.redo')}
             >
               <Redo2 className="h-3.5 w-3.5" />
             </button>
@@ -339,7 +348,7 @@ export function LobbyZone() {
             className="w-full bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white text-xs"
           >
             <RefreshCcw className="h-3.5 w-3.5 mr-1.5" />
-            New Session
+            {t('common.newSession')}
           </Button>
         </div>
       )}

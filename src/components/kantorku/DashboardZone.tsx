@@ -1,6 +1,7 @@
 'use client';
 
 import { lazy, Suspense } from 'react';
+import { useTranslations } from '@/i18n';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -43,13 +44,14 @@ function TabLoadingFallback() {
 
 // ── Main DashboardZone ──────────────────────────────────────────────
 export function DashboardZone() {
+  const { t } = useTranslations();
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex-shrink-0 px-4 py-2.5 border-b border-slate-700/50 bg-slate-900/50">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-cyan-400" />
-          <h2 className="text-sm font-semibold text-white">DASHBOARD</h2>
+          <h2 className="text-sm font-semibold text-white">{t('zones.dashboard')}</h2>
         </div>
       </div>
 
@@ -59,19 +61,19 @@ export function DashboardZone() {
           <TabsList className="flex-shrink-0 mx-3 mt-2 bg-slate-800/60 border border-slate-700/30 h-7 p-0.5">
             <TabsTrigger value="overview" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Activity className="h-3 w-3 mr-1" />
-              Overview
+              {t('dashboard.tabs.overview')}
             </TabsTrigger>
             <TabsTrigger value="observability" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Eye className="h-3 w-3 mr-1" />
-              Observability
+              {t('dashboard.tabs.observability')}
             </TabsTrigger>
             <TabsTrigger value="infrastructure" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Server className="h-3 w-3 mr-1" />
-              Infra
+              {t('dashboard.tabs.infrastructure')}
             </TabsTrigger>
             <TabsTrigger value="cache" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Database className="h-3 w-3 mr-1" />
-              Cache
+              {t('dashboard.tabs.cache')}
             </TabsTrigger>
           </TabsList>
 

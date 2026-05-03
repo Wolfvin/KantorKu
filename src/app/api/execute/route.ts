@@ -13,6 +13,7 @@ import type {
   ExecuteApiResponse,
 } from '@/lib/kantorku/types';
 import { logger } from '@/lib/kantorku/logger';
+import { handleApiError, BudgetExceededError } from '@/lib/kantorku/errors';
 import { z } from 'zod';
 
 // Kept locally: differs from shared.WORKER_SKILLS — local version uses extended skill descriptions for LLM prompts, shared version uses short role titles from workers-data
@@ -290,33 +291,7 @@ export async function POST(req: NextRequest) {
       const estimatedCalls = (todos.length * 2) + 3;
       const estimatedCostValue = estimatedCalls * estimateCost(1000, 500);
       if (estimatedCostValue > contract.budget_limit) {
-        rootTrace.end_time = new Date().toISOString();
-        rootTrace.duration_ms = Date.now() - executionStart;
-        rootTrace.status = 'error';
-        const blockedStep: MiddlewareStep = {
-          name: 'cost_guard',
-          type: 'cost_guard',
-          status: 'blocked',
-          duration_ms: 1,
-          detail: `Estimated cost $${estimatedCostValue.toFixed(4)} would exceed budget limit $${contract.budget_limit}`,
-        };
-        return NextResponse.json(
-          {
-            error: 'Budget exceeded',
-            details: `Estimated cost $${estimatedCostValue.toFixed(4)} exceeds budget limit $${contract.budget_limit}`,
-            session_id,
-            events,
-            trace_id: traceId,
-            cost: costEntries,
-            traces,
-            escalations,
-            middleware: [blockedStep],
-            dag: { nodes: [], edges: [] },
-            trust_updates: [],
-            emotions,
-          },
-          { status: 403 }
-        );
+        throw new BudgetExceededError(contract.budget_limit, estimatedCostValue);
       }
     }
 
@@ -815,40 +790,6 @@ Respond with JSON:
 
     return NextResponse.json(apiResponse);
   } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: error.issues.map((i) => i.message) },
-        { status: 400 }
-      );
-    }
-    logger.error('execute', 'Fatal error', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-    // Add error event (inline since addEvent is not in scope)
-    events.push({
-      type: 'execution_failed',
-      from_id: 'conductor',
-      content: `Execution failed: ${errorMessage}`,
-      error: errorMessage,
-      timestamp: new Date().toISOString(),
-      session_id: 'default',
-      trace_id: traceId,
-    });
-
-    return NextResponse.json(
-      {
-        error: 'Execution failed',
-        details: errorMessage,
-        session_id: 'default',
-        events,
-        trace_id: traceId,
-        cost: costEntries,
-        traces,
-        escalations,
-        trust_updates: [],
-        emotions,
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, 'execute');
   }
 }

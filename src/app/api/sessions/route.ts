@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Session, ContractState } from '@/lib/kantorku/types';
-import { logger } from '@/lib/kantorku/logger';
+import { handleApiError } from '@/lib/kantorku/errors';
 
 // ── In-memory session store ───────────────────────────────────────
 // In production, this would be backed by a database
@@ -24,12 +24,7 @@ export async function GET() {
       total: sessionList.length,
     });
   } catch (error: unknown) {
-    logger.error('sessions', 'GET error', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json(
-      { error: 'Failed to list sessions', details: message },
-      { status: 500 }
-    );
+    return handleApiError(error, 'sessions');
   }
 }
 
@@ -78,11 +73,6 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (error: unknown) {
-    logger.error('sessions', 'POST error', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json(
-      { error: 'Failed to create session', details: message },
-      { status: 500 }
-    );
+    return handleApiError(error, 'sessions');
   }
 }

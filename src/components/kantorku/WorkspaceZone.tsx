@@ -2,6 +2,7 @@
 
 import { lazy, Suspense } from 'react';
 import { useKantorkuStore } from '@/lib/kantorku/store';
+import { useTranslations } from '@/i18n';
 import { WorkerCard } from './WorkerCard';
 import { BriefingRoomPanel } from './BriefingRoomPanel';
 import { GroupChannelPanel } from './GroupChannelPanel';
@@ -50,6 +51,7 @@ function LazyFallback() {
 
 export function WorkspaceZone() {
   const { workers, officeEvents } = useKantorkuStore();
+  const { t } = useTranslations();
 
   const busyWorkers = workers.filter((w) => w.status === 'busy').length;
   const idleWorkers = workers.filter((w) => w.status === 'idle').length;
@@ -61,12 +63,12 @@ export function WorkspaceZone() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Presentation className="h-4 w-4 text-cyan-400" />
-            <h2 className="text-sm font-semibold text-white">RUANG KERJA</h2>
+            <h2 className="text-sm font-semibold text-white">{t('zones.workspace')}</h2>
           </div>
           <div className="flex items-center gap-2 text-[10px]">
-            <span className="text-cyan-400 font-mono">{busyWorkers} sibuk</span>
+            <span className="text-cyan-400 font-mono">{busyWorkers} {t('common.busy').toLowerCase()}</span>
             <span className="text-slate-600">|</span>
-            <span className="text-green-400 font-mono">{idleWorkers} idle</span>
+            <span className="text-green-400 font-mono">{idleWorkers} {t('common.idle').toLowerCase()}</span>
           </div>
         </div>
       </div>
@@ -77,56 +79,56 @@ export function WorkspaceZone() {
           <TabsList className="flex-shrink-0 mx-3 mt-2 bg-slate-800/60 border border-slate-700/30 h-7 p-0.5 flex-wrap gap-0">
             <TabsTrigger value="workers" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Users className="h-3 w-3 mr-1" />
-              Workers
+              {t('workspace.tabs.workers')}
             </TabsTrigger>
             <TabsTrigger value="briefing" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Presentation className="h-3 w-3 mr-1" />
-              Briefing
+              {t('workspace.tabs.briefing')}
             </TabsTrigger>
             <TabsTrigger value="todoreview" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <ClipboardList className="h-3 w-3 mr-1" />
-              Review
+              {t('workspace.tabs.review')}
             </TabsTrigger>
             <TabsTrigger value="channel" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <MessageCircle className="h-3 w-3 mr-1" />
-              Channel
+              {t('workspace.tabs.channel')}
             </TabsTrigger>
             <TabsTrigger value="events" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Activity className="h-3 w-3 mr-1" />
-              Events
+              {t('workspace.tabs.events')}
             </TabsTrigger>
             <TabsTrigger value="memory" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Brain className="h-3 w-3 mr-1" />
-              Memory
+              {t('workspace.tabs.memory')}
             </TabsTrigger>
             <TabsTrigger value="dag" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <GitBranch className="h-3 w-3 mr-1" />
-              DAG
+              {t('workspace.tabs.dag')}
             </TabsTrigger>
             <TabsTrigger value="registry" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <BookOpen className="h-3 w-3 mr-1" />
-              Registry
+              {t('workspace.tabs.registry')}
             </TabsTrigger>
             <TabsTrigger value="debrief" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <ClipboardCheck className="h-3 w-3 mr-1" />
-              Debrief
+              {t('workspace.tabs.debrief')}
             </TabsTrigger>
             {/* New tabs */}
             <TabsTrigger value="reviews" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <Eye className="h-3 w-3 mr-1" />
-              Revisi
+              {t('workspace.tabs.revisions')}
             </TabsTrigger>
             <TabsTrigger value="workerhub" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <MessageSquare className="h-3 w-3 mr-1" />
-              DM
+              {t('workspace.tabs.dm')}
             </TabsTrigger>
             <TabsTrigger value="transcript" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <ScrollText className="h-3 w-3 mr-1" />
-              Transkrip
+              {t('workspace.tabs.transcript')}
             </TabsTrigger>
             <TabsTrigger value="taskqueue" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
               <ListOrdered className="h-3 w-3 mr-1" />
-              Antrian
+              {t('workspace.tabs.taskQueue')}
             </TabsTrigger>
           </TabsList>
 
