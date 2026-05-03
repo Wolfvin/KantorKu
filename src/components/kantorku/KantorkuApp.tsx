@@ -86,12 +86,6 @@ export function KantorkuApp() {
     });
   }, []);
 
-  // Expose theme to SettingsDialog
-  useEffect(() => {
-    (window as unknown as Record<string, unknown>).__kantorku_theme = theme;
-    (window as unknown as Record<string, (t: ThemeMode) => void>).__kantorku_setTheme = setTheme;
-  }, [theme]);
-
   const isLightTheme = resolvedTheme === 'light';
 
   // ── Keyboard Shortcuts ──────────────────────────────────────

@@ -54,6 +54,7 @@ import {
 import { useKantorkuStore } from '@/lib/kantorku/store';
 import type { WorkerApiKeyConfig } from '@/lib/kantorku/types';
 import { useWebSocket, ConnectionState } from '@/hooks/use-websocket';
+import { useTheme } from 'next-themes';
 import { useState, useCallback, useRef, useEffect } from 'react';
 
 // ── Provider Definitions ──────────────────────────────────────────
@@ -556,6 +557,8 @@ export function SettingsDialog() {
     removeWorkerApiKey,
   } = useKantorkuStore();
 
+  const { theme, setTheme } = useTheme();
+
   const [tempKey, setTempKey] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('kantorku_api_key') || apiKey;
@@ -888,17 +891,11 @@ export function SettingsDialog() {
               </div>
               <div className="flex items-center gap-1.5">
                 {(['dark', 'light', 'system'] as const).map((t) => {
-                  const currentTheme = typeof window !== 'undefined'
-                    ? (window as unknown as Record<string, unknown>).__kantorku_theme as string || 'dark'
-                    : 'dark';
-                  const setThemeFn = typeof window !== 'undefined'
-                    ? (window as unknown as Record<string, (t: string) => void>).__kantorku_setTheme
-                    : null;
-                  const isActive = currentTheme === t;
+                  const isActive = (theme || 'dark') === t;
                   return (
                     <button
                       key={t}
-                      onClick={() => setThemeFn?.(t)}
+                      onClick={() => setTheme(t)}
                       className={`px-2 py-1 rounded text-[9px] font-mono transition-colors ${
                         isActive
                           ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
