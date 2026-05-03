@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Contract, IntakeResult, TeamFeedbackRound, ChatApiResponse, InteractiveQuestion } from '@/lib/kantorku/types';
 import { logger } from '@/lib/kantorku/logger';
+import { z } from 'zod';
 
 // ── System Prompt ─────────────────────────────────────────────────
 const SYSTEM_PROMPT_CONDUCTOR = `You are the Manager (Conductor) of kantorku — a digital office where specialized AI workers collaborate to deliver projects.
@@ -193,11 +194,12 @@ function tryParseQuestion(text: string): {
   };
 }
 
+// Kept locally: differs from shared.generateId(prefix) — this version hardcodes 'c_' prefix instead of accepting one
 function generateId(): string {
   return `c_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 }
 
-// ── Cost estimation (rough) ───────────────────────────────────────
+// Kept locally: differs from shared.estimateCost(model, inputTokens, outputTokens) — this version uses 2 params with flat rates instead of model-based rates
 function estimateCost(inputTokens: number, outputTokens: number): number {
   // Rough estimate: $0.01 per 1K input tokens, $0.03 per 1K output tokens
   return (inputTokens / 1000) * 0.01 + (outputTokens / 1000) * 0.03;
@@ -382,32 +384,28 @@ function buildResponseFromText(
   });
 }
 
+// ── Zod Validation Schema ────────────────────────────────────────
+const RequestSchema = z.object({
+  message: z.string(),
+  history: z.array(z.object({ role: z.string(), content: z.string() })).default([]),
+  session_id: z.string().default('default'),
+  stream: z.boolean().default(false),
+  current_contract: z.any().nullable().default(null),
+});
+
 // ── Route Handler with Streaming Support ──────────────────────────
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const body = await req.json();
+    const body = RequestSchema.parse(await req.json());
     const {
       message,
-      history = [],
-      session_id = 'default',
-      current_contract = null,
-      stream = false,
-    } = body as {
-      message?: string;
-      history?: Array<{ role: string; content: string }>;
-      session_id?: string;
-      current_contract?: Contract | null;
-      stream?: boolean;
-    };
-
-    if (!message || typeof message !== 'string') {
-      return NextResponse.json(
-        { error: 'Message is required and must be a string' },
-        { status: 400 }
-      );
-    }
+      history,
+      session_id,
+      stream,
+    } = body;
+    const current_contract = body.current_contract as Contract | null;
 
     // Build conversation messages with context awareness
     const contextMessage = current_contract
@@ -536,6 +534,12 @@ export async function POST(req: NextRequest) {
       current_contract,
     );
   } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.issues.map((i) => i.message) },
+        { status: 400 }
+      );
+    }
     logger.error('chat', 'Error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT');

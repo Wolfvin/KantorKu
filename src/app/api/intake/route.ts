@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { IntakeResult } from '@/lib/kantorku/types';
 import { logger } from '@/lib/kantorku/logger';
+import { z } from 'zod';
 
 // ── System Prompt ─────────────────────────────────────────────────
 const SYSTEM_PROMPT_INTAKE = `You are the Intake worker of kantorku — a digital office.
@@ -155,23 +156,19 @@ function validateIntake(
   };
 }
 
+// ── Zod Validation Schema ────────────────────────────────────────
+const RequestSchema = z.object({
+  message: z.string(),
+  context: z.array(z.object({ role: z.string(), content: z.string() })).optional(),
+});
+
 // ── Route Handler ─────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const body = await req.json();
-    const { message, context } = body as {
-      message?: string;
-      context?: Array<{ role: string; content: string }>;
-    };
-
-    if (!message || typeof message !== 'string') {
-      return NextResponse.json(
-        { error: 'Message is required and must be a string' },
-        { status: 400 }
-      );
-    }
+    const body = RequestSchema.parse(await req.json());
+    const { message, context } = body;
 
     // Build messages with optional context for follow-up classification
     const messages = [
@@ -218,6 +215,12 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.issues.map((i) => i.message) },
+        { status: 400 }
+      );
+    }
     logger.error('intake', 'Error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 

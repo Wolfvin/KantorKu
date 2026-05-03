@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Contract, DebriefResult } from '@/lib/kantorku/types';
 import { logger } from '@/lib/kantorku/logger';
+import { z } from 'zod';
 
 // ── Debrief System Prompt ─────────────────────────────────────────
 const DEBRIEF_PROMPT = `You are the Conductor of kantorku, generating a comprehensive debrief for a completed contract.
@@ -35,7 +36,7 @@ Guidelines:
 - lessons_learned: 2-4 actionable lessons that can be applied to future contracts
 - worker_feedback: Brief assessment of each worker's output quality and timeliness`;
 
-// ── Parse JSON from LLM response ─────────────────────────────────
+// Kept locally: differs from shared.parseJsonResponse<T>(text) — shared version is generic and has additional extraction methods (first/last brace, first/last bracket)
 function parseJsonResponse(text: string): Record<string, unknown> | null {
   try {
     let jsonStr = text;
@@ -91,27 +92,30 @@ function getDefaultDebrief(
   };
 }
 
+// ── Zod Validation Schema ────────────────────────────────────────
+const RequestSchema = z.object({
+  contract_id: z.string(),
+  session_id: z.string(),
+  contract: z.any().optional(),
+  task_results: z.any().default({}),
+  execution_events: z.array(z.any()).default([]),
+  total_duration_ms: z.number().default(0),
+  total_cost: z.number().default(0),
+});
+
 // ── Route Handler ─────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const body = await req.json();
-    const {
-      contract,
-      task_results = {},
-      execution_events = [],
-      total_duration_ms = 0,
-      total_cost = 0,
-      session_id = 'default',
-    } = body as {
-      contract?: Contract;
-      task_results?: Record<string, unknown>;
-      execution_events?: Array<Record<string, unknown>>;
-      total_duration_ms?: number;
-      total_cost?: number;
-      session_id?: string;
-    };
+    const body = RequestSchema.parse(await req.json());
+    const contract_id = body.contract_id as string;
+    const contract = body.contract as Contract | undefined;
+    const task_results = body.task_results as Record<string, unknown>;
+    const execution_events = body.execution_events as Array<Record<string, unknown>>;
+    const total_duration_ms = body.total_duration_ms as number;
+    const total_cost = body.total_cost as number;
+    const { session_id } = body;
 
     if (!contract) {
       return NextResponse.json(
@@ -239,6 +243,12 @@ Provide a thorough, specific debrief.`,
       },
     });
   } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.issues.map((i) => i.message) },
+        { status: 400 }
+      );
+    }
     logger.error('debrief', 'Error', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(

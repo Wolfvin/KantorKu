@@ -13,8 +13,9 @@ import type {
   ExecuteApiResponse,
 } from '@/lib/kantorku/types';
 import { logger } from '@/lib/kantorku/logger';
+import { z } from 'zod';
 
-// ── Worker skill descriptions for prompts ─────────────────────────
+// Kept locally: differs from shared.WORKER_SKILLS — local version uses extended skill descriptions for LLM prompts, shared version uses short role titles from workers-data
 const WORKER_SKILLS: Record<string, string> = {
   intake: 'Classify and structure messages',
   scout: 'Research and gather information from external sources',
@@ -31,7 +32,7 @@ const WORKER_SKILLS: Record<string, string> = {
   summarizer: 'Summarize discussions, outputs, and key information',
 };
 
-// ── Cost estimation ───────────────────────────────────────────────
+// Kept locally: differs from shared.estimateCost(model, inputTokens, outputTokens) — this version uses 2 params with flat rates instead of model-based rates
 function estimateCost(inputTokens: number, outputTokens: number): number {
   return (inputTokens / 1000) * 0.01 + (outputTokens / 1000) * 0.03;
 }
@@ -239,6 +240,12 @@ function determineEmotion(
   return { emotion: 'neutral', confidence: 0.5 };
 }
 
+// ── Zod Validation Schema ────────────────────────────────────────
+const RequestSchema = z.object({
+  contract: z.any(),
+  session_id: z.string().default('default'),
+});
+
 // ── Main Execution Orchestration ──────────────────────────────────
 export async function POST(req: NextRequest) {
   const executionStart = Date.now();
@@ -260,11 +267,9 @@ export async function POST(req: NextRequest) {
   const workersCompleted = new Set<string>();
 
   try {
-    const body = await req.json();
-    const { contract, session_id = 'default' } = body as {
-      contract?: Contract;
-      session_id?: string;
-    };
+    const body = RequestSchema.parse(await req.json());
+    const contract = body.contract as Contract;
+    const { session_id } = body;
 
     if (!contract) {
       return NextResponse.json(
@@ -810,6 +815,12 @@ Respond with JSON:
 
     return NextResponse.json(apiResponse);
   } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.issues.map((i) => i.message) },
+        { status: 400 }
+      );
+    }
     logger.error('execute', 'Fatal error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 

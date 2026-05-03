@@ -8,6 +8,7 @@ import type {
   MessageType,
 } from '@/lib/kantorku/types';
 import { logger } from '@/lib/kantorku/logger';
+import { z } from 'zod';
 
 // ── Briefing System Prompt ────────────────────────────────────────
 const BRIEFING_MANAGER_PROMPT = `You are the Conductor facilitating a team briefing in the kantorku digital office.
@@ -64,7 +65,7 @@ Respond as your worker persona. Be professional but expressive.
 Choose your message type: speak, concern, suggestion, agreement, disagreement, question, or info.`;
 }
 
-// ── Worker skill map ──────────────────────────────────────────────
+// Kept locally: differs from shared.WORKER_SKILLS — local version uses extended skill descriptions for LLM prompts, shared version uses short role titles from workers-data
 const WORKER_SKILLS: Record<string, string> = {
   intake: 'Classify and structure messages',
   scout: 'Research and gather information from external sources',
@@ -81,7 +82,7 @@ const WORKER_SKILLS: Record<string, string> = {
   summarizer: 'Summarize discussions, outputs, and key information',
 };
 
-// ── Parse JSON from LLM response ─────────────────────────────────
+// Kept locally: differs from shared.parseJsonResponse<T>(text) — shared version is generic and has additional extraction methods (first/last brace, first/last bracket)
 function parseJsonResponse(text: string): Record<string, unknown> | null {
   try {
     let jsonStr = text;
@@ -96,23 +97,23 @@ function parseJsonResponse(text: string): Record<string, unknown> | null {
   }
 }
 
+// ── Zod Validation Schema ────────────────────────────────────────
+const RequestSchema = z.object({
+  contract: z.any(),
+  session_id: z.string().default('default'),
+  workers: z.array(z.string()).optional(),
+  max_rounds: z.number().default(3),
+});
+
 // ── Route Handler ─────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const body = await req.json();
-    const {
-      contract,
-      workers,
-      max_rounds = 3,
-      session_id = 'default',
-    } = body as {
-      contract?: Contract;
-      workers?: string[];
-      max_rounds?: number;
-      session_id?: string;
-    };
+    const body = RequestSchema.parse(await req.json());
+    const contract = body.contract as Contract;
+    const workers = body.workers as string[] | undefined;
+    const { max_rounds, session_id } = body;
 
     if (!contract) {
       return NextResponse.json(
@@ -334,6 +335,12 @@ Please summarize this round, note decisions, and assess consensus.`,
       },
     });
   } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.issues.map((i) => i.message) },
+        { status: 400 }
+      );
+    }
     logger.error('briefing', 'Error', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
