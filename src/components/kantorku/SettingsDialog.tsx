@@ -49,8 +49,10 @@ import {
   Sparkles,
   EyeOff,
   Bot,
+  ChevronDown,
 } from 'lucide-react';
 import { useKantorkuStore } from '@/lib/kantorku/store';
+import type { WorkerApiKeyConfig } from '@/lib/kantorku/types';
 import { useWebSocket, ConnectionState } from '@/hooks/use-websocket';
 import { useState, useCallback, useRef, useEffect } from 'react';
 
@@ -383,6 +385,161 @@ function WebSocketConnectionSection({ backendUrl }: { backendUrl: string }) {
   );
 }
 
+// ── Worker API Key Row ──────────────────────────────────────────────
+const WORKER_PROVIDER_OPTIONS = [
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'google', label: 'Google / Gemini' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'minimax', label: 'MiniMax' },
+  { value: 'xai', label: 'xAI (Grok)' },
+  { value: 'ollama', label: 'Ollama (Local)' },
+  { value: 'zai', label: 'Z-AI SDK' },
+];
+
+function WorkerKeyRow({
+  worker,
+  existingConfig,
+  onSave,
+  onRemove,
+}: {
+  worker: { id: string; model: string; squad: string; role: string; emoji?: string; color?: string };
+  existingConfig: WorkerApiKeyConfig | undefined;
+  onSave: (config: WorkerApiKeyConfig) => void;
+  onRemove: (workerId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(!!existingConfig);
+  const [provider, setProvider] = useState(existingConfig?.provider || worker.model.split('/')[0] || 'anthropic');
+  const [apiKey, setApiKey] = useState(existingConfig?.api_key || '');
+  const [baseUrl, setBaseUrl] = useState(existingConfig?.base_url || '');
+  const [showKey, setShowKey] = useState(false);
+
+  const hasCustomKey = !!existingConfig;
+
+  const handleSave = () => {
+    if (!apiKey.trim()) return;
+    onSave({
+      worker_id: worker.id,
+      provider,
+      model: existingConfig?.model || worker.model,
+      api_key: apiKey.trim(),
+      base_url: baseUrl.trim() || undefined,
+      is_custom: true,
+    });
+  };
+
+  const handleRemove = () => {
+    onRemove(worker.id);
+    setApiKey('');
+    setBaseUrl('');
+    setExpanded(false);
+  };
+
+  return (
+    <div className="p-3 rounded-lg bg-slate-800/60 border border-slate-700/30 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm">{worker.emoji || '🤖'}</span>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-slate-200 font-mono">{worker.id}</span>
+              {hasCustomKey && (
+                <Badge variant="outline" className="text-[7px] px-1 py-0 h-3 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">
+                  Custom Key
+                </Badge>
+              )}
+            </div>
+            <p className="text-[9px] text-slate-500">{worker.role} · <span className="font-mono">{worker.model}</span></p>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 px-1.5 text-[9px] text-slate-500 hover:text-cyan-400"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        </Button>
+      </div>
+
+      {expanded && (
+        <div className="space-y-2 pl-1">
+          {/* Provider Dropdown */}
+          <div className="flex items-center gap-2">
+            <Label className="text-[9px] text-slate-500 w-14 flex-shrink-0">Provider</Label>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value)}
+              className="flex-1 h-6 text-[10px] bg-slate-900/60 border border-slate-700/50 rounded text-slate-200 px-2 font-mono focus:outline-none focus:border-cyan-500/50"
+            >
+              {WORKER_PROVIDER_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* API Key Input */}
+          <div className="flex items-center gap-2">
+            <Label className="text-[9px] text-slate-500 w-14 flex-shrink-0">API Key</Label>
+            <div className="relative flex-1">
+              <Input
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                type={showKey ? 'text' : 'password'}
+                placeholder="Leave empty to use global key"
+                className="bg-slate-900/60 border-slate-700/50 text-[10px] text-slate-200 pr-7 h-6"
+              />
+              <button
+                onClick={() => setShowKey(!showKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+              >
+                {showKey ? <EyeOff className="h-2.5 w-2.5" /> : <Eye className="h-2.5 w-2.5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Base URL (optional) */}
+          <div className="flex items-center gap-2">
+            <Label className="text-[9px] text-slate-500 w-14 flex-shrink-0">Base URL</Label>
+            <Input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="Optional (e.g. http://localhost:11434)"
+              className="bg-slate-900/60 border-slate-700/50 text-[10px] text-slate-200 h-6 flex-1"
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-1.5 justify-end pt-1">
+            {hasCustomKey && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-5 px-2 text-[9px] border-red-500/30 text-red-400 hover:bg-red-500/10"
+                onClick={handleRemove}
+              >
+                <Trash2 className="h-2.5 w-2.5 mr-0.5" />
+                Remove
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-5 px-2 text-[9px] border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+              onClick={handleSave}
+              disabled={!apiKey.trim()}
+            >
+              Save Key
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Settings Dialog ──────────────────────────────────────────
 export function SettingsDialog() {
   const {
@@ -393,6 +550,10 @@ export function SettingsDialog() {
     settingsOpen,
     setSettingsOpen,
     resetAll,
+    workers,
+    workerApiKeys,
+    setWorkerApiKey,
+    removeWorkerApiKey,
   } = useKantorkuStore();
 
   const [tempKey, setTempKey] = useState(() => {
@@ -532,10 +693,14 @@ export function SettingsDialog() {
         </DialogHeader>
 
         <Tabs defaultValue="providers" className="w-full">
-          <TabsList className="bg-slate-800/60 border border-slate-700/30 w-full grid grid-cols-4 h-8">
+          <TabsList className="bg-slate-800/60 border border-slate-700/30 w-full grid grid-cols-5 h-8">
             <TabsTrigger value="providers" className="text-[10px] data-[state=active]:bg-cyan-600/20 data-[state=active]:text-cyan-300">
               <Key className="h-3 w-3 mr-1" />
               API Keys
+            </TabsTrigger>
+            <TabsTrigger value="worker-keys" className="text-[10px] data-[state=active]:bg-cyan-600/20 data-[state=active]:text-cyan-300">
+              <Bot className="h-3 w-3 mr-1" />
+              Workers
             </TabsTrigger>
             <TabsTrigger value="connection" className="text-[10px] data-[state=active]:bg-cyan-600/20 data-[state=active]:text-cyan-300">
               <Globe className="h-3 w-3 mr-1" />
@@ -577,6 +742,48 @@ export function SettingsDialog() {
                 <strong className="text-slate-400">Tips:</strong> For cheapest setup, use Z-AI SDK (free standalone mode) + Ollama (free, local) + DeepSeek (cheap at $0.28/M).
                 For best quality, use Anthropic + Google + MiniMax. Keys are stored in your browser localStorage only — never sent to our servers.
                 You can also set environment variables when using the Python backend.
+              </p>
+            </div>
+
+            <Button
+              onClick={handleSave}
+              className="w-full bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white text-xs"
+            >
+              Save All Settings
+            </Button>
+          </TabsContent>
+
+          {/* ── Tab: Worker API Keys ─────────────────────────────────── */}
+          <TabsContent value="worker-keys" className="space-y-3 mt-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-slate-400">
+                Override API keys per worker. Workers with custom keys use them instead of the global provider key.
+              </p>
+              <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-cyan-500/30 text-cyan-400 bg-cyan-500/10">
+                {workerApiKeys.length}/{workers.length} customized
+              </Badge>
+            </div>
+
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
+              {workers.map((worker) => {
+                const existingConfig = workerApiKeys.find((k) => k.worker_id === worker.id);
+                return (
+                  <WorkerKeyRow
+                    key={worker.id}
+                    worker={worker}
+                    existingConfig={existingConfig}
+                    onSave={setWorkerApiKey}
+                    onRemove={removeWorkerApiKey}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="p-2 rounded-lg bg-slate-800/40 border border-slate-700/20">
+              <p className="text-[9px] text-slate-500 leading-relaxed">
+                <strong className="text-slate-400">Note:</strong> Per-worker keys override the global provider API keys from the previous tab.
+                This is useful when a specific worker needs a different provider, model, or API key than the default.
+                Leave empty to use the global key.
               </p>
             </div>
 

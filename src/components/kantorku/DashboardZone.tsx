@@ -8,6 +8,7 @@ import {
   Activity,
   Eye,
   Server,
+  Database,
 } from 'lucide-react';
 
 // Lazy-load tab components
@@ -19,6 +20,9 @@ const ObservabilityTab = lazy(() =>
 );
 const InfrastructureTab = lazy(() =>
   import('./dashboard/InfrastructureTab').then((m) => ({ default: m.InfrastructureTab }))
+);
+const CachePanel = lazy(() =>
+  import('./CachePanel').then((m) => ({ default: m.CachePanel }))
 );
 
 // ── Tab Loading Fallback ────────────────────────────────────────────
@@ -65,6 +69,10 @@ export function DashboardZone() {
               <Server className="h-3 w-3 mr-1" />
               Infra
             </TabsTrigger>
+            <TabsTrigger value="cache" className="text-[10px] px-2 py-0.5 h-5 data-[state=active]:bg-cyan-600/30 data-[state=active]:text-cyan-300">
+              <Database className="h-3 w-3 mr-1" />
+              Cache
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="flex-1 overflow-hidden mt-0">
@@ -80,6 +88,11 @@ export function DashboardZone() {
           <TabsContent value="infrastructure" className="flex-1 overflow-hidden mt-0">
             <Suspense fallback={<TabLoadingFallback />}>
               <InfrastructureTab />
+            </Suspense>
+          </TabsContent>
+          <TabsContent value="cache" className="flex-1 overflow-hidden mt-0">
+            <Suspense fallback={<TabLoadingFallback />}>
+              <CachePanel />
             </Suspense>
           </TabsContent>
         </Tabs>

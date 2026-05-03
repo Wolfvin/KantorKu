@@ -1,0 +1,93 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement for KantorKu
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature! Please fill out the sections below to help us understand your request.
+        Terima kasih telah menyarankan fitur! Silakan isi bagian di bawah ini untuk membantu kami memahami permintaan Anda.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? Is your feature request related to a problem?
+      placeholder: "I'm always frustrated when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like to see.
+      placeholder: "I would like KantorKu to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other solutions or approaches have you considered?
+      placeholder: "I've also thought about..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use Case
+      description: Describe a real-world scenario where this feature would be helpful.
+      placeholder: "In my workflow, I often need to..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which part of KantorKu would this feature affect?
+      options:
+        - Framework (Python backend)
+        - Interface (Next.js frontend)
+        - CLI (Node.js CLI tool)
+        - New Worker
+        - Existing Worker
+        - Memory / Context Pool
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Low — Nice to have
+        - Medium — Would improve my workflow
+        - High — Critical for my use case
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, mockups, or references.
+      placeholder: "Additional information..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues and discussions to ensure this is not a duplicate
+          required: true
+        - label: I have checked the documentation and this feature is not already available
+          required: true

@@ -150,6 +150,11 @@ export function useContractLifecycle() {
         setIntakeResult(intakeData);
       }
 
+      if (!data) {
+        setContractState('idle');
+        return;
+      }
+
       if (data.type === 'contract_ready' && data.contract) {
         setContract(data.contract);
         setContractState('contract_presented');

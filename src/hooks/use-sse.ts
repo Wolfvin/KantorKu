@@ -61,11 +61,15 @@ export function useSSE(sessionId: string | null, enabled: boolean): UseSSEReturn
   const reconnectAttemptsRef = useRef(0);
   const connectedRef = useRef(false);
 
-  const store = useKantorkuStore();
-  const backendUrl = store.backendUrl;
+  const addOfficeEvent = useKantorkuStore((s) => s.addOfficeEvent);
+  const setActiveSession = useKantorkuStore((s) => s.setActiveSession);
+  const setSseConnected = useKantorkuStore((s) => s.setSseConnected);
 
-  // Derive connected state from ref — no local state needed for connected
-  // We use the store's connected state instead
+  // Get backend URL from settings — fallback to environment variable
+  const backendUrl = typeof window !== 'undefined'
+    ? (localStorage.getItem('kantorku_backend_url') || process.env.NEXT_PUBLIC_KANTORKU_BACKEND_URL || '')
+    : '';
+
   const isConfigured = !!(backendUrl && enabled && sessionId);
 
   const getReconnectDelay = useCallback(() => {
@@ -89,6 +93,7 @@ export function useSSE(sessionId: string | null, enabled: boolean): UseSSEReturn
     if (!isConfigured) {
       cleanup();
       connectedRef.current = false;
+      setSseConnected(false);
       return;
     }
 
@@ -106,6 +111,7 @@ export function useSSE(sessionId: string | null, enabled: boolean): UseSSEReturn
         source.onopen = () => {
           if (disposed) return;
           connectedRef.current = true;
+          setSseConnected(true);
           setError(null);
           reconnectAttemptsRef.current = 0;
         };
@@ -114,9 +120,9 @@ export function useSSE(sessionId: string | null, enabled: boolean): UseSSEReturn
           if (disposed) return;
           try {
             const data = JSON.parse(msg.data) as OfficeEvent;
-            store.addEvent(data);
+            addOfficeEvent(data);
             if (data.session_id) {
-              store.setCurrentSessionId(data.session_id);
+              setActiveSession(data.session_id);
             }
           } catch {
             // Non-JSON message, ignore
@@ -129,7 +135,7 @@ export function useSSE(sessionId: string | null, enabled: boolean): UseSSEReturn
             if (disposed) return;
             try {
               const data = JSON.parse(msg.data) as OfficeEvent;
-              store.addEvent(data);
+              addOfficeEvent(data);
             } catch {
               // Non-JSON message, ignore
             }
@@ -139,6 +145,7 @@ export function useSSE(sessionId: string | null, enabled: boolean): UseSSEReturn
         source.onerror = () => {
           if (disposed) return;
           connectedRef.current = false;
+          setSseConnected(false);
           setError('SSE connection error');
 
           if (source.readyState === EventSource.CLOSED) {
@@ -158,6 +165,7 @@ export function useSSE(sessionId: string | null, enabled: boolean): UseSSEReturn
       } catch (err) {
         if (disposed) return;
         connectedRef.current = false;
+        setSseConnected(false);
         // Use queueMicrotask to avoid synchronous setState in effect
         queueMicrotask(() => {
           if (!disposed) {
@@ -173,7 +181,7 @@ export function useSSE(sessionId: string | null, enabled: boolean): UseSSEReturn
       disposed = true;
       cleanup();
     };
-  }, [isConfigured, backendUrl, sessionId, cleanup, store, getReconnectDelay]);
+  }, [isConfigured, backendUrl, sessionId, cleanup, addOfficeEvent, setActiveSession, setSseConnected, getReconnectDelay]);
 
   const reconnect = useCallback(() => {
     reconnectAttemptsRef.current = 0;

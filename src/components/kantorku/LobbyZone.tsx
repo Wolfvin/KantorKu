@@ -17,6 +17,8 @@ import {
   Clock,
   FileText,
   ThumbsUp,
+  Undo2,
+  Redo2,
 } from 'lucide-react';
 
 // ── Inline Sub-components ───────────────────────────────────────────
@@ -218,6 +220,10 @@ export function LobbyZone() {
     contractState,
     isManagerThinking,
     isWorking,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useKantorkuStore();
 
   const {
@@ -239,7 +245,23 @@ export function LobbyZone() {
             <MessageSquare className="h-4 w-4 text-cyan-400" />
             <h2 className="text-sm font-semibold text-white">LOBBY</h2>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => undo()}
+              disabled={!canUndo()}
+              className={`p-1 rounded-md transition-colors ${canUndo() ? 'text-slate-400 hover:text-cyan-400 hover:bg-slate-700/50' : 'text-slate-700 cursor-not-allowed'}`}
+              title="Undo"
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => redo()}
+              disabled={!canRedo()}
+              className={`p-1 rounded-md transition-colors ${canRedo() ? 'text-slate-400 hover:text-cyan-400 hover:bg-slate-700/50' : 'text-slate-700 cursor-not-allowed'}`}
+              title="Redo"
+            >
+              <Redo2 className="h-3.5 w-3.5" />
+            </button>
             <Badge
               variant="outline"
               className={`text-[9px] px-1.5 py-0 h-4 font-mono ${CONTRACT_STATE_COLORS[contractState]}`}

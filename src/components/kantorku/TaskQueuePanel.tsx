@@ -19,7 +19,7 @@ interface QueueTask {
   id: string;
   description: string;
   assigned_to: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: 'high' | 'medium' | 'low' | 'critical';
   state: TaskState;
   retryCount: number;
   maxRetries: number;
@@ -39,6 +39,7 @@ const STATE_CONFIG: Record<TaskState, { color: string; bg: string; border: strin
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
+  critical: 'border-purple-500/30 text-purple-300 bg-purple-500/10',
   high: 'border-red-500/30 text-red-300 bg-red-500/10',
   medium: 'border-amber-500/30 text-amber-300 bg-amber-500/10',
   low: 'border-slate-500/30 text-slate-400 bg-slate-500/10',

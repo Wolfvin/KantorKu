@@ -31,6 +31,9 @@ import {
   TimeTravelSnapshot,
   ContextSwitchEvent,
   ImpromptuTask,
+  CacheEntry,
+  WorkerApiKeyConfig,
+  UndoableAction,
 } from './types';
 import { WORKERS } from './workers-data';
 
@@ -227,6 +230,26 @@ interface KantorkuStore {
   apiKey: string;
   setApiKey: (key: string) => void;
 
+  // ── Per-Worker API Keys ───────────────────────────────────────
+  workerApiKeys: WorkerApiKeyConfig[];
+  setWorkerApiKey: (config: WorkerApiKeyConfig) => void;
+  removeWorkerApiKey: (workerId: string) => void;
+
+  // ── Cache ─────────────────────────────────────────────────────
+  cacheEntries: CacheEntry[];
+  addCacheEntry: (entry: CacheEntry) => void;
+  removeCacheEntry: (key: string) => void;
+  clearCache: () => void;
+
+  // ── Undo/Redo ─────────────────────────────────────────────────
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
+  pushUndo: (action: UndoableAction) => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+
   // ── Loading States ────────────────────────────────────────────
   isManagerThinking: boolean;
   setManagerThinking: (thinking: boolean) => void;
@@ -293,6 +316,10 @@ const initialState = {
   impromptuTasks: [] as ImpromptuTask[],
   panelLayout: { lobby: 30, workspace: 45, dashboard: 25 },
   apiKey: '',
+  workerApiKeys: [] as WorkerApiKeyConfig[],
+  cacheEntries: [] as CacheEntry[],
+  undoStack: [] as UndoableAction[],
+  redoStack: [] as UndoableAction[],
   isManagerThinking: false,
   isWorking: false,
   isStreaming: false,
@@ -735,6 +762,57 @@ export const useKantorkuStore = create<KantorkuStore>((set, get) => ({
       localStorage.setItem('kantorku_api_key', key);
     }
   },
+
+  // ── Per-Worker API Keys ──────────────────────────────────
+  setWorkerApiKey: (config) =>
+    set((state) => ({
+      workerApiKeys: [
+        ...state.workerApiKeys.filter((k) => k.worker_id !== config.worker_id),
+        config,
+      ],
+    })),
+  removeWorkerApiKey: (workerId) =>
+    set((state) => ({
+      workerApiKeys: state.workerApiKeys.filter((k) => k.worker_id !== workerId),
+    })),
+
+  // ── Cache ────────────────────────────────────────────────
+  addCacheEntry: (entry) =>
+    set((state) => ({
+      cacheEntries: [...state.cacheEntries.filter((e) => e.key !== entry.key), entry],
+    })),
+  removeCacheEntry: (key) =>
+    set((state) => ({
+      cacheEntries: state.cacheEntries.filter((e) => e.key !== key),
+    })),
+  clearCache: () => set({ cacheEntries: [] }),
+
+  // ── Undo/Redo ───────────────────────────────────────────
+  pushUndo: (action) =>
+    set((state) => ({
+      undoStack: [...state.undoStack.slice(-49), action],
+      redoStack: [], // Clear redo stack on new action
+    })),
+  undo: () =>
+    set((state) => {
+      const lastAction = state.undoStack[state.undoStack.length - 1];
+      if (!lastAction) return state;
+      return {
+        undoStack: state.undoStack.slice(0, -1),
+        redoStack: [...state.redoStack, lastAction],
+      };
+    }),
+  redo: () =>
+    set((state) => {
+      const lastAction = state.redoStack[state.redoStack.length - 1];
+      if (!lastAction) return state;
+      return {
+        redoStack: state.redoStack.slice(0, -1),
+        undoStack: [...state.undoStack, lastAction],
+      };
+    }),
+  canUndo: () => get().undoStack.length > 0,
+  canRedo: () => get().redoStack.length > 0,
 
   // ── Loading States ─────────────────────────────────────────
   setManagerThinking: (thinking) => set({ isManagerThinking: thinking }),

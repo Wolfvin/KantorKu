@@ -1,0 +1,114 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior in KantorKu
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the sections below to help us resolve the issue.
+        Terima kasih telah melaporkan bug! Silakan isi bagian di bawah ini untuk membantu kami menyelesaikan masalahnya.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+      placeholder: "When I do X, Y happens instead of Z..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: "I expected X to happen because..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+      placeholder: "Instead, Y happened..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which part of KantorKu is affected?
+      options:
+        - Framework (Python backend)
+        - Interface (Next.js frontend)
+        - CLI (Node.js CLI tool)
+        - Worker
+        - Memory / Context Pool
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide details about your environment.
+      placeholder: |
+        - OS: (e.g., Ubuntu 22.04, macOS 14, Windows 11)
+        - Python version: (e.g., 3.12.1)
+        - Node.js version: (e.g., 20.11.0)
+        - KantorKu version: (e.g., 0.4.1)
+        - Browser: (e.g., Chrome 124, Firefox 125)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: |
+        Please paste any relevant error logs or stack traces.
+        **Important:** Remove/sanitize any API keys or credentials before posting!
+      placeholder: "Paste logs here..."
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: |
+        Relevant configuration (worker setup, etc.).
+        **Important:** Remove/sanitize any API keys!
+      placeholder: "Worker configuration (sanitized)..."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have sanitized any API keys or credentials from my report
+          required: true
+        - label: I am using a supported version of KantorKu (see SECURITY.md)
+          required: false

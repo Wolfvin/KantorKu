@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState, useMemo } from 'react';
+import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,65 +12,25 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Send, Loader2, User, Bot, Search, RotateCcw, X } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { MESSAGE_TYPE_COLORS, MESSAGE_TYPE_ICONS } from '@/lib/kantorku/workers-data';
 import { WORKERS } from '@/lib/kantorku/workers-data';
 import { ClientChatMessage, WorkersChatMessage, MessageType, InteractiveQuestion } from '@/lib/kantorku/types';
 import { useKantorkuStore } from '@/lib/kantorku/store';
 
-// ── Simple Markdown-like Renderer ───────────────────────────────────
-function SimpleMarkdown({ content }: { content: string }) {
-  // Split by code blocks
-  const parts = content.split(/(```[\s\S]*?```)/g);
-
+// ── Safe Markdown Renderer (replaces dangerouslySetInnerHTML) ──────
+function SafeMarkdown({ content }: { content: string }) {
   return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith('```') && part.endsWith('```')) {
-          const code = part.slice(3, -3);
-          const firstNewline = code.indexOf('\n');
-          const lang = firstNewline > 0 ? code.slice(0, firstNewline).trim() : '';
-          const codeBody = firstNewline > 0 ? code.slice(firstNewline + 1) : code;
-          return (
-            <pre key={i} className="mt-1 mb-1 p-1.5 rounded bg-slate-900/80 border border-slate-700/30 overflow-x-auto">
-              {lang && (
-                <span className="text-[8px] text-cyan-400 font-mono block mb-0.5">{lang}</span>
-              )}
-              <code className="text-[10px] text-slate-300 font-mono whitespace-pre-wrap">{codeBody}</code>
-            </pre>
-          );
-        }
-
-        // Process inline formatting
-        const lines = part.split('\n');
-        return (
-          <span key={i}>
-            {lines.map((line, j) => {
-              // Bold
-              let processed = line.replace(
-                /\*\*(.*?)\*\*/g,
-                '<strong class="text-white font-semibold">$1</strong>'
-              );
-              // Inline code
-              processed = processed.replace(
-                /`([^`]+)`/g,
-                '<code class="text-[10px] bg-slate-900/60 px-0.5 py-0 rounded text-cyan-300 font-mono">$1</code>'
-              );
-              // Bullet points
-              if (processed.startsWith('- ') || processed.startsWith('• ')) {
-                processed = '<span class="text-cyan-400 mr-1">•</span>' + processed.slice(2);
-              }
-
-              return (
-                <span key={j}>
-                  <span dangerouslySetInnerHTML={{ __html: processed }} />
-                  {j < lines.length - 1 && <br />}
-                </span>
-              );
-            })}
-          </span>
-        );
-      })}
-    </>
+    <div className="prose prose-invert prose-xs max-w-none text-xs leading-relaxed
+      prose-strong:text-white prose-strong:font-semibold
+      prose-code:text-[10px] prose-code:bg-slate-900/60 prose-code:px-0.5 prose-code:rounded prose-code:text-cyan-300 prose-code:font-mono
+      prose-pre:bg-slate-900/80 prose-pre:border prose-pre:border-slate-700/30 prose-pre:rounded prose-pre:p-1.5 prose-pre:mt-1 prose-pre:mb-1
+      prose-ul:list-disc prose-ul:pl-4
+      prose-li:text-slate-300 prose-li:text-[11px]
+      prose-p:my-0.5 prose-headings:my-1
+    ">
+      <ReactMarkdown>{content}</ReactMarkdown>
+    </div>
   );
 }
 
@@ -325,7 +285,7 @@ export function ClientChatPanel({
                   🏷️ TEAM FEEDBACK
                 </span>
               )}
-              <SimpleMarkdown content={msg.content} />
+              <SafeMarkdown content={msg.content} />
               {/* Interactive Question Options */}
               {msg.question && onAnswerQuestion && (
                 <InteractiveQuestionCard

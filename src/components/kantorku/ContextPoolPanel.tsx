@@ -158,10 +158,10 @@ export function ContextPoolPanel() {
                   </Badge>
                 )}
               </div>
-              {pw.latencyMs > 0 && (
+              {pw.latencyMs != null && pw.latencyMs > 0 && (
                 <div className="flex items-center gap-0.5 mt-1">
                   <Clock className="h-2 w-2 text-slate-500" />
-                  <span className="text-[7px] font-mono text-slate-500">{pw.latencyMs.toFixed(0)}ms</span>
+                  <span className="text-[7px] font-mono text-slate-500">{pw.latencyMs!.toFixed(0)}ms</span>
                 </div>
               )}
               {pw.currentTask && (

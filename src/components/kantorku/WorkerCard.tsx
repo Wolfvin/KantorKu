@@ -165,7 +165,7 @@ export const WorkerCard = React.memo(function WorkerCard({ worker, compact = fal
                 {worker.id}
               </span>
               {workerDelegations.length > 0 && (
-                <ArrowRightLeft className="h-2.5 w-2.5 text-amber-400" title="Has delegations" />
+                <ArrowRightLeft className="h-2.5 w-2.5 text-amber-400" />
               )}
               <div className="ml-auto">
                 {expanded ? (

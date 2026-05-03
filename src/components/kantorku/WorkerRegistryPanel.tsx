@@ -302,7 +302,7 @@ export function WorkerRegistryPanel() {
                           custom
                         </Badge>
                       )}
-                      <Plug className="h-2.5 w-2.5 text-green-400" title="Hot-plug capable" />
+                      <Plug className="h-2.5 w-2.5 text-green-400" />
                     </div>
 
                     {/* Role & Model */}

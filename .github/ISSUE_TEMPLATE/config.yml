@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 GitHub Discussions
+    url: https://github.com/Wolfvin/KantorKu/discussions
+    about: Ask questions, share ideas, and discuss with the community.
+  - name: 📖 Documentation
+    url: https://github.com/Wolfvin/KantorKu#readme
+    about: Check the README and docs before opening an issue.
+  - name: 🔒 Security Vulnerability
+    url: https://github.com/Wolfvin/KantorKu/security/advisories
+    about: Please report security vulnerabilities through GitHub Security Advisories, not public issues.

@@ -484,3 +484,132 @@ export interface ImpromptuTask {
   volunteer?: string;
   timestamp: string;
 }
+
+// ── Aggregated Health ──────────────────────────────────────────────
+export interface AggregatedHealth {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  checks: Record<string, {
+    status: 'pass' | 'warn' | 'fail';
+    message?: string;
+    latency_ms?: number;
+    timestamp: string;
+  }>;
+  uptime_ms?: number;
+  version?: string;
+}
+
+// ── Health Dashboard ──────────────────────────────────────────────
+export interface HealthDashboard {
+  overall: 'healthy' | 'degraded' | 'unhealthy';
+  providers: Record<string, {
+    status: 'available' | 'degraded' | 'unavailable';
+    latency_ms: number;
+    error_rate: number;
+    last_check: string;
+    circuit_breaker?: CircuitBreakerState;
+  }>;
+  workers: Record<string, {
+    status: 'idle' | 'busy' | 'error' | 'offline';
+    current_task?: string;
+    latency_ms?: number;
+    tasks_completed?: number;
+    error_count?: number;
+  }>;
+  system: {
+    uptime_ms: number;
+    total_requests: number;
+    active_sessions: number;
+    memory_usage_mb?: number;
+  };
+  alerts: Array<{
+    id: string;
+    severity: 'info' | 'warning' | 'critical';
+    message: string;
+    timestamp: string;
+    resolved: boolean;
+  }>;
+}
+
+// ── Office Status ─────────────────────────────────────────────────
+export interface OfficeStatus {
+  status: 'running' | 'idle' | 'error';
+  active_sessions: number;
+  total_workers: number;
+  busy_workers: number;
+  uptime_ms: number;
+  version: string;
+  provider_status: Record<string, 'available' | 'degraded' | 'unavailable'>;
+  memory_rings: {
+    ring1_entries: number;
+    ring2_entries: number;
+    ring3_entries: number;
+  };
+  task_queue: {
+    pending: number;
+    in_progress: number;
+    completed: number;
+    failed: number;
+  };
+}
+
+// ── Circuit Breaker Status (Extended) ─────────────────────────────
+export interface CircuitBreakerStatus {
+  provider: string;
+  state: 'closed' | 'open' | 'half_open';
+  failure_count: number;
+  success_count: number;
+  last_failure?: string;
+  last_success?: string;
+  recovery_timeout_ms: number;
+  half_open_max_calls: number;
+  state_changed_at: string;
+}
+
+// ── Session Snapshot ──────────────────────────────────────────────
+export interface SessionSnapshot {
+  session_id: string;
+  state: ContractState;
+  contract: Contract | null;
+  messages: ClientChatMessage[];
+  worker_messages: WorkersChatMessage[];
+  intake: IntakeResult | null;
+  briefing: BriefingResult | null;
+  debrief: DebriefResult | null;
+  cost: CostReport | null;
+  traces: TraceEntry[];
+  created_at: string;
+  updated_at: string;
+  duration_ms?: number;
+}
+
+// ── Cache Entry ───────────────────────────────────────────────────
+export interface CacheEntry {
+  key: string;
+  value: string;
+  ttl_ms: number;
+  created_at: string;
+  accessed_at: string;
+  hit_count: number;
+  provider?: string;
+  model?: string;
+}
+
+// ── Worker API Key Configuration ──────────────────────────────────
+export interface WorkerApiKeyConfig {
+  worker_id: string;
+  provider: string;
+  model: string;
+  api_key: string;
+  base_url?: string;
+  is_custom?: boolean;
+}
+
+// ── Undo/Redo Action ──────────────────────────────────────────────
+export interface UndoableAction {
+  id: string;
+  type: 'contract_update' | 'todo_status' | 'gate_update' | 'delegation' | 'worker_hire' | 'worker_fire';
+  description: string;
+  timestamp: string;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+}
