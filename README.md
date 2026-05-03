@@ -12,7 +12,7 @@
     <a href="#credits">Credits</a>
   </p>
   <p align="center">
-    <img src="https://img.shields.io/badge/version-0.4.0-blue" alt="Version" />
+    <img src="https://img.shields.io/badge/version-0.4.1-blue" alt="Version" />
     <img src="https://img.shields.io/badge/python-3.12+-green" alt="Python" />
     <img src="https://img.shields.io/badge/next.js-16-black" alt="Next.js" />
     <img src="https://img.shields.io/badge/license-MIT-purple" alt="License" />

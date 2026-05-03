@@ -620,7 +620,7 @@ export function SettingsDialog() {
   const handleCheckUpdates = () => {
     setCheckingUpdates(true);
     setTimeout(() => {
-      setUpdateInfo({ current: '0.4.0', latest: '0.4.0', upToDate: true });
+      setUpdateInfo({ current: '0.4.1', latest: '0.4.1', upToDate: true });
       setCheckingUpdates(false);
     }, 1500);
   };
@@ -958,7 +958,7 @@ export function SettingsDialog() {
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-slate-500 font-mono">Framework Version</span>
                 <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 font-mono border-cyan-500/30 text-cyan-400 bg-cyan-500/10">
-                  v0.4.0
+                  v0.4.1
                 </Badge>
               </div>
               <Button

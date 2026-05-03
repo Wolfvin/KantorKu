@@ -1,0 +1,73 @@
+name: Worker Request
+description: Request a new worker or worker improvement for KantorKu
+labels: ["enhancement", "worker"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Request a new specialized worker for KantorKu's office metaphor.
+        Workers are AI agents with specific roles, models, and capabilities.
+
+  - type: input
+    id: worker-name
+    attributes:
+      label: Worker Name
+      description: Suggested name in snake_case (e.g., `coder_mobile`, `analyst_data`)
+      placeholder: coder_mobile
+    validations:
+      required: true
+
+  - type: dropdown
+    id: squad
+    attributes:
+      label: Squad
+      description: Which squad should this worker belong to?
+      options:
+        - coding
+        - verification
+        - support
+        - translation
+        - new squad (specify in description)
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Suggested Model
+      description: Which LLM model would be best for this worker?
+      placeholder: anthropic/claude-sonnet-4-6
+    validations:
+      required: true
+
+  - type: textarea
+    id: role
+    attributes:
+      label: Worker Role
+      description: What specialized tasks would this worker perform?
+      placeholder: |
+        Specializes in React Native / Flutter mobile development.
+        Handles cross-platform UI components, native module integration,
+        and mobile-specific performance optimization.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases
+      description: Give 2-3 specific examples of when this worker would be needed
+      placeholder: |
+        1. Building a React Native navigation flow
+        2. Debugging iOS/Android native module issues
+        3. Optimizing mobile app startup time
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other details (existing workers that could collaborate, skills needed, etc.)
+    validations:
+      required: false

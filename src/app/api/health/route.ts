@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { HealthStatus } from '@/lib/kantorku/types';
 import { WORKERS } from '@/lib/kantorku/workers-data';
+import { logger } from '@/lib/kantorku/logger';
 
 // ── System start time for uptime tracking ─────────────────────────
 const SYSTEM_START_TIME = Date.now();
@@ -40,7 +41,7 @@ export async function GET() {
     } catch (error) {
       providerHealthy = false;
       providerLatency = Date.now() - checkStart;
-      console.warn('[Health API] Provider check failed:', error instanceof Error ? error.message : 'Unknown');
+      logger.warn('health', 'Provider check failed', error instanceof Error ? error.message : 'Unknown');
     }
 
     // Build provider health status
@@ -106,7 +107,7 @@ export async function GET() {
         node_version: process.version,
         platform: process.platform,
       },
-      version: '0.4.0',
+      version: '0.4.1',
       workers_summary: {
         total: WORKERS.length,
         idle: WORKERS.filter((w) => w.status === 'idle' || !w.status).length,
@@ -120,7 +121,7 @@ export async function GET() {
       status: providerHealthy ? 200 : 503,
     });
   } catch (error: unknown) {
-    console.error('[Health API] Error:', error);
+    logger.error('health', 'Error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     return NextResponse.json(

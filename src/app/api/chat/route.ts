@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Contract, IntakeResult, TeamFeedbackRound, ChatApiResponse, InteractiveQuestion } from '@/lib/kantorku/types';
+import { logger } from '@/lib/kantorku/logger';
 
 // ── System Prompt ─────────────────────────────────────────────────
 const SYSTEM_PROMPT_CONDUCTOR = `You are the Manager (Conductor) of kantorku — a digital office where specialized AI workers collaborate to deliver projects.
@@ -490,7 +491,7 @@ export async function POST(req: NextRequest) {
             );
             controller.close();
           } catch (streamError) {
-            console.error('[Chat API] Stream error:', streamError);
+            logger.error('chat', 'Stream error', streamError);
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ type: 'error', message: streamError instanceof Error ? streamError.message : 'Stream error' })}\n\n`)
             );
@@ -535,7 +536,7 @@ export async function POST(req: NextRequest) {
       current_contract,
     );
   } catch (error: unknown) {
-    console.error('[Chat API] Error:', error);
+    logger.error('chat', 'Error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('ETIMEDOUT');
     const isRateLimit = errorMessage.includes('429') || errorMessage.includes('rate');

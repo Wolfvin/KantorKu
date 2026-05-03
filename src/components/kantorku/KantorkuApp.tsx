@@ -160,7 +160,7 @@ export function KantorkuApp() {
             variant="outline"
             className="text-[8px] px-1 py-0 h-4 font-mono border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hidden sm:inline-flex"
           >
-            v0.8.0
+            v0.4.1
           </Badge>
 
           {/* Session Switcher */}

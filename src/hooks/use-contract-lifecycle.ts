@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import { useKantorkuStore } from '@/lib/kantorku/store';
+import { logger } from '@/lib/kantorku/logger';
 import type { ChatApiResponse, ExecuteApiResponse, TeamFeedbackRound, DebriefResult, Contract } from '@/lib/kantorku/types';
 import { toast } from 'sonner';
 
@@ -227,7 +228,7 @@ export function useContractLifecycle() {
       // Track cost (estimated)
       addCostEntry('conductor', 500, 200, 0.015);
     } catch (error) {
-      console.error('Chat error:', error);
+      logger.error('contract-lifecycle', 'Chat error', error);
       setContractState('idle');
       addClientMessage({
         id: `msg_${Date.now()}`,
@@ -611,7 +612,7 @@ export function useContractLifecycle() {
         updateSession(activeSessionId, { state: hasFailed ? 'failed' : 'done', total_cost: stateAfter.costReport?.total_cost || 0 });
       }
     } catch (error) {
-      console.error('Execute error:', error);
+      logger.error('contract-lifecycle', 'Execute error', error);
       setContractState('failed');
       addClientMessage({
         id: `msg_${Date.now()}`,
@@ -673,7 +674,7 @@ export function useContractLifecycle() {
         });
       }
     } catch (error) {
-      console.error('Revise error:', error);
+      logger.error('contract-lifecycle', 'Revise error', error);
     } finally {
       setManagerThinking(false);
     }

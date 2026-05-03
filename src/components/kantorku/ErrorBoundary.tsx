@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { logger } from '@/lib/kantorku/logger';
 import { Button } from '@/components/ui/button';
 
 interface ErrorBoundaryProps {
@@ -26,7 +27,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error(`[ErrorBoundary] ${this.props.fallbackTitle || 'Zone'} crashed:`, error, errorInfo);
+    logger.error('error-boundary', `${this.props.fallbackTitle || 'Zone'} crashed`, error, errorInfo);
     this.setState({ errorInfo });
   }
 

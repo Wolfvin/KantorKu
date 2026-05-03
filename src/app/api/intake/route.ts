@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { IntakeResult } from '@/lib/kantorku/types';
+import { logger } from '@/lib/kantorku/logger';
 
 // ── System Prompt ─────────────────────────────────────────────────
 const SYSTEM_PROMPT_INTAKE = `You are the Intake worker of kantorku — a digital office.
@@ -217,7 +218,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    console.error('[Intake API] Error:', error);
+    logger.error('intake', 'Error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // Return a fallback classification instead of erroring out

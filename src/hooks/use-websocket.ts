@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useKantorkuStore } from '@/lib/kantorku/store';
+import { logger } from '@/lib/kantorku/logger';
 import type { OfficeEvent } from '@/lib/kantorku/types';
 
 interface UseWebSocketOptions {
@@ -64,7 +65,7 @@ export function useWebSocket({ url, sessionId, enabled = true }: UseWebSocketOpt
         const data = JSON.parse(event.data);
         handleWebSocketMessage(data);
       } catch (e) {
-        console.error('[WebSocket] Message parse error:', e);
+        logger.error('websocket', 'Message parse error', e);
       }
     };
 

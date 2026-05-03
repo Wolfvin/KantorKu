@@ -7,6 +7,7 @@ import type {
   BriefingApiResponse,
   MessageType,
 } from '@/lib/kantorku/types';
+import { logger } from '@/lib/kantorku/logger';
 
 // ── Briefing System Prompt ────────────────────────────────────────
 const BRIEFING_MANAGER_PROMPT = `You are the Conductor facilitating a team briefing in the kantorku digital office.
@@ -199,7 +200,7 @@ export async function POST(req: NextRequest) {
           };
           roundMessages.push(msg);
         } catch (error) {
-          console.warn(`[Briefing API] Worker ${workerId} failed:`, error);
+          logger.warn('briefing', `Worker ${workerId} failed`, error);
           // Add fallback message
           roundMessages.push({
             id: `gm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -333,7 +334,7 @@ Please summarize this round, note decisions, and assess consensus.`,
       },
     });
   } catch (error: unknown) {
-    console.error('[Briefing API] Error:', error);
+    logger.error('briefing', 'Error', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { error: 'Briefing failed', details: message },

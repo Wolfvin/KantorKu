@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Contract, DebriefResult } from '@/lib/kantorku/types';
+import { logger } from '@/lib/kantorku/logger';
 
 // ── Debrief System Prompt ─────────────────────────────────────────
 const DEBRIEF_PROMPT = `You are the Conductor of kantorku, generating a comprehensive debrief for a completed contract.
@@ -215,7 +216,7 @@ Provide a thorough, specific debrief.`,
         );
       }
     } catch (error) {
-      console.warn('[Debrief API] LLM call failed, using fallback:', error);
+      logger.warn('debrief', 'LLM call failed, using fallback', error);
       debrief = getDefaultDebrief(
         contract.id,
         session_id,
@@ -238,7 +239,7 @@ Provide a thorough, specific debrief.`,
       },
     });
   } catch (error: unknown) {
-    console.error('[Debrief API] Error:', error);
+    logger.error('debrief', 'Error', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { error: 'Debrief generation failed', details: message },

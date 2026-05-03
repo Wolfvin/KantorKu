@@ -12,6 +12,7 @@ import type {
   EscalationEvent,
   ExecuteApiResponse,
 } from '@/lib/kantorku/types';
+import { logger } from '@/lib/kantorku/logger';
 
 // ── Worker skill descriptions for prompts ─────────────────────────
 const WORKER_SKILLS: Record<string, string> = {
@@ -809,7 +810,7 @@ Respond with JSON:
 
     return NextResponse.json(apiResponse);
   } catch (error: unknown) {
-    console.error('[Execute API] Fatal error:', error);
+    logger.error('execute', 'Fatal error', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // Add error event (inline since addEvent is not in scope)
