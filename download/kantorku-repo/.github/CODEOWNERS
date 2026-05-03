@@ -1,0 +1,29 @@
+# CODEOWNERS — KantorKu
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything
+* @kantorku/core
+
+# Python backend framework
+/framework/ @kantorku/core @kantorku/backend
+
+# Next.js frontend interface
+/interface/ @kantorku/core @kantorku/frontend
+
+# Node.js CLI tool
+/cli/ @kantorku/core @kantorku/frontend
+
+# Workers
+/framework/workers/ @kantorku/core @kantorku/workers
+
+# Documentation
+/docs/ @kantorku/core @kantorku/docs
+
+# CI/CD and infrastructure
+/.github/ @kantorku/core
+/Dockerfile @kantorku/core
+/docker-compose.yml @kantorku/core
+
+# Security-sensitive files
+/.env.example @kantorku/core
+/SECURITY.md @kantorku/core

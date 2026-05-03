@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Ask a Question / Bertanya
+    url: https://github.com/kantorku/kantorku/discussions
+    about: Ask questions and discuss with the community / Bertanya dan berdiskusi dengan komunitas
+  - name: 📖 Documentation / Dokumentasi
+    url: https://github.com/kantorku/kantorku/tree/main/docs
+    about: Check the documentation before opening an issue / Periksa dokumentasi sebelum membuka issue

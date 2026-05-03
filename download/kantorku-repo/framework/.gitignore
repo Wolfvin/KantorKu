@@ -1,0 +1,40 @@
+# ═══ Python ═══
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ═══ Virtual environments ═══
+.env
+.venv/
+env/
+venv/
+
+# ═══ Data files (runtime) ═══
+data/*.duckdb
+data/*.db
+data/snapshots/
+*.duckdb
+*.db
+*.db-journal
+
+# ═══ IDE ═══
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-*
+
+# ═══ Testing ═══
+.coverage
+htmlcov/
+.pytest_cache/
+
+# ═══ OS ═══
+.DS_Store
+Thumbs.db

@@ -1,0 +1,98 @@
+name: Bug Report
+description: Report a bug or unexpected behavior / Laporkan bug atau perilaku tak terduga
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the sections below.
+        Terima kasih telah melaporkan bug! Silakan isi bagian-bagian di bawah ini.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description / Deskripsi Bug
+      description: A clear description of what the bug is.
+      placeholder: "e.g., The server crashes when I send a task to the debugger worker"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce / Langkah Reproduksi
+      description: How can we reproduce this behavior?
+      placeholder: |
+        1. Start kantorku with `kantorku serve`
+        2. Send a task to the debugger worker
+        3. Observe the error
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior / Perilaku yang Diharapkan
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior / Perilaku Aktual
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component / Komponen
+      description: Which part of KantorKu is affected?
+      options:
+        - framework (Python backend)
+        - interface (Next.js frontend)
+        - cli (Node.js CLI)
+        - workers
+        - server/API
+        - memory/context
+        - documentation
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / Lingkungan
+      description: |
+        Please provide your environment details.
+        Silakan berikan detail lingkungan Anda.
+      placeholder: |
+        - OS: (e.g., macOS 14.5, Ubuntu 22.04)
+        - Python version: (e.g., 3.12.3)
+        - Node.js version: (e.g., 20.14.0)
+        - KantorKu version: (e.g., 0.4.0)
+        - AI providers configured: (e.g., Anthropic, DeepSeek)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Log Relevan
+      description: |
+        Paste any relevant log output. **REMOVE any API keys or sensitive data first!**
+        Tempelkan output log yang relevan. **HAPUS semua kunci API atau data sensitif terlebih dahulu!**
+      render: shell
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context / Konteks Tambahan
+      description: Any other context, screenshots, or configuration details.

@@ -1,0 +1,84 @@
+name: Worker Request
+description: Request a new worker type for KantorKu / Minta tipe worker baru untuk KantorKu
+labels: ["worker-request", "enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        KantorKu uses a worker-based architecture where each worker has a specific role in the "office."
+        Use this template to propose a new worker type.
+        
+        KantorKu menggunakan arsitektur berbasis worker di mana setiap worker memiliki peran spesifik di "kantor."
+        Gunakan template ini untuk mengusulkan tipe worker baru.
+
+  - type: input
+    id: worker-name
+    attributes:
+      label: Worker Name / Nama Worker
+      description: |
+        Suggested worker ID (snake_case). Follow the naming convention: role_specialty
+        ID worker yang disarankan (snake_case). Ikuti konvensi: peran_spesialisasi
+      placeholder: "e.g., architect_infra, tester_e2e, designer_ui"
+    validations:
+      required: true
+
+  - type: textarea
+    id: role
+    attributes:
+      label: Worker Role / Peran Worker
+      description: |
+        What is this worker's job in the office? What problems does it solve?
+        Apa tugas worker ini di kantor? Masalah apa yang diselesaikannya?
+      placeholder: "e.g., The architect_infra worker designs infrastructure patterns and suggests deployment configurations"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Suggested AI Provider / Provider AI yang Disarankan
+      description: Which AI provider would best suit this worker's needs?
+      options:
+        - Anthropic (Claude)
+        - Google (Gemini)
+        - MiniMax
+        - DeepSeek
+        - OpenAI
+        - xAI (Grok)
+        - Ollama (Local)
+        - Multiple / Flexible
+    validations:
+      required: true
+
+  - type: textarea
+    id: inputs
+    attributes:
+      label: Expected Inputs / Input yang Diharapkan
+      description: |
+        What kind of tasks or data should this worker receive?
+        Jenis tugas atau data apa yang harus diterima worker ini?
+      placeholder: "e.g., Infrastructure requirements, current system architecture, performance constraints"
+
+  - type: textarea
+    id: outputs
+    attributes:
+      label: Expected Outputs / Output yang Diharapkan
+      description: |
+        What should this worker produce?
+        Apa yang harus dihasilkan worker ini?
+      placeholder: "e.g., Infrastructure design document, Docker compose files, deployment scripts"
+
+  - type: textarea
+    id: interactions
+    attributes:
+      label: Worker Interactions / Interaksi Worker
+      description: |
+        Which existing workers should this worker collaborate with? How?
+        Worker mana yang sudah ada yang harus berkolaborasi dengan worker ini? Bagaimana caranya?
+      placeholder: "e.g., Works with coder_backend to implement infrastructure, verified by verifier_engineer"
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context / Konteks Tambahan
+      description: Any references, examples from other tools, or implementation ideas.
