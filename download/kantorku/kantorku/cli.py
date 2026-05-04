@@ -3,6 +3,7 @@ kantorku CLI — Command-line interface.
 
 Commands:
     kantorku serve                Start the server (default)
+    kantorku tui                  Launch the TUI for coders
     kantorku init                 Scaffold a new kantorku project
     kantorku worker create        Create a new plug-and-play worker
     kantorku worker add           Add a worker from an existing directory
@@ -523,6 +524,29 @@ def cmd_run(args: argparse.Namespace) -> None:
     asyncio.run(_run())
 
 
+def cmd_tui(args: argparse.Namespace) -> None:
+    """Launch the KantorKu TUI for coders."""
+    try:
+        from kantorku.tui.app import KantorKuTUI, EmbeddedKantorKuTUI
+    except ImportError as e:
+        print(f"Error: TUI dependencies not installed. Install with: pip install textual rich")
+        print(f"  Details: {e}")
+        sys.exit(1)
+
+    server_url = getattr(args, "url", None) or "http://localhost:8000"
+    config_path = getattr(args, "config", None)
+    embedded = getattr(args, "embedded", False)
+
+    if embedded:
+        # Embedded mode — run Office directly in-process
+        app = EmbeddedKantorKuTUI(config_path=config_path)
+    else:
+        # Remote mode — connect to a running server
+        app = KantorKuTUI(server_url=server_url, config_path=config_path)
+
+    app.run()
+
+
 def cmd_version(args: argparse.Namespace) -> None:
     """Show kantorku version."""
     from kantorku import __version__
@@ -594,6 +618,13 @@ def main() -> None:
     run_parser.add_argument("message", help="Task description")
     run_parser.add_argument("--auto-accept", "-y", action="store_true", help="Auto-accept contract")
 
+    # tui
+    tui_parser = subparsers.add_parser("tui", help="Launch the TUI for coders")
+    tui_parser.add_argument("--url", "-u", default="http://localhost:8000",
+                             help="Server URL (default: http://localhost:8000)")
+    tui_parser.add_argument("--embedded", "-e", action="store_true",
+                             help="Run Office in-process (no server needed)")
+
     # version
     subparsers.add_parser("version", help="Show version")
 
@@ -621,6 +652,8 @@ def main() -> None:
         cmd_config_validate(args)
     elif args.command == "run":
         cmd_run(args)
+    elif args.command == "tui":
+        cmd_tui(args)
     elif args.command == "version":
         cmd_version(args)
     else:

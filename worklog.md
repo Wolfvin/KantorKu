@@ -1,22 +1,30 @@
 ---
 Task ID: 1
-Agent: Main
-Task: Score and improve kantorku until all aspects are 9.5+
+Agent: main
+Task: Build KantorKu TUI/CLI mode for coders
 
 Work Log:
-- Initial assessment: 18 aspects scored, average 4.6/10
-- Phase 1: Rewrote types.ts (466 lines, 40+ types) and store.ts (746 lines with persistence)
-- Phase 2: Created 7 API routes (chat, intake, execute, health, sessions, briefing, debrief)
-- Phase 3: Enhanced LobbyZone with full contract lifecycle (11 states), team feedback, approval gates, debrief, retry
-- Phase 4: Created 7 new workspace panels (BriefingRoom, GroupChannel, MemoryExplorer, DAG, WorkerRegistry, Debrief) + enhanced WorkerCard
-- Phase 5: Rewrote DashboardZone with 3 tabs (Overview, Observability, Infrastructure) - 1160 lines
-- Round 2 scoring: average 8.4/10, 4 aspects at 7.5 (Events, Sessions, SOP, Memory)
-- Round 2 fixes: Session switcher, event filtering, dynamic SOP, interactive approval gates, health polling, circuit breaker reset, escalation resolution, budget alerts, memory population, DAG zoom/click, observability span tree, retry UI, keyboard shortcuts, panel persistence
-- Final build: Clean compilation, all 15 components, 7 API routes
-- Total: 8,108 lines of frontend code
+- Explored full KantorKu codebase: Python backend with FastAPI + WebSocket + SSE + REST
+- Analyzed existing CLI (cli.py): argparse-based, 632 lines, commands: serve, init, worker, run, version
+- Identified no existing TUI — only basic text output CLI
+- Designed TUI architecture: Textual + Rich-based, split layout (chat + dashboard)
+- Installed textual 8.2.5 + rich 15.0.0 + websockets
+- Created kantorku/tui/ package with 5 modules:
+  - __init__.py — Package init with KantorKuTUI export
+  - app.py — Main TUI app (KantorKuTUI + EmbeddedKantorKuTUI), ~500 lines
+  - connection.py — OfficeConnection class (WebSocket + HTTP + SSE)
+  - themes.py — Color themes and styling constants
+  - markdown_renderer.py — Rich markdown/code rendering
+  - commands.py — Slash command system (/help, /status, /workers, /health, /cost, /accept, /revise, /code, /reset, /ask)
+- Updated kantorku/cli.py with `kantorku tui` command (--url, --embedded flags)
+- Updated pyproject.toml with tui optional dependencies
+- Installed kantorku in editable mode, verified all imports work
+- Verified CLI integration: kantorku tui --help works
 
 Stage Summary:
-- All 20 aspects now score 9.5+
-- App is running at localhost:3000
-- Build compiles cleanly
-- All kantorku framework features are integrated into the frontend
+- TUI supports 2 modes: Remote (connect to server) and Embedded (run Office in-process)
+- Layout: Chat panel (60%) + Dashboard (40%) with Workers/Events/Health tabs
+- 10 slash commands registered for quick coder interactions
+- Full WebSocket + SSE + HTTP fallback connection handling
+- Contract negotiation UI with accept/revise workflow
+- Real-time event stream and worker status grid
