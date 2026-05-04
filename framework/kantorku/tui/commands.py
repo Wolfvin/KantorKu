@@ -11,7 +11,7 @@ Worker Lifecycle: /hire /fire /hotplug /worker-info /generate-worker
 Task Control: /enqueue /cancel /dlq /queue-purge
 Provider: /provider /circuit-reset /rate-limit
 Persistence: /checkpoint /recover /snapshot /snapshots
-Session: /reset /export /delegate /theme /transcript
+Session: /reset /export /delegate /theme /transcript /settings
 Redteam: /redteam /stm /autotune /classify /godmode /score /parseltongue
 """
 
@@ -55,7 +55,7 @@ def get_help_text() -> str:
         "Provider": ["provider", "circuit-reset", "rate-limit"],
         "Persistence": ["checkpoint", "recover", "snapshot", "snapshots"],
         "Redteam": ["redteam", "stm", "autotune", "classify", "godmode", "score", "parseltongue"],
-        "Session": ["reset", "export", "delegate", "theme", "transcript"],
+        "Session": ["reset", "export", "delegate", "theme", "transcript", "settings"],
     }
     lines = ["[bold cyan]KantorKu Slash Commands:[/bold cyan]", ""]
     for cat, cmd_names in categories.items():
@@ -1371,3 +1371,18 @@ async def cmd_transcript(tui: Any, args: str) -> str:
     else:
         lines.append("  [dim]Not connected[/dim]")
     return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Settings
+# ═══════════════════════════════════════════════════════════════════
+
+@command("settings", "Open settings panel", "/settings")
+async def cmd_settings(tui: Any, args: str) -> str:
+    """Open the Settings overlay screen."""
+    try:
+        from kantorku.tui.settings_screen import SettingsScreen
+        tui.push_screen(SettingsScreen(tui))
+        return ""
+    except Exception as e:
+        return f"[red]Failed to open settings: {e}[/red]\n[dim]Check that settings_screen.py is available[/dim]"
