@@ -314,6 +314,82 @@ TabbedContent {{
     height: 1fr;
 }}
 
+#worker-tools-content {{
+    height: 1fr;
+    padding: 0 1;
+}}
+
+.tools-section-header {{
+    color: #f1f5f9;
+    text-style: bold;
+    margin-top: 1;
+    height: 2;
+}}
+
+.tool-item-row {{
+    layout: horizontal;
+    height: 3;
+    padding: 0 1;
+    align: left middle;
+}}
+
+.tool-item-name {{
+    width: 1fr;
+    color: #f1f5f9;
+}}
+
+.tool-remove-btn {{
+    width: 6;
+    background: #1e293b;
+    color: #ef4444;
+    margin-left: 1;
+}}
+
+.tool-remove-btn:hover {{
+    background: #ef4444;
+    color: $text;
+}}
+
+.tool-add-row {{
+    layout: horizontal;
+    height: 3;
+    padding: 0 1;
+    align: left middle;
+    dock: bottom;
+}}
+
+.tool-add-input {{
+    width: 1fr;
+}}
+
+.tool-add-btn {{
+    width: 10;
+    background: #3b82f6;
+    color: $text;
+    text-style: bold;
+    margin-left: 1;
+}}
+
+.tool-add-btn:hover {{
+    background: #2563eb;
+}}
+
+#worker-skills-content {{
+    height: 1fr;
+    padding: 0 1;
+}}
+
+#delete-worker-btn {{
+    background: #ef4444;
+    color: $text;
+    text-style: bold;
+    margin-left: 1;
+}}
+
+#delete-worker-btn:hover {{
+    background: #dc2626;
+}}
+
 .api-field-row {{
     layout: horizontal;
     height: 3;
@@ -581,6 +657,8 @@ class SettingsScreen(Screen):
         self._worker_skill_cache: dict[str, str] = {}
         self._worker_api_cache: dict[str, dict[str, str]] = {}
         self._worker_caps_cache: dict[str, dict[str, bool]] = {}
+        self._worker_tools_cache: dict[str, list[str]] = {}
+        self._worker_skills_cache: dict[str, list[str]] = {}
 
     # ── Compose ────────────────────────────────────────────────────────
 
@@ -677,7 +755,20 @@ class SettingsScreen(Screen):
                                     )
                                 # Tools sub-tab
                                 with TabPane("Tools", id="worker-tools-tab"):
-                                    yield VerticalScroll(id="tools-list")
+                                    with Vertical(id="worker-tools-content"):
+                                        yield Label("Allowed Tools", classes="tools-section-header")
+                                        with VerticalScroll(id="allowed-tools-list"):
+                                            pass  # Populated dynamically
+                                        yield Label("Allowed Skills", classes="tools-section-header")
+                                        with VerticalScroll(id="allowed-skills-list"):
+                                            pass  # Populated dynamically
+                                        with Horizontal(classes="tool-add-row"):
+                                            yield Input(
+                                                placeholder="Add tool (e.g. write_code)",
+                                                id="add-tool-input",
+                                                classes="tool-add-input",
+                                            )
+                                            yield Button("+ Tool", id="add-tool-btn", classes="tool-add-btn")
                                 # API Config sub-tab
                                 with TabPane("API Config", id="worker-api-tab"):
                                     with Vertical(id="worker-detail-content"):
@@ -718,6 +809,19 @@ class SettingsScreen(Screen):
                                                 id="worker-api-base-url",
                                                 placeholder="https://api.example.com/v1",
                                             )
+                                # Skills sub-tab
+                                with TabPane("Skills", id="worker-skills-tab"):
+                                    with Vertical(id="worker-skills-content"):
+                                        yield Label("Allowed Skills", classes="tools-section-header")
+                                        with VerticalScroll(id="worker-skills-list"):
+                                            pass  # Populated dynamically
+                                        with Horizontal(classes="tool-add-row"):
+                                            yield Input(
+                                                placeholder="Add skill (e.g. rust_expert)",
+                                                id="add-skill-input",
+                                                classes="tool-add-input",
+                                            )
+                                            yield Button("+ Skill", id="add-skill-btn", classes="tool-add-btn")
 
                     # Bottom bar (outside workers-layout, inside workers tab)
                     with Horizontal(id="workers-bottom-bar"):
@@ -725,6 +829,7 @@ class SettingsScreen(Screen):
                             f"{CHECK_MARK} Save Worker", id="save-worker-btn"
                         )
                         yield Button("+ New Worker", id="new-worker-btn")
+                        yield Button(f"{CROSS_MARK} Delete Worker", id="delete-worker-btn")
                         yield Label("", id="worker-save-status")
 
                 # ── Tab 3: Skills ──
@@ -885,26 +990,37 @@ class SettingsScreen(Screen):
         except Exception:
             pass
 
-        # Tools / Capabilities
+        # Allowed Tools
         try:
-            tools_container = self.query_one("#tools-list", VerticalScroll)
-            tools_container.remove_children()
-            capabilities = worker.capabilities or []
-            # Use cache if available
-            if worker.id in self._worker_caps_cache:
-                caps_state = self._worker_caps_cache[worker.id]
-            else:
-                caps_state = {cap: True for cap in capabilities}
-            for cap in capabilities:
-                row = Horizontal(classes="api-field-row")
-                sw = Switch(
-                    value=caps_state.get(cap, True),
-                    id=f"cap-switch-{cap}",
-                )
-                cap_label = Label(cap)
-                row.mount(sw)
-                row.mount(cap_label)
-                tools_container.mount(row)
+            tools_list = self.query_one("#allowed-tools-list", VerticalScroll)
+            tools_list.remove_children()
+            tools = worker.allowed_tools or []
+            if worker.id in self._worker_tools_cache:
+                tools = self._worker_tools_cache[worker.id]
+            for tool in tools:
+                row = Horizontal(classes="tool-item-row")
+                tool_label = Label(tool, classes="tool-item-name")
+                remove_btn = Button("X", classes="tool-remove-btn", name=f"remove_tool:{tool}")
+                row.mount(tool_label)
+                row.mount(remove_btn)
+                tools_list.mount(row)
+        except Exception:
+            pass
+
+        # Allowed Skills (in worker detail)
+        try:
+            skills_list = self.query_one("#worker-skills-list", VerticalScroll)
+            skills_list.remove_children()
+            skills = worker.allowed_skills or []
+            if worker.id in self._worker_skills_cache:
+                skills = self._worker_skills_cache[worker.id]
+            for skill in skills:
+                row = Horizontal(classes="tool-item-row")
+                skill_label = Label(skill, classes="tool-item-name")
+                remove_btn = Button("X", classes="tool-remove-btn", name=f"remove_skill:{skill}")
+                row.mount(skill_label)
+                row.mount(remove_btn)
+                skills_list.mount(row)
         except Exception:
             pass
 
@@ -978,21 +1094,42 @@ class SettingsScreen(Screen):
         if api_cache:
             self._worker_api_cache[wid] = api_cache
 
-        # Cache capabilities switches
-        caps_cache: dict[str, bool] = {}
+        # Cache allowed tools
         try:
             worker = next(
                 (w for w in self._workers if w.id == wid), None
             )
-            if worker and worker.capabilities:
-                for cap in worker.capabilities:
+            if worker:
+                # Read current allowed_tools from the list
+                tools_list = self.query_one("#allowed-tools-list", VerticalScroll)
+                tools = []
+                for child in tools_list.children:
                     try:
-                        sw = self.query_one(f"#cap-switch-{cap}", Switch)
-                        caps_cache[cap] = sw.value
+                        label = child.query_one(".tool-item-name", Label)
+                        tools.append(str(label.renderable))
                     except Exception:
                         pass
-                if caps_cache:
-                    self._worker_caps_cache[wid] = caps_cache
+                if tools or worker.allowed_tools:
+                    self._worker_tools_cache[wid] = tools
+        except Exception:
+            pass
+
+        # Cache allowed skills
+        try:
+            worker = next(
+                (w for w in self._workers if w.id == wid), None
+            )
+            if worker:
+                skills_list = self.query_one("#worker-skills-list", VerticalScroll)
+                skills = []
+                for child in skills_list.children:
+                    try:
+                        label = child.query_one(".tool-item-name", Label)
+                        skills.append(str(label.renderable))
+                    except Exception:
+                        pass
+                if skills or worker.allowed_skills:
+                    self._worker_skills_cache[wid] = skills
         except Exception:
             pass
 
@@ -1010,6 +1147,27 @@ class SettingsScreen(Screen):
         # New Worker
         if btn_id == "new-worker-btn":
             self._create_new_worker()
+            return
+
+        # Delete Worker
+        if btn_id == "delete-worker-btn":
+            self._delete_worker()
+            return
+
+        # Add Tool
+        if btn_id == "add-tool-btn":
+            self._add_tool()
+            return
+
+        # Add Skill
+        if btn_id == "add-skill-btn":
+            self._add_skill()
+            return
+
+        # Remove tool/skill
+        if "tool-remove-btn" in btn_classes:
+            name = btn.name or ""
+            self._remove_tool_or_skill(name)
             return
 
         # Save Skill
@@ -1081,12 +1239,15 @@ class SettingsScreen(Screen):
                 if "base_url" in api_cache:
                     worker.api.base_url = api_cache["base_url"]
 
-            # Update capabilities
-            caps_cache = self._worker_caps_cache.get(wid, {})
-            if caps_cache:
-                worker.capabilities = [
-                    cap for cap, enabled in caps_cache.items() if enabled
-                ]
+            # Update allowed_tools
+            tools_cache = self._worker_tools_cache.get(wid, None)
+            if tools_cache is not None:
+                worker.allowed_tools = tools_cache
+
+            # Update allowed_skills
+            skills_cache = self._worker_skills_cache.get(wid, None)
+            if skills_cache is not None:
+                worker.allowed_skills = skills_cache
 
             # Write plugin.json using to_plugin_json()
             plugin_path = source_dir / "plugin.json"
@@ -1199,6 +1360,155 @@ class SettingsScreen(Screen):
                 list_view.append(ListItem(Label(display), name=w.id))
         except Exception:
             pass
+
+    def _delete_worker(self) -> None:
+        """Delete the currently selected worker."""
+        if not self.selected_worker_id:
+            return
+
+        wid = self.selected_worker_id
+        worker = next((w for w in self._workers if w.id == wid), None)
+        if not worker:
+            return
+
+        try:
+            source_dir = (
+                Path(worker.source_dir) if worker.source_dir else WORKERS_DIR / wid
+            )
+            if source_dir.exists():
+                import shutil
+                shutil.rmtree(source_dir)
+
+            # Remove from Office registry if embedded
+            office = self._get_office()
+            if office and hasattr(office, "registry"):
+                try:
+                    office.registry.fire(wid)
+                except Exception:
+                    pass
+
+            # Clear caches
+            self._worker_skill_cache.pop(wid, None)
+            self._worker_api_cache.pop(wid, None)
+            self._worker_tools_cache.pop(wid, None)
+            self._worker_skills_cache.pop(wid, None)
+
+            # Reload workers
+            self._workers = _load_workers_from_dir()
+            self._rebuild_worker_list()
+
+            # Select first worker if available
+            if self._workers:
+                self.selected_worker_id = self._workers[0].id
+                self._populate_worker_detail(self._workers[0])
+            else:
+                self.selected_worker_id = ""
+
+            self._set_worker_save_status(
+                f"[red]{CROSS_MARK} Deleted: {wid}[/red]"
+            )
+        except Exception as e:
+            self._set_worker_save_status(
+                f"[red]{CROSS_MARK} Delete failed: {e}[/red]"
+            )
+
+    def _add_tool(self) -> None:
+        """Add a tool to the current worker's allowed_tools list."""
+        if not self.selected_worker_id:
+            return
+
+        try:
+            tool_input = self.query_one("#add-tool-input", Input)
+            tool_name = tool_input.value.strip()
+            if not tool_name:
+                return
+
+            wid = self.selected_worker_id
+            tools = self._worker_tools_cache.get(wid, [])
+
+            # Also include existing tools from worker identity
+            worker = next((w for w in self._workers if w.id == wid), None)
+            if worker and not self._worker_tools_cache.get(wid):
+                tools = list(worker.allowed_tools or [])
+
+            if tool_name not in tools:
+                tools.append(tool_name)
+                self._worker_tools_cache[wid] = tools
+
+                # Re-render the tools list
+                tools_list = self.query_one("#allowed-tools-list", VerticalScroll)
+                row = Horizontal(classes="tool-item-row")
+                tool_label = Label(tool_name, classes="tool-item-name")
+                remove_btn = Button("X", classes="tool-remove-btn", name=f"remove_tool:{tool_name}")
+                row.mount(tool_label)
+                row.mount(remove_btn)
+                tools_list.mount(row)
+
+            tool_input.value = ""
+        except Exception:
+            pass
+
+    def _add_skill(self) -> None:
+        """Add a skill to the current worker's allowed_skills list."""
+        if not self.selected_worker_id:
+            return
+
+        try:
+            skill_input = self.query_one("#add-skill-input", Input)
+            skill_name = skill_input.value.strip()
+            if not skill_name:
+                return
+
+            wid = self.selected_worker_id
+            skills = self._worker_skills_cache.get(wid, [])
+
+            worker = next((w for w in self._workers if w.id == wid), None)
+            if worker and not self._worker_skills_cache.get(wid):
+                skills = list(worker.allowed_skills or [])
+
+            if skill_name not in skills:
+                skills.append(skill_name)
+                self._worker_skills_cache[wid] = skills
+
+                skills_list = self.query_one("#worker-skills-list", VerticalScroll)
+                row = Horizontal(classes="tool-item-row")
+                skill_label = Label(skill_name, classes="tool-item-name")
+                remove_btn = Button("X", classes="tool-remove-btn", name=f"remove_skill:{skill_name}")
+                row.mount(skill_label)
+                row.mount(remove_btn)
+                skills_list.mount(row)
+
+            skill_input.value = ""
+        except Exception:
+            pass
+
+    def _remove_tool_or_skill(self, name: str) -> None:
+        """Remove a tool or skill from the current worker's list."""
+        if not self.selected_worker_id or not name:
+            return
+
+        wid = self.selected_worker_id
+
+        if name.startswith("remove_tool:"):
+            tool_name = name[len("remove_tool:"):]
+            tools = self._worker_tools_cache.get(wid, [])
+            if tool_name in tools:
+                tools.remove(tool_name)
+                self._worker_tools_cache[wid] = tools
+            # Re-render
+            worker = next((w for w in self._workers if w.id == wid), None)
+            if worker:
+                self._populate_worker_detail(worker)
+
+        elif name.startswith("remove_skill:"):
+            skill_name = name[len("remove_skill:"):]
+            skills = self._worker_skills_cache.get(wid, [])
+            if skill_name in skills:
+                skills.remove(skill_name)
+                self._worker_skills_cache[wid] = skills
+            worker = next((w for w in self._workers if w.id == wid), None)
+            if worker:
+                self._populate_worker_detail(worker)
 
     # ── Skills Tab Handlers ────────────────────────────────────────────
 

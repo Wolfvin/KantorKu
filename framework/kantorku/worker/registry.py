@@ -449,6 +449,49 @@ class WorkerRegistry:
         self._identities.pop(worker_id, None)
         self._worker_classes.pop(worker_id, None)
 
+    def reload_worker(self, worker_id: str) -> None:
+        """
+        Reload a worker's identity and instance from its source directory.
+
+        Used by the Settings Screen for hot-reload after editing a worker's
+        plugin.json, SKILL.md, or API config. The worker's identity is
+        re-read from disk, and if an instance exists it is replaced.
+
+        Args:
+            worker_id: The worker ID to reload.
+
+        Raises:
+            ValueError: If the worker is not registered or source dir is gone.
+        """
+        identity = self._identities.get(worker_id)
+        if not identity:
+            raise ValueError(f"Worker '{worker_id}' not found in registry")
+
+        source_dir = identity.source_dir
+        if not source_dir or not Path(source_dir).exists():
+            raise ValueError(
+                f"Source directory for '{worker_id}' does not exist: {source_dir}"
+            )
+
+        # Re-read identity from disk
+        updated_identity = WorkerIdentity.from_directory(Path(source_dir))
+
+        # Update the registry
+        self._identities[worker_id] = updated_identity
+
+        # Re-resolve worker class
+        cls = updated_identity.resolve_worker_class()
+        if cls is not None:
+            self._worker_classes[worker_id] = cls
+
+        # If an instance existed, replace it with a fresh one
+        if worker_id in self._instances:
+            del self._instances[worker_id]
+            # Re-hire lazily on next access — don't eagerly instantiate
+            logger.info(f"Reloaded worker '{worker_id}' — instance will be re-created on next hire()")
+        else:
+            logger.info(f"Reloaded worker identity '{worker_id}'")
+
     # ─────────────────────────────────────────────────
     #  Query
     # ─────────────────────────────────────────────────
@@ -476,6 +519,8 @@ class WorkerRegistry:
                 "role": identity.role,
                 "capabilities": identity.capabilities,
                 "tags": identity.tags,
+                "allowed_tools": identity.allowed_tools,
+                "allowed_skills": identity.allowed_skills,
                 "status": instance.status.value if instance else "unhired",
                 "has_custom_class": wid in self._worker_classes or bool(identity.class_path),
                 "source_dir": identity.source_dir,

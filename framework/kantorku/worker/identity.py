@@ -189,6 +189,8 @@ class WorkerIdentity:
     role: str = ""
     capabilities: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    allowed_tools: list[str] = field(default_factory=list)
+    allowed_skills: list[str] = field(default_factory=list)
     skill_md: str = ""
     class_path: str = ""
     source_dir: str = ""
@@ -225,6 +227,8 @@ class WorkerIdentity:
         self.role = kwargs.get("role", "")
         self.capabilities = kwargs.get("capabilities", [])
         self.tags = kwargs.get("tags", [])
+        self.allowed_tools = kwargs.get("allowed_tools", [])
+        self.allowed_skills = kwargs.get("allowed_skills", [])
         self.skill_md = kwargs.get("skill_md", "")
         self.class_path = kwargs.get("class_path", "")
         self.source_dir = kwargs.get("source_dir", "")
@@ -330,6 +334,8 @@ class WorkerIdentity:
             role=plugin_data.get("role", ""),
             capabilities=plugin_data.get("capabilities", []),
             tags=plugin_data.get("tags", []),
+            allowed_tools=plugin_data.get("allowed_tools", []),
+            allowed_skills=plugin_data.get("allowed_skills", []),
             skill_md=skill_md,
             class_path=class_path,
             source_dir=str(path),
@@ -368,6 +374,8 @@ class WorkerIdentity:
             role=data.get("role", ""),
             capabilities=data.get("capabilities", []),
             tags=data.get("tags", []),
+            allowed_tools=data.get("allowed_tools", []),
+            allowed_skills=data.get("allowed_skills", []),
             skill_md=data.get("skill_md", ""),
             class_path=data.get("class_path", ""),
             source_dir=data.get("source_dir", ""),
@@ -506,6 +514,8 @@ class WorkerIdentity:
             "role": self.role,
             "capabilities": self.capabilities,
             "tags": self.tags,
+            "allowed_tools": self.allowed_tools,
+            "allowed_skills": self.allowed_skills,
             "class_path": self.class_path,
             "source_dir": self.source_dir,
         }
@@ -524,6 +534,10 @@ class WorkerIdentity:
             "capabilities": self.capabilities,
             "tags": self.tags,
         })
+        if self.allowed_tools:
+            result["allowed_tools"] = self.allowed_tools
+        if self.allowed_skills:
+            result["allowed_skills"] = self.allowed_skills
         if self.class_path and not self.class_path.startswith("_auto:"):
             result["class"] = self.class_path
         return result
