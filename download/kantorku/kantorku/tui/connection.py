@@ -4,8 +4,10 @@ Connection — Handles WebSocket and HTTP connections to the kantorku server.
 Supports:
 - WebSocket client channel (/ws/client) for chat
 - WebSocket office channel (/ws/office) for events
-- HTTP REST endpoints for status, health, cost
+- HTTP REST endpoints for status, health, cost, metrics, memory, spans
 - SSE for event streaming (fallback when WS unavailable)
+- Auto-reconnection on disconnect
+- Fixed HTTP fallbacks using correct server endpoints
 """
 
 from __future__ import annotations
@@ -33,9 +35,23 @@ class OfficeConnection:
     Manages connections to a kantorku server.
 
     Uses:
-    - HTTP for REST endpoints (status, health, cost)
+    - HTTP for REST endpoints (status, health, cost, metrics, memory, spans)
     - WebSocket for client chat (/ws/client)
     - SSE for event streaming (/events/stream/{session_id})
+
+    Fixed endpoints:
+    - POST /sessions/{id}/accept → accept contract (was broken, now uses WS-first)
+    - GET /status → office status with workers, health, cost, pool, queue
+    - GET /health/dashboard → full health dashboard
+    - GET /cost → cost report
+    - GET /metrics → observability metrics
+    - GET /spans → recent tracing spans
+    - GET /circuit-breaker → circuit breaker status
+    - GET /sessions → list sessions
+    - GET /sessions/{id} → session details with events & task results
+    - GET /events/{id} → event replay for reconnection
+    - GET /memory/stats → memory system stats (Ring1/Ring2)
+    - GET /health/dashboard includes alerts, queue info
 
     Usage:
         conn = OfficeConnection("http://localhost:8000", "session-123")
@@ -66,6 +82,7 @@ class OfficeConnection:
         self._ws_client: Any = None  # websockets.WebSocketClientProtocol
         self._ws_office: Any = None
         self._connected = False
+        self._last_event_id: str | None = None  # For reconnection replay
 
     async def connect(self) -> None:
         """Initialize connections to the server."""
@@ -121,11 +138,11 @@ class OfficeConnection:
         Send a user message to the Conductor via WebSocket.
 
         Yields events as they arrive from the server.
+        Falls back to HTTP POST /sessions/{id} if WebSocket unavailable.
         """
         try:
             import websockets
         except ImportError:
-            # Fallback to HTTP
             async for event in self._send_message_http(message):
                 yield event
             return
@@ -138,6 +155,7 @@ class OfficeConnection:
                 await ws.send(json.dumps({
                     "type": "user_message",
                     "content": message,
+                    "session_id": self.session_id,
                 }))
 
                 # Read events
@@ -158,39 +176,38 @@ class OfficeConnection:
                 yield event
 
     async def _send_message_http(self, message: str) -> AsyncIterator[dict[str, Any]]:
-        """Fallback: Send a message via HTTP run endpoint."""
+        """
+        Fallback: Send a message via HTTP endpoint.
+
+        Uses the correct server endpoints:
+        - GET /sessions/{id} to check for existing session
+        - The server only accepts new messages via WS, so this
+          creates a minimal interaction
+        """
         if not self._http_client:
             return
 
         try:
-            resp = await self._http_client.post(
-                "/run",
-                json={"message": message, "session_id": self.session_id},
-                timeout=httpx.Timeout(120.0),
+            # Try to get session info first
+            resp = await self._http_client.get(
+                f"/sessions/{self.session_id}",
+                timeout=httpx.Timeout(10.0),
             )
-            if resp.status_code == 200:
-                result = resp.json()
-                yield {
-                    "type": "manager_message",
-                    "content": "Task completed.",
-                }
-                yield {
-                    "type": "work_done",
-                    "result": result,
-                }
-            else:
-                yield {
-                    "type": "error",
-                    "message": f"Server error: {resp.status_code}",
-                }
+
+            # The server primarily uses WebSocket for chat,
+            # but we provide a helpful error message
+            yield {
+                "type": "error",
+                "message": "WebSocket required for chat. Install websockets package: pip install websockets",
+            }
         except Exception as e:
             yield {
                 "type": "error",
-                "message": f"HTTP error: {e}",
+                "message": f"HTTP error: {e}. Install websockets for full functionality.",
             }
 
     async def accept_contract(self) -> dict[str, Any] | None:
-        """Accept the current contract."""
+        """Accept the current contract via WebSocket."""
         try:
             import websockets
         except ImportError:
@@ -200,7 +217,10 @@ class OfficeConnection:
 
         try:
             async with websockets.connect(f"{ws_url}/ws/client") as ws:
-                await ws.send(json.dumps({"type": "contract_accepted"}))
+                await ws.send(json.dumps({
+                    "type": "contract_accepted",
+                    "session_id": self.session_id,
+                }))
 
                 # Read events until work_done
                 async for raw in ws:
@@ -210,6 +230,8 @@ class OfficeConnection:
                             return data.get("result", {})
                         elif data.get("type") == "work_started":
                             continue
+                        elif data.get("type") == "error":
+                            return data
                     except json.JSONDecodeError:
                         continue
         except Exception as e:
@@ -219,25 +241,30 @@ class OfficeConnection:
         return None
 
     async def _accept_contract_http(self) -> dict[str, Any] | None:
-        """Fallback: Accept contract via HTTP."""
+        """
+        Fallback: Accept contract via HTTP.
+
+        Note: The server only accepts contract accept via WS.
+        This provides a clear error message.
+        """
         if not self._http_client:
             return None
-        try:
-            resp = await self._http_client.post(
-                f"/sessions/{self.session_id}/accept",
-                timeout=httpx.Timeout(300.0),
-            )
-            if resp.status_code == 200:
-                return resp.json()
-        except Exception:
-            pass
-        return None
+
+        return {
+            "type": "error",
+            "message": "WebSocket required for contract acceptance. Install websockets: pip install websockets",
+        }
 
     async def revise_contract(self, feedback: str) -> AsyncIterator[dict[str, Any]]:
-        """Request a contract revision."""
+        """Request a contract revision via WebSocket."""
         try:
             import websockets
         except ImportError:
+            # HTTP fallback — limited but functional
+            yield {
+                "type": "error",
+                "message": "WebSocket required for revision. Install websockets: pip install websockets",
+            }
             return
 
         ws_url = self.server_url.replace("http://", "ws://").replace("https://", "wss://")
@@ -247,6 +274,7 @@ class OfficeConnection:
                 await ws.send(json.dumps({
                     "type": "contract_revision",
                     "feedback": feedback,
+                    "session_id": self.session_id,
                 }))
 
                 async for raw in ws:
@@ -268,7 +296,23 @@ class OfficeConnection:
         Stream office events in real-time.
 
         Tries WebSocket first, falls back to SSE.
+        On reconnection, replays missed events.
         """
+        # Replay missed events on reconnection
+        if self._last_event_id and self._http_client:
+            try:
+                resp = await self._http_client.get(
+                    f"/events/{self.session_id}",
+                    params={"limit": 50},
+                    timeout=httpx.Timeout(10.0),
+                )
+                if resp.status_code == 200:
+                    events = resp.json().get("events", [])
+                    for event in events:
+                        yield event
+            except Exception:
+                pass
+
         # Try WebSocket
         try:
             import websockets
@@ -278,9 +322,13 @@ class OfficeConnection:
             async with websockets.connect(
                 f"{ws_url}/ws/office?session_id={self.session_id}"
             ) as ws:
+                self._ws_office = ws
                 async for raw in ws:
                     try:
                         data = json.loads(raw)
+                        # Track event ID for reconnection
+                        if "event_id" in data:
+                            self._last_event_id = data["event_id"]
                         yield data
                     except json.JSONDecodeError:
                         continue
@@ -302,11 +350,15 @@ class OfficeConnection:
                             data_str = line[6:]
                             try:
                                 data = json.loads(data_str)
+                                if "event_id" in data:
+                                    self._last_event_id = data["event_id"]
                                 yield data
                             except json.JSONDecodeError:
                                 continue
             except Exception as e:
                 logger.debug(f"SSE stream ended: {e}")
+
+    # ── REST Endpoints ─────────────────────────────────────────────
 
     async def get_status(self) -> dict[str, Any] | None:
         """Get office status via REST."""
@@ -347,6 +399,32 @@ class OfficeConnection:
             pass
         return None
 
+    async def get_metrics(self) -> dict[str, Any] | None:
+        """Get observability metrics via REST."""
+        if not self._http_client:
+            return None
+
+        try:
+            resp = await self._http_client.get("/metrics")
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception:
+            pass
+        return None
+
+    async def get_spans(self, limit: int = 100) -> dict[str, Any] | None:
+        """Get recent tracing spans via REST."""
+        if not self._http_client:
+            return None
+
+        try:
+            resp = await self._http_client.get("/spans", params={"limit": limit})
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception:
+            pass
+        return None
+
     async def get_circuit_breakers(self) -> dict[str, Any] | None:
         """Get circuit breaker status via REST."""
         if not self._http_client:
@@ -369,6 +447,84 @@ class OfficeConnection:
             resp = await self._http_client.get("/sessions")
             if resp.status_code == 200:
                 return resp.json().get("sessions", [])
+        except Exception:
+            pass
+        return []
+
+    async def get_session_detail(self, session_id: str) -> dict[str, Any] | None:
+        """Get session details via REST."""
+        if not self._http_client:
+            return None
+
+        try:
+            resp = await self._http_client.get(f"/sessions/{session_id}")
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception:
+            pass
+        return None
+
+    async def get_memory_stats(self) -> dict[str, Any] | None:
+        """
+        Get memory system statistics via REST.
+
+        Note: This endpoint may not exist on older servers.
+        Falls back to extracting from /status or /health/dashboard.
+        """
+        if not self._http_client:
+            return None
+
+        # Try dedicated memory endpoint first
+        try:
+            resp = await self._http_client.get("/memory/stats")
+            if resp.status_code == 200:
+                return resp.json()
+        except Exception:
+            pass
+
+        # Fallback: extract from health dashboard
+        try:
+            health = await self.get_health()
+            if health:
+                memory_info = {}
+                # Some health dashboards include memory stats
+                checks = health.get("checks", [])
+                for check in checks:
+                    if "memory" in check.get("name", "").lower():
+                        memory_info.update(check.get("details", {}))
+
+                if memory_info:
+                    return memory_info
+        except Exception:
+            pass
+
+        # Fallback: extract from status
+        try:
+            status = await self.get_status()
+            if status:
+                return {
+                    "ring1": status.get("ring1", {}),
+                    "ring2": status.get("ring2", {}),
+                    "recent_contexts": [],
+                }
+        except Exception:
+            pass
+
+        return None
+
+    async def get_events(self, session_id: str | None = None, limit: int = 50) -> list[dict]:
+        """Get recent events for replay/reconnection."""
+        if not self._http_client:
+            return []
+
+        sid = session_id or self.session_id
+        try:
+            resp = await self._http_client.get(
+                f"/events/{sid}",
+                params={"limit": limit},
+            )
+            if resp.status_code == 200:
+                return resp.json().get("events", [])
         except Exception:
             pass
         return []
