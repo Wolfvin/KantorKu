@@ -1,22 +1,30 @@
 """
-KantorKu TUI App — 3-Panel Office Interface.
+KantorKu TUI App — 3-Panel Chat-Driven Office Interface.
 
 The central TUI for coders, providing a natural office workflow:
-- Left Panel:   Chat with the Manager (Conductor) + Interrupt button
+- Left Panel:   Chat with the Manager (Conductor) + Disrupt button
 - Center Panel: Workers brainstorming & executing live
-- Right Panel:  Contract display + Accept/Revise actions
+- Right Panel:  Contract display + Accept/Revise BUTTONS
+
+Primary interaction is CHAT — type naturally, Manager handles the rest.
+Slash commands still work as secondary tools — type /help for list.
 
 Supports two modes:
 1. Remote: Connect to a running kantorku server via WebSocket
 2. Embedded: Run the Office directly in-process (no server needed)
 
-Slash commands still work as secondary tools — type /help for list.
+Natural Language Actions:
+    When a contract is presented, you can type:
+      "yes", "ok", "accept", "go ahead", "approve" → Accept contract
+      "no", "revise", "change X", "I want Y"       → Revise contract
+    Or click the Accept/Revise buttons in the right panel.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -26,7 +34,6 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
-from textual.events import Key
 from textual.reactive import reactive
 from textual.widgets import (
     Button,
@@ -35,8 +42,6 @@ from textual.widgets import (
     Input,
     RichLog,
     Static,
-    TabbedContent,
-    TabPane,
 )
 from textual.worker import WorkerCancelled
 
@@ -67,11 +72,62 @@ from kantorku.tui.markdown_renderer import (
 from kantorku.tui.commands import handle_slash_command
 
 
+# ── Natural Language Action Parser ──────────────────────────────────
+
+# Patterns that map to contract actions
+ACCEPT_PATTERNS = re.compile(
+    r"^(yes|yeah|yep|ok|okay|accept|approve|go ahead|go for it|do it|"
+    r"let'?s go|sure|sounds good|perfect|lg|lfg|ship it|"
+    r"looks good|agree|confirmed|confirm|proceed|execute)\s*[!.!]*$",
+    re.IGNORECASE,
+)
+
+REVISE_PATTERNS = re.compile(
+    r"^(no|nope|nah|revise|change|modify|update|alter|redo|reject|deny|"
+    r"not quite|not really|i want|i need|i prefer|instead|"
+    r"could you|can you|please change|please update|but)\b",
+    re.IGNORECASE,
+)
+
+INTERRUPT_PATTERNS = re.compile(
+    r"^(stop|halt|pause|wait|hold on|hold up|interrupt|disrupt|break|cancel)\b",
+    re.IGNORECASE,
+)
+
+
+def parse_nl_action(text: str, contract_state: str) -> str | None:
+    """
+    Parse natural language input to detect contract actions.
+
+    Returns:
+        "accept" if user wants to accept the contract
+        "revise" if user wants to revise the contract (remaining text = feedback)
+        "interrupt" if user wants to interrupt work
+        None if no action detected (regular chat message)
+    """
+    stripped = text.strip()
+    if not stripped:
+        return None
+
+    # Only parse actions when relevant
+    if contract_state == "contract_presented":
+        if ACCEPT_PATTERNS.match(stripped):
+            return "accept"
+        if REVISE_PATTERNS.match(stripped):
+            return "revise"
+
+    if contract_state == "working":
+        if INTERRUPT_PATTERNS.match(stripped):
+            return "interrupt"
+
+    return None
+
+
 # ── Widget Classes ──────────────────────────────────────────────────
 
 
 class ContractDisplay(Static):
-    """Right panel — shows current contract with Accept/Revise actions."""
+    """Right panel — shows current contract with Accept/Revise BUTTONS."""
 
     contract_data: reactive[dict[str, Any]] = reactive({})
     contract_state: reactive[str] = reactive("idle")
@@ -96,17 +152,17 @@ class ContractDisplay(Static):
         state = self.contract_state
         state_color = CONTRACT_STATE_COLORS.get(state, "dim")
         state_icon = {
-            "idle": "💤",
-            "manager_thinking": "🤔",
-            "clarifying": "💬",
-            "contract_presented": "📋",
-            "team_review": "👥",
-            "todo_review": "📝",
-            "client_feedback": "🔄",
-            "working": "⚡",
-            "done": "✅",
-            "failed": "❌",
-        }.get(state, "❓")
+            "idle": "\U0001f4a4",
+            "manager_thinking": "\U0001f914",
+            "clarifying": "\U0001f4ac",
+            "contract_presented": "\U0001f4cb",
+            "team_review": "\U0001f465",
+            "todo_review": "\U0001f4dd",
+            "client_feedback": "\U0001f504",
+            "working": "\u26a1",
+            "done": "\u2705",
+            "failed": "\u274c",
+        }.get(state, "\u2753")
 
         parts.append(Text.from_markup(
             f"[{state_color} bold]{state_icon} {state.upper()}[/{state_color} bold]"
@@ -130,10 +186,12 @@ class ContractDisplay(Static):
                     desc = todo.get("description", "")
                     assigned = todo.get("assigned_to", "unassigned")
                     status = todo.get("status", "pending")
-                    icon = STATUS_ICONS.get(status, "○")
+                    icon = STATUS_ICONS.get(status, "\u25cb")
                     color = STATUS_COLORS.get(status, "dim")
+                    squad = todo.get("squad", "")
+                    squad_str = f" [{SQUAD_COLORS.get(squad, 'dim')}]{squad}[/]" if squad else ""
                     parts.append(Text.from_markup(
-                        f"  [{color}]{icon}[/{color}] [{assigned}] {desc[:50]}"
+                        f"  [{color}]{icon}[/{color}] [{assigned}]{squad_str} {desc[:50]}"
                     ))
 
                 # Progress bar
@@ -142,7 +200,7 @@ class ContractDisplay(Static):
                 pct = int((done / total) * 100) if total > 0 else 0
                 bar_len = 20
                 filled = int(bar_len * done / total) if total > 0 else 0
-                bar = "█" * filled + "░" * (bar_len - filled)
+                bar = "\u2588" * filled + "\u2591" * (bar_len - filled)
                 parts.append(Text.from_markup(
                     f"\n[bold]Progress:[/bold] [{bar}] {pct}% ({done}/{total})"
                 ))
@@ -162,39 +220,41 @@ class ContractDisplay(Static):
                         ))
                     if decisions:
                         for d in decisions[:2]:
-                            parts.append(Text.from_markup(f"  [green]✓ {d[:40]}[/green]"))
+                            parts.append(Text.from_markup(f"  [green]\u2713 {d[:40]}[/green]"))
 
-            # Actions based on state
+            # Actions based on state — BUTTON instructions
             parts.append(Text.from_markup(""))
             if state == "contract_presented":
                 parts.append(Text.from_markup(
-                    "[bold green]▸ Type /accept to approve[/bold green]\n"
-                    "[bold yellow]▸ Type /revise <feedback> to request changes[/bold yellow]"
+                    "[bold green]\u25b8 Click [ACCEPT] below or type 'yes'/'ok'[/bold green]\n"
+                    "[bold yellow]\u25b8 Click [REVISE] below or type your feedback[/bold yellow]"
                 ))
             elif state == "working":
                 parts.append(Text.from_markup(
-                    "[bold green]▸ Workers are executing...[/bold green]\n"
-                    "[bold yellow]▸ Type /interrupt to pause and talk to Manager[/bold yellow]"
+                    "[bold green]\u25b8 Workers are executing...[/bold green]\n"
+                    "[bold yellow]\u25b8 Click [DISRUPT] or type 'stop' to pause[/bold yellow]"
                 ))
             elif state in ("team_review", "todo_review"):
                 parts.append(Text.from_markup(
-                    f"[bold magenta]▸ Team is reviewing the plan...[/bold magenta]"
+                    f"[bold magenta]\u25b8 Team is reviewing the plan...[/bold magenta]"
                 ))
             elif state == "done":
                 parts.append(Text.from_markup(
-                    "[bold green]▸ Work complete! Start a new task by typing a message.[/bold green]"
+                    "[bold green]\u25b8 Work complete! Type a new task to start.[/bold green]"
                 ))
         else:
             parts.append(Text.from_markup(
                 "\n[dim]No active contract yet.[/dim]\n\n"
-                "[dim]Send a message to the Manager\n"
-                "in the left panel to start.[/dim]"
+                "[dim]Chat with the Manager in\n"
+                "the left panel to start.[/dim]\n\n"
+                "[dim]Just type what you need\n"
+                "and press Enter.[/dim]"
             ))
 
         # Work result
         result = self.work_result
         if result:
-            parts.append(Text.from_markup("\n[bold green]━━━ Result ━━━[/bold green]"))
+            parts.append(Text.from_markup("\n[bold green]\u2501\u2501\u2501 Result \u2501\u2501\u2501[/bold green]"))
             results_data = result.get("results", {})
             if results_data:
                 for tid, r in list(results_data.items())[:5]:
@@ -232,6 +292,11 @@ class WorkersLiveStream(Static):
     - LLM streaming chunks
     - Context prefetch status
     - Verification progress
+    - Checkpoint / recovery events
+    - Circuit breaker events
+    - Worker lifecycle (hire/fire)
+    - Cost warnings
+    - Delegation
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -245,7 +310,7 @@ class WorkersLiveStream(Static):
         """Add an office event to the live stream."""
         event_type = event.get("type", "")
 
-        # Only show worker-relevant events in center panel
+        # Show ALL relevant worker events in center panel
         relevant_types = {
             "briefing_opened", "plan_drafted", "plan_revised",
             "worker_speak_up", "worker_dm", "worker_broadcast",
@@ -257,6 +322,13 @@ class WorkersLiveStream(Static):
             "llm_stream_start", "llm_stream_chunk", "llm_stream_done",
             "contract_accepted",
             "delegation_request", "delegation_result",
+            # v0.6.0 additions
+            "checkpoint_saved", "crash_recovered",
+            "circuit_open", "circuit_closed",
+            "rate_limit_hit", "cost_warning",
+            "worker_hired", "worker_fired",
+            "task_recovered", "task_timeout",
+            "middleware_before", "middleware_after",
         }
 
         if event_type not in relevant_types:
@@ -285,11 +357,11 @@ class WorkersLiveStream(Static):
             self.update(Panel(
                 "[dim]Workers will appear here once a contract is accepted.[/dim]\n\n"
                 "[dim]You'll see:\n"
-                "  • Briefing room discussion\n"
-                "  • Task assignments & execution\n"
-                "  • Worker DMs and concerns\n"
-                "  • LLM streaming output\n"
-                "  • Verification results[/dim]",
+                "  \u2022 Briefing room discussion\n"
+                "  \u2022 Task assignments & execution\n"
+                "  \u2022 Worker DMs and concerns\n"
+                "  \u2022 LLM streaming output\n"
+                "  \u2022 Verification results[/dim]",
                 title="Workers Live",
                 border_style="dim",
                 padding=(0, 1),
@@ -300,20 +372,10 @@ class WorkersLiveStream(Static):
 
         # Phase indicator
         if self._phase:
-            phase_colors = {
-                "briefing": "magenta bold",
-                "execution": "green bold",
-                "verification": "blue bold",
-                "done": "green",
-            }
-            phase_icons = {
-                "briefing": "👥 BRIEFING",
-                "execution": "⚡ EXECUTING",
-                "verification": "🔍 VERIFYING",
-                "done": "✅ COMPLETE",
-            }
-            pc = phase_colors.get(self._phase, "dim")
-            pi = phase_icons.get(self._phase, self._phase.upper())
+            phase_style = WORKERS_PHASE_STYLES.get(
+                self._phase, ("dim", self._phase.upper())
+            )
+            pc, pi = phase_style
             parts.append(Text.from_markup(f"[{pc}]{pi}[/{pc}]\n"))
 
         visible = self._entries[-50:]  # Show last 50 entries
@@ -330,25 +392,25 @@ class WorkersLiveStream(Static):
                 from_id = e.get("from", "conductor")
                 content = e.get("content", "")
                 parts.append(Text.from_markup(
-                    f"  [bold magenta]📢 {from_id}:[/bold magenta] {content[:80]}"
+                    f"  [bold magenta]\U0001f4e2 {from_id}:[/bold magenta] {content[:80]}"
                 ))
 
             elif event_type == "plan_drafted":
                 parts.append(Text.from_markup(
-                    "  [bold blue]📋 Plan drafted for team review[/bold blue]"
+                    "  [bold blue]\U0001f4cb Plan drafted for team review[/bold blue]"
                 ))
 
             elif event_type == "plan_revised":
                 reason = e.get("reason", "")
                 parts.append(Text.from_markup(
-                    f"  [yellow]📋 Plan revised: {reason[:60]}[/yellow]"
+                    f"  [yellow]\U0001f4cb Plan revised: {reason[:60]}[/yellow]"
                 ))
 
             elif event_type == "worker_speak_up":
                 from_id = e.get("from", "?")
                 content = e.get("content", "")
                 parts.append(Text.from_markup(
-                    f"  [magenta]💬 {from_id}:[/magenta] {content[:100]}"
+                    f"  [magenta]\U0001f4ac {from_id}:[/magenta] {content[:100]}"
                 ))
 
             elif event_type == "worker_dm":
@@ -356,42 +418,54 @@ class WorkersLiveStream(Static):
                 to_id = e.get("to", "?")
                 content = e.get("content", "")
                 parts.append(Text.from_markup(
-                    f"  [dim]✉ {from_id} → {to_id}: {content[:80]}[/dim]"
+                    f"  [dim]\u2709 {from_id} \u2192 {to_id}: {content[:80]}[/dim]"
                 ))
 
             elif event_type == "worker_broadcast":
                 from_id = e.get("from", "?")
                 content = e.get("content", "")
                 parts.append(Text.from_markup(
-                    f"  [cyan]📢 {from_id}: {content[:80]}[/cyan]"
+                    f"  [cyan]\U0001f4e2 {from_id}: {content[:80]}[/cyan]"
                 ))
 
             elif event_type == "task_assigned":
                 to_id = e.get("to", "?")
                 content = e.get("content", "")
                 parts.append(Text.from_markup(
-                    f"  [cyan]➡ {to_id}: {content[:70]}[/cyan]"
+                    f"  [cyan]\u27a1 {to_id}: {content[:70]}[/cyan]"
                 ))
 
             elif event_type == "task_started":
                 from_id = e.get("from", "?")
                 parts.append(Text.from_markup(
-                    f"  [yellow]◐ {from_id} started working...[/yellow]"
+                    f"  [yellow]\u25d0 {from_id} started working...[/yellow]"
                 ))
 
             elif event_type == "task_done":
                 from_id = e.get("from", "?")
                 files = e.get("files", [])
-                files_str = f" → {', '.join(files[:3])}" if files else ""
+                files_str = f" \u2192 {', '.join(files[:3])}" if files else ""
                 parts.append(Text.from_markup(
-                    f"  [green]✓ {from_id} done{files_str}[/green]"
+                    f"  [green]\u2713 {from_id} done{files_str}[/green]"
                 ))
 
             elif event_type == "task_failed":
                 from_id = e.get("from", "?")
                 error = e.get("error", "")
                 parts.append(Text.from_markup(
-                    f"  [red bold]✗ {from_id} failed: {error[:60]}[/red bold]"
+                    f"  [red bold]\u2717 {from_id} failed: {error[:60]}[/red bold]"
+                ))
+
+            elif event_type == "task_recovered":
+                from_id = e.get("from", "?")
+                parts.append(Text.from_markup(
+                    f"  [green]\u21bb {from_id} recovered[/green]"
+                ))
+
+            elif event_type == "task_timeout":
+                from_id = e.get("from", "?")
+                parts.append(Text.from_markup(
+                    f"  [red]\u23f1 {from_id} timed out[/red]"
                 ))
 
             elif event_type in ("context_fetch_start", "context_fetch_done"):
@@ -399,22 +473,22 @@ class WorkersLiveStream(Static):
                 query = e.get("query", "")[:40]
                 if event_type == "context_fetch_start":
                     parts.append(Text.from_markup(
-                        f"  [dim]🔍 Pool-{instance}: fetching \"{query}\"[/dim]"
+                        f"  [dim]\U0001f50d Pool-{instance}: fetching \"{query}\"[/dim]"
                     ))
                 else:
                     parts.append(Text.from_markup(
-                        f"  [dim]✓ Pool-{instance}: fetched[/dim]"
+                        f"  [dim]\u2713 Pool-{instance}: fetched[/dim]"
                     ))
 
             elif event_type == "verify_design_start":
                 parts.append(Text.from_markup(
-                    "  [magenta]🔍 Design verification starting...[/magenta]"
+                    "  [magenta]\U0001f50d Design verification starting...[/magenta]"
                 ))
 
             elif event_type == "verify_design_done":
                 approved = e.get("approved", True)
                 issues = e.get("issues", [])
-                icon = "✓" if approved else "✗"
+                icon = "\u2713" if approved else "\u2717"
                 color = "green" if approved else "red"
                 parts.append(Text.from_markup(
                     f"  [{color}]{icon} Design review: {len(issues)} issue(s)[/{color}]"
@@ -422,13 +496,13 @@ class WorkersLiveStream(Static):
 
             elif event_type == "verify_engineer_start":
                 parts.append(Text.from_markup(
-                    "  [magenta]🔍 Engineering verification starting...[/magenta]"
+                    "  [magenta]\U0001f50d Engineering verification starting...[/magenta]"
                 ))
 
             elif event_type == "verify_engineer_done":
                 approved = e.get("approved", True)
                 issues = e.get("issues", [])
-                icon = "✓" if approved else "✗"
+                icon = "\u2713" if approved else "\u2717"
                 color = "green" if approved else "red"
                 parts.append(Text.from_markup(
                     f"  [{color}]{icon} Engineering review: {len(issues)} issue(s)[/{color}]"
@@ -437,21 +511,21 @@ class WorkersLiveStream(Static):
             elif event_type == "error_logged":
                 lesson = e.get("lesson", "")
                 parts.append(Text.from_markup(
-                    f"  [red]⚠ Error: {lesson[:80]}[/red]"
+                    f"  [red]\u26a0 Error: {lesson[:80]}[/red]"
                 ))
 
             elif event_type == "skill_updated":
                 worker = e.get("worker", "?")
                 lesson = e.get("lesson", "")
                 parts.append(Text.from_markup(
-                    f"  [cyan]📚 {worker} learned: {lesson[:60]}[/cyan]"
+                    f"  [cyan]\U0001f4da {worker} learned: {lesson[:60]}[/cyan]"
                 ))
 
             elif event_type == "llm_stream_start":
                 from_id = e.get("from", "?")
                 model = e.get("model", "")
                 parts.append(Text.from_markup(
-                    f"  [dim]◐ {from_id} thinking ({model})...[/dim]"
+                    f"  [dim]\u25d0 {from_id} thinking ({model})...[/dim]"
                 ))
 
             elif event_type == "llm_stream_chunk":
@@ -462,22 +536,75 @@ class WorkersLiveStream(Static):
             elif event_type == "llm_stream_done":
                 from_id = e.get("from", "?")
                 parts.append(Text.from_markup(
-                    f"  [dim]✓ {from_id} stream complete[/dim]"
+                    f"  [dim]\u2713 {from_id} stream complete[/dim]"
                 ))
 
             elif event_type == "contract_accepted":
                 parts.append(Text.from_markup(
-                    "  [bold green]✓ Contract accepted — work begins![/bold green]"
+                    "  [bold green]\u2713 Contract accepted \u2014 work begins![/bold green]"
                 ))
 
             elif event_type == "delegation_request":
                 parts.append(Text.from_markup(
-                    f"  [cyan]↗ Delegation: {e.get('content', '')[:60]}[/cyan]"
+                    f"  [cyan]\u2197 Delegation: {e.get('content', '')[:60]}[/cyan]"
                 ))
 
             elif event_type == "delegation_result":
                 parts.append(Text.from_markup(
-                    f"  [cyan]↙ Delegation result: {e.get('content', '')[:60]}[/cyan]"
+                    f"  [cyan]\u2199 Delegation result: {e.get('content', '')[:60]}[/cyan]"
+                ))
+
+            elif event_type == "checkpoint_saved":
+                parts.append(Text.from_markup(
+                    f"  [green]\U0001f4be Checkpoint saved[/green]"
+                ))
+
+            elif event_type == "crash_recovered":
+                parts.append(Text.from_markup(
+                    f"  [yellow bold]\U0001f504 Crash recovered[/yellow bold]"
+                ))
+
+            elif event_type == "circuit_open":
+                provider = e.get("provider", "?")
+                parts.append(Text.from_markup(
+                    f"  [red bold]\u26a1 Circuit OPEN: {provider}[/red bold]"
+                ))
+
+            elif event_type == "circuit_closed":
+                provider = e.get("provider", "?")
+                parts.append(Text.from_markup(
+                    f"  [green]\u2713 Circuit closed: {provider}[/green]"
+                ))
+
+            elif event_type == "rate_limit_hit":
+                provider = e.get("provider", "?")
+                parts.append(Text.from_markup(
+                    f"  [yellow]\u23f0 Rate limit: {provider}[/yellow]"
+                ))
+
+            elif event_type == "cost_warning":
+                msg = e.get("message", "Cost threshold approached")
+                parts.append(Text.from_markup(
+                    f"  [yellow bold]\U0001f4b8 {msg[:60]}[/yellow bold]"
+                ))
+
+            elif event_type == "worker_hired":
+                worker_id = e.get("worker_id", "?")
+                parts.append(Text.from_markup(
+                    f"  [green bold]\U0001f91d Hired: {worker_id}[/green bold]"
+                ))
+
+            elif event_type == "worker_fired":
+                worker_id = e.get("worker_id", "?")
+                parts.append(Text.from_markup(
+                    f"  [red bold]\U0001f6ae Fired: {worker_id}[/red bold]"
+                ))
+
+            elif event_type in ("middleware_before", "middleware_after"):
+                name = e.get("middleware", "?")
+                direction = "\u2192" if event_type == "middleware_before" else "\u2190"
+                parts.append(Text.from_markup(
+                    f"  [dim blue]{direction} {name}[/dim blue]"
                 ))
 
         self.update(Panel(
@@ -493,19 +620,24 @@ class WorkersLiveStream(Static):
 
 class KantorKuTUI(App):
     """
-    KantorKu — 3-Panel Office Interface for Coders.
+    KantorKu — 3-Panel Chat-Driven Office Interface for Coders.
 
-    Natural office workflow:
-    1. Chat with Manager in LEFT panel
+    Natural office workflow — chat is PRIMARY:
+    1. Chat with Manager in LEFT panel (just type naturally)
     2. Watch workers brainstorm/execute in CENTER panel
-    3. Review & accept contracts in RIGHT panel
-    4. Hit INTERRUPT to pause and talk to Manager again
+    3. Review & accept contracts in RIGHT panel (click buttons or type)
+    4. Hit DISRUPT to pause and talk to Manager again
+
+    Natural Language Actions:
+      Contract presented? Type "yes", "ok", "accept" to approve.
+      Want changes? Type "revise", "change X", "I want Y" to revise.
+      Working? Type "stop", "wait", "pause" to disrupt.
 
     Slash commands still work as secondary tools — /help for list.
     """
 
     TITLE = "kantorku"
-    SUB_TITLE = "3-Panel Office"
+    SUB_TITLE = "Chat-Driven Office"
 
     CSS = f"""
     Screen {{
@@ -544,12 +676,6 @@ class KantorKuTUI(App):
         padding: 0 1;
     }}
 
-    #workers-log {{
-        height: 1fr;
-        border: none;
-        padding: 0 1;
-    }}
-
     #contract-scroll {{
         height: 1fr;
     }}
@@ -564,15 +690,51 @@ class KantorKuTUI(App):
         dock: bottom;
     }}
 
-    #interrupt-btn {{
+    #disrupt-btn {{
         dock: bottom;
         margin: 0 1;
         background: {KANTORKU_THEME['warning']};
         color: $text;
+        text-style: bold;
     }}
 
-    #interrupt-btn:hover {{
+    #disrupt-btn:hover {{
         background: {KANTORKU_THEME['error']};
+    }}
+
+    #action-bar {{
+        dock: bottom;
+        height: auto;
+        padding: 0 1;
+    }}
+
+    #accept-btn {{
+        background: {KANTORKU_THEME['success']};
+        color: $text;
+        text-style: bold;
+        margin-right: 1;
+    }}
+
+    #accept-btn:hover {{
+        background: #059669;
+    }}
+
+    #revise-btn {{
+        background: {KANTORKU_THEME['accent']};
+        color: $text;
+        text-style: bold;
+    }}
+
+    #revise-btn:hover {{
+        background: #d97706;
+    }}
+
+    #status-bar {{
+        dock: bottom;
+        height: 1;
+        background: {KANTORKU_THEME['surface']};
+        color: {KANTORKU_THEME['muted']};
+        padding: 0 1;
     }}
     """
 
@@ -581,10 +743,10 @@ class KantorKuTUI(App):
         Binding("ctrl+c", "cancel_input", "Cancel", show=True),
         Binding("ctrl+a", "accept_contract", "Accept", show=False),
         Binding("ctrl+r", "revise_contract", "Revise", show=False),
-        Binding("ctrl+i", "interrupt", "Interrupt", show=False),
+        Binding("ctrl+i", "disrupt", "Disrupt", show=False),
         Binding("tab", "focus_next_panel", "Next Panel", show=False),
-        Binding("up", "history_up", "History ↑", show=False),
-        Binding("down", "history_down", "History ↓", show=False),
+        Binding("up", "history_up", "History \u2191", show=False),
+        Binding("down", "history_down", "History \u2193", show=False),
     ]
 
     # Reactive state
@@ -620,6 +782,10 @@ class KantorKuTUI(App):
         # Worker event listener
         self._event_listener_running = False
 
+        # Cost tracking for status
+        self._total_cost: float = 0.0
+        self._total_calls: int = 0
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
 
@@ -633,13 +799,13 @@ class KantorKuTUI(App):
                     auto_scroll=True,
                 )
                 yield Button(
-                    "⚡ INTERRUPT — Talk to Manager",
-                    id="interrupt-btn",
+                    "\u26a1 DISRUPT \u2014 Talk to Manager",
+                    id="disrupt-btn",
                     variant="warning",
                 )
                 with Horizontal(id="input-bar"):
                     yield Input(
-                        placeholder="Talk to Manager... (/help for commands)",
+                        placeholder="Talk to Manager...",
                         id="chat-input",
                     )
 
@@ -647,31 +813,108 @@ class KantorKuTUI(App):
             with Vertical(id="center-panel"):
                 yield WorkersLiveStream(id="workers-live")
 
-            # ── Right Panel: Contract ──
+            # ── Right Panel: Contract + Buttons ──
             with Vertical(id="right-panel"):
                 with VerticalScroll(id="contract-scroll"):
                     yield ContractDisplay(id="contract-display")
+                with Horizontal(id="action-bar"):
+                    yield Button(
+                        "\u2713 ACCEPT",
+                        id="accept-btn",
+                        variant="success",
+                    )
+                    yield Button(
+                        "\u270f REVISE",
+                        id="revise-btn",
+                        variant="warning",
+                    )
 
         yield Footer()
 
     def on_mount(self) -> None:
         """Initialize connection and start background workers."""
-        self.title = f"kantorku — session {self._session_id}"
+        self.title = f"kantorku \u2014 session {self._session_id}"
         self._add_manager_message(
-            f"[bold cyan]KantorKu TUI v0.5.0 — 3-Panel Office[/bold cyan]\n"
+            f"[bold cyan]KantorKu TUI v0.6.0 \u2014 Chat-Driven Office[/bold cyan]\n"
             f"Session: {self._session_id}\n"
             f"Server: {self.server_url}\n\n"
             f"[bold]How it works:[/bold]\n"
-            f"  [bold cyan]Left[/bold cyan]   → Chat with Manager (you're here)\n"
-            f"  [bold magenta]Center[/bold magenta] → Watch workers brainstorm & execute\n"
-            f"  [bold yellow]Right[/bold yellow]  → Review & accept contracts\n\n"
-            f"[dim]Type a message and press Enter to start.\n"
-            f"Slash commands: /help for full list\n"
-            f"Shortcuts: Ctrl+A=Accept  Ctrl+R=Revise  Ctrl+I=Interrupt[/dim]"
+            f"  [bold cyan]Left[/bold cyan]   \u2192 Chat with Manager (just type!)\n"
+            f"  [bold magenta]Center[/bold magenta] \u2192 Watch workers brainstorm & execute\n"
+            f"  [bold yellow]Right[/bold yellow]  \u2192 Review contracts & click Accept/Revise\n\n"
+            f"[bold green]Chat naturally:[/bold green]\n"
+            f"  When contract is shown, type [bold green]'yes'/'ok'/'accept'[/bold green] to approve\n"
+            f"  Type [bold yellow]'revise'/'change X'/'I want Y'[/bold yellow] to request changes\n"
+            f"  Type [bold red]'stop'/'wait'/'pause'[/bold red] to disrupt work\n\n"
+            f"[dim]Slash commands: /help for full list\n"
+            f"Shortcuts: Ctrl+A=Accept  Ctrl+R=Revise  Ctrl+I=Disrupt[/dim]"
         )
+
+        # Hide action buttons initially (no contract)
+        self._update_action_buttons()
 
         # Connect to server
         self._connect_and_listen()
+
+    # ── Action Button Management ─────────────────────────────────────
+
+    def _update_action_buttons(self) -> None:
+        """Show/hide Accept/Revise buttons based on contract state."""
+        try:
+            accept_btn = self.query_one("#accept-btn", Button)
+            revise_btn = self.query_one("#revise-btn", Button)
+        except NoMatches:
+            return
+
+        if self.contract_state == "contract_presented":
+            accept_btn.display = True
+            revise_btn.display = True
+            accept_btn.disabled = False
+            revise_btn.disabled = False
+        elif self.contract_state == "working":
+            accept_btn.display = False
+            revise_btn.display = False
+        else:
+            accept_btn.display = False
+            revise_btn.display = False
+
+    def _update_input_placeholder(self) -> None:
+        """Change input placeholder based on current state."""
+        try:
+            inp = self.query_one("#chat-input", Input)
+        except NoMatches:
+            return
+
+        placeholders = {
+            "idle": "Talk to Manager...",
+            "manager_thinking": "Manager is thinking...",
+            "clarifying": "Answer the Manager...",
+            "contract_presented": "Type 'yes' to accept / 'revise' to change / or chat...",
+            "team_review": "Team is reviewing...",
+            "todo_review": "Team is reviewing tasks...",
+            "client_feedback": "Give feedback to Manager...",
+            "working": "Type 'stop' to disrupt / or chat with Manager...",
+            "verifying": "Workers are verifying...",
+            "done": "Start a new task...",
+            "failed": "Try again or ask Manager...",
+        }
+        inp.placeholder = placeholders.get(self.contract_state, "Talk to Manager...")
+
+    def _update_subtitle(self) -> None:
+        """Update the app subtitle with current state info."""
+        state_icons = {
+            "idle": "\U0001f4a4",
+            "manager_thinking": "\U0001f914",
+            "clarifying": "\U0001f4ac",
+            "contract_presented": "\U0001f4cb",
+            "working": "\u26a1",
+            "done": "\u2705",
+            "failed": "\u274c",
+        }
+        icon = state_icons.get(self.contract_state, "\u25cb")
+        conn = "\u2713" if self.connection_state == "connected" else "\u2717"
+        cost_str = f"${self._total_cost:.4f}" if self._total_cost > 0 else ""
+        self.sub_title = f"{icon} {self.contract_state} | conn:{conn} | {cost_str}"
 
     # ── Connection & Background Workers ─────────────────────────────
 
@@ -681,7 +924,8 @@ class KantorKuTUI(App):
         try:
             await self._connection.connect()
             self.connection_state = "connected"
-            self._add_manager_message("[green]✓ Connected to server[/green]")
+            self._add_manager_message("[green]\u2713 Connected to server[/green]")
+            self._update_subtitle()
 
             # Start event listener
             self._event_listener_running = True
@@ -690,13 +934,15 @@ class KantorKuTUI(App):
         except ConnectionError as e:
             self.connection_state = "error"
             self._add_manager_message(
-                f"[red]✗ Connection failed: {e}[/red]\n"
+                f"[red]\u2717 Connection failed: {e}[/red]\n"
                 f"[dim]Retrying in {self._reconnect_delay}s...[/dim]"
             )
+            self._update_subtitle()
             await self._auto_reconnect()
         except Exception as e:
             self.connection_state = "error"
             self._add_manager_message(f"[red]Error: {e}[/red]")
+            self._update_subtitle()
 
     async def _listen_office_events(self) -> None:
         """Listen to the office event stream and route to center panel."""
@@ -761,19 +1007,29 @@ class KantorKuTUI(App):
         elif event_type == "work_done":
             result = event.get("result", {})
             self._add_manager_message(
-                f"[bold green]✓ Work complete![/bold green]"
+                f"[bold green]\u2713 Work complete![/bold green]"
             )
             try:
                 contract_display = self.query_one("#contract-display", ContractDisplay)
                 contract_display.work_result = result
                 contract_display.contract_state = "done"
                 self.contract_state = "done"
+                self._update_action_buttons()
+                self._update_input_placeholder()
+                self._update_subtitle()
             except NoMatches:
                 pass
 
         elif event_type == "error":
             msg = event.get("message", "Unknown error")
-            self._add_manager_message(f"[red bold]✗ Error: {msg}[/red bold]")
+            self._add_manager_message(f"[red bold]\u2717 Error: {msg}[/red bold]")
+
+        # Track cost updates from events
+        elif event_type == "cost_warning":
+            cost = event.get("cost_usd", 0)
+            if cost:
+                self._total_cost = cost
+            self._update_subtitle()
 
     def _handle_contract_event(self, event: dict[str, Any]) -> None:
         """Handle contract-related events — update right panel."""
@@ -790,26 +1046,35 @@ class KantorKuTUI(App):
             contract_display.contract_state = "contract_presented"
             self.pending_contract = contract
             self.contract_state = "contract_presented"
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
             self._add_manager_message(
-                f"[bold cyan]📋 Contract ready![/bold cyan] "
+                f"[bold cyan]\U0001f4cb Contract ready![/bold cyan] "
                 f"Review it in the right panel.\n"
-                f"[bold green]/accept[/bold green] to approve  |  "
-                f"[bold yellow]/revise <feedback>[/bold yellow] to request changes\n"
+                f"[bold green]Click \u2713 ACCEPT[/bold green] or type 'yes'/'ok'  |  "
+                f"[bold yellow]Click \u270f REVISE[/bold yellow] or type your feedback\n"
                 f"[dim]Or press Ctrl+A / Ctrl+R[/dim]"
             )
 
         elif event_type == "contract_accepted":
             contract_display.contract_state = "working"
             self.contract_state = "working"
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
 
         elif event_type == "work_started":
             contract_display.contract_state = "working"
             self.contract_state = "working"
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
 
     # ── Input Handling ──────────────────────────────────────────────
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Handle user input — send message or handle slash command."""
+        """Handle user input — parse NL actions, slash commands, or chat."""
         if event.input.id != "chat-input":
             return
 
@@ -824,11 +1089,38 @@ class KantorKuTUI(App):
         self._input_history.append(text)
         self._history_index = -1
 
-        # Check for slash commands
+        # Check for slash commands first
         if text.startswith("/"):
             result = await handle_slash_command(text, self)
             if result:
                 self._add_manager_message(result)
+            return
+
+        # Check for natural language actions
+        nl_action = parse_nl_action(text, self.contract_state)
+
+        if nl_action == "accept":
+            self._add_manager_message(f"[bold]You:[/bold] {text}  \u2192 [green]Accepting contract[/green]")
+            await self._send_accept()
+            return
+
+        if nl_action == "revise":
+            # Extract feedback: strip the action word, keep the rest
+            feedback = text
+            for prefix in ("revise", "change", "modify", "update", "alter", "redo",
+                          "no", "nope", "nah", "reject", "deny", "not quite", "not really"):
+                if feedback.lower().startswith(prefix):
+                    remainder = feedback[len(prefix):].strip()
+                    if remainder:
+                        feedback = remainder
+                    break
+            self._add_manager_message(f"[bold]You:[/bold] {text}  \u2192 [yellow]Requesting revision[/yellow]")
+            await self._send_revise(feedback if feedback != text else text)
+            return
+
+        if nl_action == "interrupt":
+            self._add_manager_message(f"[bold]You:[/bold] {text}  \u2192 [yellow]Disrupting work[/yellow]")
+            self._do_disrupt()
             return
 
         # Send as regular message to Manager
@@ -837,8 +1129,21 @@ class KantorKuTUI(App):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
-        if event.button.id == "interrupt-btn":
-            self._do_interrupt()
+        if event.button.id == "disrupt-btn":
+            self._do_disrupt()
+        elif event.button.id == "accept-btn":
+            self._add_manager_message("[bold green]\u2713 Accepting contract...[/bold green]")
+            asyncio.create_task(self._send_accept())
+        elif event.button.id == "revise-btn":
+            self._add_manager_message(
+                "[yellow]Type your revision feedback:[/yellow]\n"
+                "[dim]e.g. 'I want more detail on the API design'[/dim]"
+            )
+            try:
+                inp = self.query_one("#chat-input", Input)
+                inp.focus()
+            except NoMatches:
+                pass
 
     # ── Key Bindings ────────────────────────────────────────────────
 
@@ -847,27 +1152,32 @@ class KantorKuTUI(App):
         if self.pending_contract:
             asyncio.create_task(self._send_accept())
         else:
-            self._add_manager_message("[yellow]No contract to accept yet.[/yellow]")
+            self._add_manager_message("[yellow]No contract to accept yet. Chat with the Manager first![/yellow]")
 
     def action_revise_contract(self) -> None:
         """Ctrl+R — Request contract revision."""
         if self.pending_contract:
             self._add_manager_message(
-                "[yellow]Type your revision feedback, e.g.:[/yellow]\n"
-                "[dim]/revise I want more detail on the API design[/dim]"
+                "[yellow]Type your revision feedback:[/yellow]\n"
+                "[dim]e.g. 'I want more detail on the API design'[/dim]"
             )
+            try:
+                inp = self.query_one("#chat-input", Input)
+                inp.focus()
+            except NoMatches:
+                pass
         else:
             self._add_manager_message("[yellow]No contract to revise yet.[/yellow]")
 
-    def action_interrupt(self) -> None:
-        """Ctrl+I — Interrupt current work and talk to Manager."""
-        self._do_interrupt()
+    def action_disrupt(self) -> None:
+        """Ctrl+I — Disrupt current work and talk to Manager."""
+        self._do_disrupt()
 
-    def _do_interrupt(self) -> None:
-        """Interrupt current work."""
-        if self.contract_state == "working":
+    def _do_disrupt(self) -> None:
+        """Disrupt current work — pause and talk to Manager."""
+        if self.contract_state in ("working", "team_review", "todo_review", "verifying"):
             self._add_manager_message(
-                "[bold yellow]⚡ INTERRUPT — Pausing work to talk to Manager[/bold yellow]"
+                "[bold yellow]\u26a1 DISRUPT \u2014 Pausing work to talk to Manager[/bold yellow]"
             )
             self.contract_state = "client_feedback"
             try:
@@ -878,13 +1188,16 @@ class KantorKuTUI(App):
             try:
                 workers_live = self.query_one("#workers-live", WorkersLiveStream)
                 workers_live.add_system_message(
-                    "⚡ INTERRUPT — Client paused work for discussion", "yellow bold"
+                    "\u26a1 DISRUPT \u2014 Client paused work for discussion", "yellow bold"
                 )
             except NoMatches:
                 pass
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
         else:
             self._add_manager_message(
-                "[dim]No active work to interrupt. Just type your message![/dim]"
+                "[dim]No active work to disrupt. Just type your message![/dim]"
             )
 
     def action_focus_next_panel(self) -> None:
@@ -940,6 +1253,10 @@ class KantorKuTUI(App):
 
     async def _send_message(self, message: str) -> None:
         """Send a message to the Manager via WebSocket."""
+        self.contract_state = "manager_thinking"
+        self._update_input_placeholder()
+        self._update_subtitle()
+
         try:
             async for event in self._connection.send_message(message):
                 event_type = event.get("type", "")
@@ -955,6 +1272,8 @@ class KantorKuTUI(App):
                         cd.contract_state = "clarifying"
                     except NoMatches:
                         pass
+                    self._update_input_placeholder()
+                    self._update_subtitle()
 
                 elif event_type == "contract_ready":
                     contract = event.get("contract", {})
@@ -966,15 +1285,19 @@ class KantorKuTUI(App):
                         cd.contract_state = "contract_presented"
                     except NoMatches:
                         pass
+                    self._update_action_buttons()
+                    self._update_input_placeholder()
+                    self._update_subtitle()
                     self._add_manager_message(
-                        f"[bold cyan]📋 Contract ready![/bold cyan] "
-                        f"Review it in the right panel.\n"
-                        f"[bold green]/accept[/bold green] | [bold yellow]/revise <feedback>[/bold yellow]"
+                        f"[bold cyan]\U0001f4cb Contract ready![/bold cyan] "
+                        f"Review in right panel.\n"
+                        f"[bold green]Click \u2713 ACCEPT[/bold green] or type 'yes'/'ok'  |  "
+                        f"[bold yellow]Click \u270f REVISE[/bold yellow] or type feedback"
                     )
 
                 elif event_type == "error":
                     msg = event.get("message", "Unknown error")
-                    self._add_manager_message(f"[red bold]✗ {msg}[/red bold]")
+                    self._add_manager_message(f"[red bold]\u2717 {msg}[/red bold]")
 
         except ConnectionError as e:
             self._add_manager_message(
@@ -982,6 +1305,7 @@ class KantorKuTUI(App):
                 f"[dim]Will try to reconnect...[/dim]"
             )
             self.connection_state = "disconnected"
+            self._update_subtitle()
             await self._auto_reconnect()
 
     async def _send_accept(self) -> None:
@@ -991,13 +1315,13 @@ class KantorKuTUI(App):
             return
 
         self._add_manager_message(
-            "[bold green]✓ Contract accepted! Workers are starting...[/bold green]"
+            "[bold green]\u2713 Contract accepted! Workers are starting...[/bold green]"
         )
 
         try:
             workers_live = self.query_one("#workers-live", WorkersLiveStream)
             workers_live.add_system_message(
-                "✓ Contract accepted — Briefing room opening...", "green bold"
+                "\u2713 Contract accepted \u2014 Briefing room opening...", "green bold"
             )
             workers_live._phase = "briefing"
         except NoMatches:
@@ -1007,6 +1331,9 @@ class KantorKuTUI(App):
             cd = self.query_one("#contract-display", ContractDisplay)
             cd.contract_state = "working"
             self.contract_state = "working"
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
         except NoMatches:
             pass
 
@@ -1020,8 +1347,11 @@ class KantorKuTUI(App):
                 cd.contract_state = "contract_presented"
             except NoMatches:
                 pass
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
         elif result:
-            self._add_manager_message("[bold green]✓ Work complete![/bold green]")
+            self._add_manager_message("[bold green]\u2713 Work complete![/bold green]")
             self.contract_state = "done"
             try:
                 cd = self.query_one("#contract-display", ContractDisplay)
@@ -1029,9 +1359,12 @@ class KantorKuTUI(App):
                 cd.contract_state = "done"
                 workers_live = self.query_one("#workers-live", WorkersLiveStream)
                 workers_live._phase = "done"
-                workers_live.add_system_message("✅ All work complete!", "green bold")
+                workers_live.add_system_message("\u2705 All work complete!", "green bold")
             except NoMatches:
                 pass
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
 
     async def _send_revise(self, feedback: str) -> None:
         """Request a contract revision."""
@@ -1040,13 +1373,16 @@ class KantorKuTUI(App):
             return
 
         self._add_manager_message(
-            f"[bold yellow]↻ Requesting revision:[/bold yellow] {feedback}"
+            f"[bold yellow]\u21bb Requesting revision:[/bold yellow] {feedback}"
         )
 
         try:
             cd = self.query_one("#contract-display", ContractDisplay)
             cd.contract_state = "clarifying"
             self.contract_state = "clarifying"
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
         except NoMatches:
             pass
 
@@ -1069,14 +1405,17 @@ class KantorKuTUI(App):
                     cd.contract_state = "contract_presented"
                 except NoMatches:
                     pass
+                self._update_action_buttons()
+                self._update_input_placeholder()
+                self._update_subtitle()
                 self._add_manager_message(
-                    f"[bold cyan]📋 Revised contract ready![/bold cyan] "
+                    f"[bold cyan]\U0001f4cb Revised contract ready![/bold cyan] "
                     f"Review in right panel."
                 )
 
             elif event_type == "error":
                 msg = event.get("message", "Unknown error")
-                self._add_manager_message(f"[red]✗ {msg}[/red]")
+                self._add_manager_message(f"[red]\u2717 {msg}[/red]")
 
     # ── Helpers ─────────────────────────────────────────────────────
 
@@ -1103,7 +1442,8 @@ class KantorKuTUI(App):
                 await self._connection.connect()
                 self.connection_state = "connected"
                 self._reconnect_attempts = 0
-                self._add_manager_message("[green]✓ Reconnected![/green]")
+                self._add_manager_message("[green]\u2713 Reconnected![/green]")
+                self._update_subtitle()
                 # Restart event listener
                 self._event_listener_running = True
                 await self._listen_office_events()
@@ -1114,7 +1454,7 @@ class KantorKuTUI(App):
                 continue
 
         self._add_manager_message(
-            f"[red bold]✗ Could not reconnect after {self._max_reconnect_attempts} attempts.[/red bold]\n"
+            f"[red bold]\u2717 Could not reconnect after {self._max_reconnect_attempts} attempts.[/red bold]\n"
             f"[dim]Check your server and restart the TUI.[/dim]"
         )
 
@@ -1132,7 +1472,6 @@ class KantorKuTUI(App):
             # Update worker status
             if hasattr(office, 'get_worker_status'):
                 workers = office.get_worker_status()
-                # Could update a status line
 
             # Update pool status
             if hasattr(office, 'get_pool_status'):
@@ -1141,6 +1480,10 @@ class KantorKuTUI(App):
             # Update cost
             if hasattr(office, 'cost_tracker') and office.cost_tracker:
                 cost = office.cost_tracker.get_report()
+                if cost:
+                    self._total_cost = cost.get("total_cost_usd", 0)
+                    self._total_calls = cost.get("total_calls", 0)
+                    self._update_subtitle()
 
         except NoMatches:
             pass
@@ -1151,6 +1494,7 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
     KantorKu TUI in embedded mode — runs Office in-process.
 
     No server needed. Everything runs locally.
+    Same chat-driven UX as remote mode.
     """
 
     def __init__(self, config_path: str | None = None, **kwargs: Any) -> None:
@@ -1173,9 +1517,10 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
             await self._office.initialize()
             self.connection_state = "connected"
             self._add_manager_message(
-                "[green]✓ Embedded Office initialized![/green]\n"
+                "[green]\u2713 Embedded Office initialized![/green]\n"
                 f"[dim]Workers: {len(self._office.registry.all_worker_ids)}[/dim]"
             )
+            self._update_subtitle()
 
             # Subscribe to event bus
             self._event_listener_running = True
@@ -1183,7 +1528,8 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
 
         except Exception as e:
             self.connection_state = "error"
-            self._add_manager_message(f"[red bold]✗ Failed to start: {e}[/red bold]")
+            self._add_manager_message(f"[red bold]\u2717 Failed to start: {e}[/red bold]")
+            self._update_subtitle()
 
     async def _listen_embedded_events(self) -> None:
         """Listen to embedded office events."""
@@ -1209,6 +1555,10 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
             self._add_manager_message("[red]Office not initialized[/red]")
             return
 
+        self.contract_state = "manager_thinking"
+        self._update_input_placeholder()
+        self._update_subtitle()
+
         try:
             async for event in self._office.chat(self._session_id, message):
                 event_type = event.get("type", "")
@@ -1224,6 +1574,8 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
                         cd.contract_state = "clarifying"
                     except NoMatches:
                         pass
+                    self._update_input_placeholder()
+                    self._update_subtitle()
 
                 elif event_type == "contract_ready":
                     contract = event.get("contract", {})
@@ -1235,8 +1587,11 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
                         cd.contract_state = "contract_presented"
                     except NoMatches:
                         pass
+                    self._update_action_buttons()
+                    self._update_input_placeholder()
+                    self._update_subtitle()
                     self._add_manager_message(
-                        f"[bold cyan]📋 Contract ready![/bold cyan] "
+                        f"[bold cyan]\U0001f4cb Contract ready![/bold cyan] "
                         f"Review in right panel."
                     )
 
@@ -1249,13 +1604,13 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
             return
 
         self._add_manager_message(
-            "[bold green]✓ Contract accepted! Workers starting...[/bold green]"
+            "[bold green]\u2713 Contract accepted! Workers starting...[/bold green]"
         )
 
         try:
             workers_live = self.query_one("#workers-live", WorkersLiveStream)
             workers_live.add_system_message(
-                "✓ Contract accepted — Briefing room opening...", "green bold"
+                "\u2713 Contract accepted \u2014 Briefing room opening...", "green bold"
             )
             workers_live._phase = "briefing"
         except NoMatches:
@@ -1265,13 +1620,16 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
             cd = self.query_one("#contract-display", ContractDisplay)
             cd.contract_state = "working"
             self.contract_state = "working"
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
         except NoMatches:
             pass
 
         try:
             result = await self._office.accept_and_run(self._session_id)
 
-            self._add_manager_message("[bold green]✓ Work complete![/bold green]")
+            self._add_manager_message("[bold green]\u2713 Work complete![/bold green]")
             self.contract_state = "done"
 
             try:
@@ -1280,9 +1638,13 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
                 cd.contract_state = "done"
                 workers_live = self.query_one("#workers-live", WorkersLiveStream)
                 workers_live._phase = "done"
-                workers_live.add_system_message("✅ All work complete!", "green bold")
+                workers_live.add_system_message("\u2705 All work complete!", "green bold")
             except NoMatches:
                 pass
+
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
 
         except Exception as e:
             self._add_manager_message(f"[red]Work failed: {e}[/red]")
@@ -1292,6 +1654,9 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
                 cd.contract_state = "failed"
             except NoMatches:
                 pass
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
 
     async def _send_revise(self, feedback: str) -> None:
         """Revise contract using embedded Office."""
@@ -1299,13 +1664,16 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
             return
 
         self._add_manager_message(
-            f"[bold yellow]↻ Requesting revision:[/bold yellow] {feedback}"
+            f"[bold yellow]\u21bb Requesting revision:[/bold yellow] {feedback}"
         )
 
         try:
             cd = self.query_one("#contract-display", ContractDisplay)
             cd.contract_state = "clarifying"
             self.contract_state = "clarifying"
+            self._update_action_buttons()
+            self._update_input_placeholder()
+            self._update_subtitle()
         except NoMatches:
             pass
 
@@ -1326,6 +1694,9 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
                     cd.contract_state = "contract_presented"
                 except NoMatches:
                     pass
+                self._update_action_buttons()
+                self._update_input_placeholder()
+                self._update_subtitle()
                 self._add_manager_message(
-                    f"[bold cyan]📋 Revised contract ready![/bold cyan]"
+                    f"[bold cyan]\U0001f4cb Revised contract ready![/bold cyan]"
                 )
