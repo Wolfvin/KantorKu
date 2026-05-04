@@ -23,13 +23,6 @@ classifiers = [
     "Topic :: Terminals",
 ]
 license-files = ["LICENSE"]
-
-[project.urls]
-Homepage = "https://github.com/Wolfvin/KantorKu"
-Repository = "https://github.com/Wolfvin/KantorKu"
-Issues = "https://github.com/Wolfvin/KantorKu/issues"
-Discussions = "https://github.com/Wolfvin/KantorKu/discussions"
-
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -71,6 +64,12 @@ dev = [
 
 [project.scripts]
 kantorku = "kantorku.tui.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Wolfvin/KantorKu"
+Repository = "https://github.com/Wolfvin/KantorKu"
+Issues = "https://github.com/Wolfvin/KantorKu/issues"
+Discussions = "https://github.com/Wolfvin/KantorKu/discussions"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
