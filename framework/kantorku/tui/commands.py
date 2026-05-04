@@ -1382,7 +1382,7 @@ async def cmd_settings(tui: Any, args: str) -> str:
     """Open the Settings overlay screen."""
     try:
         from kantorku.tui.settings_screen import SettingsScreen
-        tui.push_screen(SettingsScreen(tui))
+        await tui.push_screen(SettingsScreen(tui))
         return ""
     except Exception as e:
         return f"[red]Failed to open settings: {e}[/red]\n[dim]Check that settings_screen.py is available[/dim]"

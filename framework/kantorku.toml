@@ -102,7 +102,7 @@ queue_type = "fifo"
 
 # ─────────────────────────────────────
 # 🟧 SUPPORT — 6 SPESIALISASI
-# Debugger: Root cause (Grok 3)
+# Debugger: Root cause (DeepSeek V3.2 — cheap, banyak iterasi)
 # Scout: Research (Gemini 2.5 Pro)
 # Auditor: Architecture review (Claude Sonnet)
 # Scribe: Documentation (DeepSeek V4 Flash)

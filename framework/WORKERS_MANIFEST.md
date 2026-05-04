@@ -15,7 +15,7 @@ Worker yang bertugas menulis kode. Masing-masing punya spesialisasi berbeda dan 
 |----|-------------|-------------|-------|-------------|
 | `coder_frontend` | Frontend Coder | Anthropic | Claude Sonnet 4.6 | React, Next.js, CSS, Tailwind, UI/Visual, Accessibility |
 | `coder_backend` | Backend Coder | MiniMax | M2.7 | Python, Rust, Database, API Design, Systems |
-| `coder_wiring` | Wiring Coder | OpenAI | Codex 5.3 | API Integration, WebSocket, MCP, Glue Code, SDK |
+| `coder_wiring` | Wiring Coder | Google | Gemini 3.1 Pro | API Integration, WebSocket, MCP, Glue Code, SDK |
 
 **Cara membedakan:**
 - `coder_frontend` → Yang bikin UI, komponen React, styling
@@ -30,7 +30,7 @@ Worker yang bertugas mereview dan memverifikasi output. Punya API sendiri yang c
 
 | ID | Display Name | API Provider | Model | Spesialisasi |
 |----|-------------|-------------|-------|-------------|
-| `verifier_designer` | Design Verifier | Google | Gemini 2.5 Pro | Visual review, UX evaluation, Accessibility audit |
+| `verifier_designer` | Design Verifier | Google | Gemini 3.1 Pro | Visual review, UX evaluation, Accessibility audit |
 | `verifier_engineer` | Engineering Verifier | MiniMax | M2.5 | Logic review, Test coverage, Security audit, Performance |
 
 **Cara membedakan:**
@@ -45,7 +45,7 @@ Worker yang bertugas membantu kerja utama — debug, riset, review, dokumentasi,
 
 | ID | Display Name | API Provider | Model | Subkategori | Spesialisasi |
 |----|-------------|-------------|-------|------------|-------------|
-| `debugger` | Root Cause Analyst | xAI | Grok 3 | debugging | Root cause analysis, stack trace, bug triage |
+| `debugger` | Root Cause Analyst | DeepSeek | V3.2 | debugging | Root cause analysis, stack trace, bug triage |
 | `scout` | Research Agent | Google | Gemini 2.5 Pro | research | Web search, documentation, API research |
 | `auditor` | Code Auditor | Anthropic | Claude Sonnet 4.6 | review | Architecture review, anti-patterns, best practices |
 | `scribe` | Documentation Writer | DeepSeek | V4 Flash | documentation | API docs, README, changelog, guides |
@@ -53,7 +53,7 @@ Worker yang bertugas membantu kerja utama — debug, riset, review, dokumentasi,
 | `sentinel` | Error Watchdog | Ollama | Llama3 | monitoring | Error logging, lesson extraction, incident tracking |
 
 **Cara membedakan:**
-- `debugger` → Cari akar masalah bug/error — pakai Grok 3
+- `debugger` → Cari akar masalah bug/error — pakai DeepSeek V3.2 (murah, banyak iterasi)
 - `scout` → Cari informasi dari web/dokumentasi — pakai Gemini
 - `auditor` → Review arsitektur & kualitas kode — pakai Claude Sonnet
 - `scribe` → Tulis dokumentasi — pakai DeepSeek (murah, long context)
@@ -120,12 +120,11 @@ CLIENT
 |----------|-------------|
 | Anthropic (Claude Sonnet 4.6) | `coder_frontend`, `auditor` |
 | MiniMax (M2.7 / M2.5) | `coder_backend`, `verifier_engineer` |
-| OpenAI (Codex 5.3) | `coder_wiring` |
-| Google (Gemini 2.5 Pro) | `verifier_designer`, `scout` |
-| xAI (Grok 3) | `debugger` |
+| Google (Gemini 3.1 Pro) | `coder_wiring`, `verifier_designer` |
+| Google (Gemini 2.5 Pro) | `scout` |
+| DeepSeek (V3.2) | `debugger`, Context Pool (x3) |
 | DeepSeek (V4 Flash) | `scribe`, `summarizer` |
 | Ollama (Llama3, lokal) | `intake`, `narrator`, `sentinel` |
-| DeepSeek (V3.2) | Context Pool (x3) |
 | Anthropic (Claude Opus 4.6) | Conductor (CEO) |
 
 ---
