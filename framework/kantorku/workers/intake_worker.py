@@ -5,11 +5,16 @@ from kantorku.worker.base import BaseWorker, Task, TaskResult
 
 class IntakeWorker(BaseWorker):
     async def handle(self, task: Task) -> TaskResult:
-        prompt = f"""Parse and classify this client message:
+        session_ctx = self._build_context_section(task)
 
-Message: {task.instruction}
+        context_parts = [f"""Parse and classify this client message:
 
-Respond with JSON:
+Message: {task.instruction}"""]
+
+        if session_ctx:
+            context_parts.append(session_ctx)
+
+        context_parts.append("""Respond with JSON:
 {{
     "type": "new_request|follow_up|revision|question|feedback",
     "urgency": "low|medium|high|critical",
@@ -18,7 +23,9 @@ Respond with JSON:
     "summary": "one-line summary",
     "key_requirements": ["req1", "req2"],
     "estimated_complexity": "simple|moderate|complex"
-}}"""
+}}""")
+
+        prompt = "\n\n".join(context_parts)
 
         result = await self.llm_call_structured(prompt, session_id=task.session_id)
         return TaskResult(

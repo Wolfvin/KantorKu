@@ -117,7 +117,7 @@ class WorkerHub:
             try:
                 worker = self.registry.hire(worker_id)
                 response = await asyncio.wait_for(
-                    worker.receive_dm(from_id, message),
+                    worker.receive_broadcast(from_id, message),
                     timeout=10.0,
                 )
                 responses.append({

@@ -180,6 +180,48 @@ class Ring2Memory:
         )
         await self._db.commit()
 
+    def get_stats(self) -> dict[str, Any]:
+        """
+        Get statistics about Ring2 memory contents.
+
+        Returns counts for all tables and the database file size.
+        Used by /memory command and health monitoring.
+        """
+        stats: dict[str, Any] = {}
+        if not self._db:
+            return stats
+
+        try:
+            import sqlite3
+            # Use synchronous query since get_stats is called synchronously
+            sync_conn = sqlite3.connect(self.path)
+            try:
+                cursor = sync_conn.execute("SELECT COUNT(*) FROM episodes")
+                stats["episode_count"] = cursor.fetchone()[0]
+
+                cursor = sync_conn.execute("SELECT COUNT(*) FROM lessons")
+                stats["lesson_count"] = cursor.fetchone()[0]
+
+                cursor = sync_conn.execute("SELECT COUNT(*) FROM audit_trail")
+                stats["audit_trail_count"] = cursor.fetchone()[0]
+            finally:
+                sync_conn.close()
+        except Exception:
+            stats["episode_count"] = stats.get("episode_count", 0)
+            stats["lesson_count"] = stats.get("lesson_count", 0)
+            stats["audit_trail_count"] = stats.get("audit_trail_count", 0)
+
+        try:
+            db_path = Path(self.path)
+            if db_path.exists():
+                stats["db_size_mb"] = round(db_path.stat().st_size / (1024 * 1024), 2)
+            else:
+                stats["db_size_mb"] = 0
+        except Exception:
+            stats["db_size_mb"] = 0
+
+        return stats
+
     async def close(self) -> None:
         """Close the SQLite connection."""
         if self._db:

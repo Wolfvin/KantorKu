@@ -4,7 +4,7 @@ from __future__ import annotations
 from kantorku.worker.base import BaseWorker, Task, TaskResult
 
 class Debugger(BaseWorker):
-    async def handle(self, task: TaskResult) -> TaskResult:
+    async def handle(self, task: Task) -> TaskResult:
         session_ctx = self._build_context_section(task)
         conv_summary = self.get_conversation_summary(task.session_id)
 

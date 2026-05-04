@@ -1199,6 +1199,18 @@ class Office:
             except Exception as e:
                 logger.warning(f"Failed to save office snapshot: {e}")
 
+        # Clear worker conversation histories (free memory)
+        for worker_id in self.registry.all_worker_ids:
+            try:
+                worker = self.registry.hire(worker_id)
+                worker.clear_conversation()  # Clear all session histories
+            except Exception:
+                pass
+
+        # Clear session transcripts and channels
+        self._transcripts.clear()
+        self._channels.clear()
+
         # P3: Stop health checker
         if self._health:
             await self._health.stop()
@@ -1207,9 +1219,36 @@ class Office:
         if self._task_queue:
             await self._task_queue.stop()
 
-        await self.pool.stop()
+        # Stop context pool
+        try:
+            await self.pool.stop()
+        except Exception:
+            pass
+
+        # Close cache
         if self.cache:
-            await self.cache.close()
-        await self.ring1.close()
-        await self.ring2.close()
-        await self.ring3.close()
+            try:
+                await self.cache.close()
+            except Exception:
+                pass
+
+        # Close memory layers
+        try:
+            await self.ring1.close()
+        except Exception:
+            pass
+        try:
+            await self.ring2.close()
+        except Exception:
+            pass
+        try:
+            await self.ring3.close()
+        except Exception:
+            pass
+
+        # Cleanup event bus
+        for session_id in list(self.bus._channels.keys()):
+            await self.bus.cleanup_session(session_id)
+
+        self._initialized = False
+        logger.info("kantorku Office shut down cleanly")

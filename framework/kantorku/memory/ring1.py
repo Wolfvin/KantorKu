@@ -188,6 +188,54 @@ class Ring1Memory:
         """Clean up session data."""
         self._conn.execute("DELETE FROM sessions WHERE session_id = ?", [session_id])
         self._conn.execute("DELETE FROM history WHERE session_id = ?", [session_id])
+        self._conn.execute("DELETE FROM task_results WHERE session_id = ?", [session_id])
+
+    def get_stats(self) -> dict[str, Any]:
+        """
+        Get statistics about Ring1 memory contents.
+
+        Returns counts for all tables and the database file size.
+        Used by /memory command and health monitoring.
+        """
+        stats: dict[str, Any] = {}
+        if not self._conn:
+            return stats
+
+        try:
+            context_count = self._conn.execute("SELECT COUNT(*) FROM contexts").fetchone()
+            stats["context_count"] = context_count[0] if context_count else 0
+        except Exception:
+            stats["context_count"] = 0
+
+        try:
+            session_count = self._conn.execute("SELECT COUNT(*) FROM sessions").fetchone()
+            stats["session_count"] = session_count[0] if session_count else 0
+        except Exception:
+            stats["session_count"] = 0
+
+        try:
+            task_result_count = self._conn.execute("SELECT COUNT(*) FROM task_results").fetchone()
+            stats["task_result_count"] = task_result_count[0] if task_result_count else 0
+        except Exception:
+            stats["task_result_count"] = 0
+
+        try:
+            history_count = self._conn.execute("SELECT COUNT(*) FROM history").fetchone()
+            stats["history_count"] = history_count[0] if history_count else 0
+        except Exception:
+            stats["history_count"] = 0
+
+        try:
+            from pathlib import Path
+            db_path = Path(self.path)
+            if db_path.exists():
+                stats["db_size_mb"] = round(db_path.stat().st_size / (1024 * 1024), 2)
+            else:
+                stats["db_size_mb"] = 0
+        except Exception:
+            stats["db_size_mb"] = 0
+
+        return stats
 
     async def close(self) -> None:
         """Close the DuckDB connection."""

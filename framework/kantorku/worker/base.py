@@ -546,6 +546,25 @@ class BaseWorker:
 
         messages.append({"role": "user", "content": prompt})
 
+        # AutoTune — select optimal sampling params for streaming too
+        if "temperature" not in kwargs:
+            self._ensure_autotune()
+            if self._autotune is not None:
+                try:
+                    history_texts = self._get_history_texts()
+                    result = self._autotune.analyze(
+                        text=prompt,
+                        history=history_texts or None,
+                        worker_id=self.id,
+                    )
+                    provider_name = self.identity.api.provider
+                    filtered = self._autotune.filter_params_for_provider(
+                        result.params, provider_name
+                    )
+                    kwargs.update(filtered)
+                except Exception:
+                    pass  # AutoTune failure is non-fatal
+
         model_name = model or self.model
         emitter = self._get_emitter(session_id) if session_id else None
 
@@ -574,9 +593,19 @@ class BaseWorker:
                 # Own provider doesn't support streaming — fall back to router
                 pass
             else:
+                # Store exchange in conversation history (same as llm_call)
+                full_response = "".join(full_text_parts)
+                if sid:
+                    if sid not in self._conv_history:
+                        self._conv_history[sid] = []
+                    self._conv_history[sid].append({"role": "user", "content": prompt})
+                    self._conv_history[sid].append({"role": "assistant", "content": full_response})
+                    if len(self._conv_history[sid]) > self.MAX_CONVERSATION_HISTORY:
+                        self._conv_history[sid] = self._conv_history[sid][-self.MAX_CONVERSATION_HISTORY:]
+
                 if emitter:
                     await emitter.llm_stream_done(
-                        from_id=self.id, model=model_name, full_text="".join(full_text_parts)
+                        from_id=self.id, model=model_name, full_text=full_response
                     )
                 return
 
@@ -591,9 +620,19 @@ class BaseWorker:
                 await emitter.llm_stream_chunk(from_id=self.id, chunk=chunk, model=model_name)
             yield chunk
 
+        # Store exchange in conversation history (same as llm_call)
+        full_response = "".join(full_text_parts)
+        if sid:
+            if sid not in self._conv_history:
+                self._conv_history[sid] = []
+            self._conv_history[sid].append({"role": "user", "content": prompt})
+            self._conv_history[sid].append({"role": "assistant", "content": full_response})
+            if len(self._conv_history[sid]) > self.MAX_CONVERSATION_HISTORY:
+                self._conv_history[sid] = self._conv_history[sid][-self.MAX_CONVERSATION_HISTORY:]
+
         if emitter:
             await emitter.llm_stream_done(
-                from_id=self.id, model=model_name, full_text="".join(full_text_parts)
+                from_id=self.id, model=model_name, full_text=full_response
             )
 
     async def llm_call_structured(
