@@ -13,5 +13,14 @@
   "description": "Logs errors and extracts lessons — error logging, pattern recognition, lesson extraction, incident tracking",
   "tags": ["error-logging", "lesson-extraction", "pattern-recognition", "incident-tracking", "monitoring", "watchdog"],
   "capabilities": ["error-logging", "lesson-extraction", "pattern-recognition", "incident-tracking"],
-  "interacts_with": ["debugger", "auditor"]
+  "interacts_with": ["debugger", "auditor"],
+  "stm_enabled": true,
+  "personality": {
+    "proactive": true,
+    "scan_interval_seconds": 30,
+    "ask_before_change": false,
+    "confidence_threshold": 0.5,
+    "speaks_when": ["sees_error_pattern", "sees_recurring_issue", "assigned_to_task"],
+    "stays_quiet_when": []
+  }
 }

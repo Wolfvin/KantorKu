@@ -142,6 +142,12 @@ class BaseWorker:
         self._conv_history: dict[str, list[dict[str, str]]] = {}
         self._current_session_id: str = ""  # Set by execute() before handle()
 
+        # Worker personality — when to speak, when to stay quiet
+        # Loaded from plugin.json "personality" section
+        from kantorku.worker.personality import WorkerPersonality
+        personality_config = identity.plugin_data.get("personality", {})
+        self.personality = WorkerPersonality(personality_config)
+
     @property
     def id(self) -> str:
         return self.identity.id
@@ -838,3 +844,87 @@ class BaseWorker:
                 content = content[:297] + "..."
             parts.append(f"{role}: {content}")
         return "\n".join(parts)
+
+    async def consider_speaking(
+        self,
+        channel: Any,
+        context: dict[str, Any],
+        session_id: str,
+    ) -> bool:
+        """
+        Worker decides whether to speak up in an ExecutionChannel.
+
+        Called by Office when an event occurs that might be relevant
+        to all workers. The worker uses its personality config to
+        decide if it should speak, then uses the LLM to evaluate
+        whether it has something valuable to add.
+
+        Args:
+            channel: ExecutionChannel to speak on
+            context: Situation info (trigger, topic, active_workers, etc.)
+            session_id: Current session ID
+
+        Returns:
+            True if the worker spoke, False if it stayed quiet
+        """
+        from kantorku.layers.group_channel import MessageType
+
+        # Step 1: Personality filter — should this worker even consider speaking?
+        if not self.personality.should_speak(context):
+            return False  # Stay quiet
+
+        # Step 2: LLM evaluation — does this worker have something valuable to say?
+        channel_text = ""
+        if hasattr(channel, 'get_transcript_text'):
+            channel_text = channel.get_transcript_text()
+
+        prompt = f"""Situation: {context.get('situation', '')}
+Current discussion:
+{channel_text[-1500:] if channel_text else '(No discussion yet)'}
+
+You are {self.id} ({self.role}).
+Your expertise: {', '.join(self.identity.capabilities[:5])}
+
+Do you have something IMPORTANT to add? Do not speak if you have nothing of value.
+
+Respond with JSON:
+{{
+    "should_speak": true/false,
+    "confidence": 0.0-1.0,
+    "message": "what you want to say (if should_speak=true)",
+    "message_type": "concern/suggestion/question/info/agreement"
+}}"""
+
+        result = await self.llm_call_structured(
+            prompt, session_id=session_id
+        )
+
+        # Step 3: Confidence threshold — don't speak if not confident enough
+        should_speak = result.get("should_speak", False)
+        confidence = result.get("confidence", 0.0)
+        message = result.get("message", "")
+        msg_type_str = result.get("message_type", "speak")
+
+        if not should_speak or confidence < self.personality.confidence_threshold:
+            return False  # Not confident enough — stay quiet
+
+        if not message:
+            return False  # Nothing to say — stay quiet
+
+        # Step 4: Speak — map message_type string to MessageType enum
+        type_map = {
+            "concern": MessageType.CONCERN,
+            "suggestion": MessageType.SUGGESTION,
+            "question": MessageType.QUESTION,
+            "info": MessageType.INFO,
+            "agreement": MessageType.AGREEMENT,
+            "disagreement": MessageType.DISAGREEMENT,
+        }
+        msg_type = type_map.get(msg_type_str.lower(), MessageType.SPEAK)
+
+        await channel.speak(
+            from_id=self.id,
+            content=message,
+            message_type=msg_type,
+        )
+        return True

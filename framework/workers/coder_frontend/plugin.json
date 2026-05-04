@@ -13,5 +13,13 @@
   "description": "Writes frontend code — React, Next.js, CSS, Tailwind, component architecture, visual quality, accessibility",
   "tags": ["react", "nextjs", "css", "tailwind", "component-architecture", "accessibility", "ui", "visual"],
   "capabilities": ["react", "nextjs", "css", "tailwind", "component-architecture", "accessibility"],
-  "interacts_with": ["coder_wiring", "verifier_designer", "auditor"]
+  "interacts_with": ["coder_wiring", "verifier_designer", "auditor"],
+  "stm_enabled": true,
+  "personality": {
+    "proactive": false,
+    "ask_before_change": false,
+    "confidence_threshold": 0.6,
+    "speaks_when": ["assigned_to_task", "sees_api_contract_change", "sees_ux_issue"],
+    "stays_quiet_when": ["pure_backend_discussion", "infrastructure_only"]
+  }
 }

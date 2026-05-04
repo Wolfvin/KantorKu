@@ -13,5 +13,13 @@
   "description": "Writes backend code — Python, Rust, algorithms, database, API design, systems programming",
   "tags": ["python", "rust", "systems-programming", "algorithms", "database", "api-design", "backend", "server"],
   "capabilities": ["python", "rust", "systems-programming", "algorithms", "database"],
-  "interacts_with": ["coder_wiring", "verifier_engineer", "rootcause", "auditor"]
+  "interacts_with": ["coder_wiring", "verifier_engineer", "rootcause", "auditor"],
+  "stm_enabled": true,
+  "personality": {
+    "proactive": false,
+    "ask_before_change": false,
+    "confidence_threshold": 0.65,
+    "speaks_when": ["assigned_to_task", "sees_performance_issue", "sees_security_issue"],
+    "stays_quiet_when": ["pure_frontend_discussion", "pure_design_discussion"]
+  }
 }

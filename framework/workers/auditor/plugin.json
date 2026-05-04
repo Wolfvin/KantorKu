@@ -13,5 +13,14 @@
   "description": "Reviews architecture and code quality — architectural soundness, anti-patterns, best practices, compliance",
   "tags": ["code-review", "architecture-review", "anti-pattern-detection", "best-practices", "audit", "compliance"],
   "capabilities": ["code-review", "architecture-review", "anti-pattern-detection", "best-practices"],
-  "interacts_with": ["verifier_designer", "verifier_engineer", "coder_frontend", "coder_backend"]
+  "interacts_with": ["verifier_designer", "verifier_engineer", "coder_frontend", "coder_backend"],
+  "stm_enabled": true,
+  "personality": {
+    "proactive": true,
+    "scan_interval_seconds": 60,
+    "ask_before_change": true,
+    "confidence_threshold": 0.75,
+    "speaks_when": ["sees_dead_code", "sees_security_issue", "sees_anti_pattern", "assigned_to_task"],
+    "stays_quiet_when": ["task_outside_expertise"]
+  }
 }
