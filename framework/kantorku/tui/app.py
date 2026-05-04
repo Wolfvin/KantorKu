@@ -1169,6 +1169,14 @@ class WorkersLiveStream(Static):
             padding=(0, 1),
         ))
 
+        # Auto-scroll: try to scroll the parent container to the bottom
+        try:
+            parent = self.parent
+            if parent and hasattr(parent, 'scroll_end'):
+                parent.scroll_end(animate=False)
+        except Exception:
+            pass
+
 
 # ── Briefing Panel ──────────────────────────────────────────────────
 

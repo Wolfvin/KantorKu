@@ -1243,6 +1243,34 @@ async def cmd_reset(tui: Any, args: str) -> str:
         tui.query_one("#contract-area").contract_data = {}
     except Exception:
         pass
+
+    # Clear worker conversation histories in embedded mode
+    if _embedded(tui):
+        o = _office(tui)
+        if o and hasattr(o, 'registry'):
+            for worker_id in o.registry.all_worker_ids:
+                try:
+                    worker = o.registry.hire(worker_id)
+                    worker.clear_conversation()
+                except Exception:
+                    pass
+
+    # Reset TUI state
+    tui._input_history.clear()
+    tui._history_index = -1
+    try:
+        workers_live = tui.query_one("#workers-live", WorkersLiveStream)
+        workers_live.clear()
+        workers_live._phase = ""
+    except Exception:
+        pass
+    try:
+        briefing_panel = tui.query_one("#briefing-panel", BriefingPanel)
+        briefing_panel._messages.clear()
+        briefing_panel.update("")
+    except Exception:
+        pass
+
     return f"[yellow]Session reset![/yellow]\n  Old: {old}\n  New: {tui._session_id}"
 
 @command("export", "Export session to file", "/export [filename]")

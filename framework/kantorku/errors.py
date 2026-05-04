@@ -280,3 +280,9 @@ class WorkerNotFoundError(KantorkuError):
             message=f"Worker '{worker_id}' not found",
             context={"worker_id": worker_id, "available": available or []},
         )
+
+
+# ── DAG Errors ──────────────────────────────────────────────────────
+
+# Re-export DAGCycleError from kantorku.dag for convenient access
+from kantorku.dag import DAGCycleError as DAGCycleError  # noqa: F401, E402

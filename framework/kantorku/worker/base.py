@@ -16,12 +16,47 @@ import enum
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable, Protocol, runtime_checkable
 
 from kantorku.events.bus import EventBus
 from kantorku.events.emitter import EventEmitter
 from kantorku.worker.identity import WorkerIdentity
 from kantorku.providers.router import ProviderRouter
+
+
+# ── Protocol classes for type-safe dependency injection ─────────────
+
+
+@runtime_checkable
+class Ring1Protocol(Protocol):
+    """Protocol for Ring1 memory — provides context storage and retrieval."""
+
+    async def get_context(self, task_id: str) -> dict[str, Any] | None: ...
+    async def store_context(self, task_id: str, context: dict[str, Any]) -> None: ...
+
+
+@runtime_checkable
+class ProviderProtocol(Protocol):
+    """Protocol for LLM providers — supports complete, stream, and usage."""
+
+    async def complete(self, model: str, messages: list[dict[str, str]], **kwargs: Any) -> str: ...
+    async def complete_stream(self, model: str, messages: list[dict[str, str]], **kwargs: Any) -> AsyncIterator[str]: ...
+    async def complete_with_usage(self, model: str, messages: list[dict[str, str]], **kwargs: Any) -> tuple[str, dict[str, Any]]: ...
+
+
+@runtime_checkable
+class AutoTuneProtocol(Protocol):
+    """Protocol for AutoTune engine — context-adaptive sampling."""
+
+    def analyze(self, text: str, history: list[str] | list[dict[str, str]] | None = None, strategy: str | None = None, worker_id: str = "") -> Any: ...
+    def filter_params_for_provider(self, params: Any, provider: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class STMProtocol(Protocol):
+    """Protocol for STM engine — semantic transformation of output."""
+
+    def transform(self, text: str, modules: list[Any] | None = None) -> Any: ...
 
 
 class WorkerStatus(enum.Enum):
@@ -126,14 +161,14 @@ class BaseWorker:
         self.bus = bus
         self._status = WorkerStatus.IDLE
         self._emitter: EventEmitter | None = None
-        self._ring1: Any = None  # Set by Office during initialization
-        self._own_provider: Any = None  # Lazy-init'd provider from identity.api
+        self._ring1: Ring1Protocol | None = None  # Set by Office during initialization
+        self._own_provider: ProviderProtocol | None = None  # Lazy-init'd provider from identity.api
 
         # AutoTune — context-adaptive sampling (initialized lazily on first use)
-        self._autotune: Any = None  # AutoTune instance, lazy-init'd
+        self._autotune: AutoTuneProtocol | None = None  # AutoTune instance, lazy-init'd
 
         # STM — Semantic Transformation Modules (initialized lazily on first use)
-        self._stm: Any = None  # STMEngine instance, lazy-init'd
+        self._stm: STMProtocol | None = None  # STMEngine instance, lazy-init'd
 
         # Per-session conversation memory
         # Key: session_id, Value: list of {"role": "user"|"assistant", "content": ...}
@@ -174,7 +209,7 @@ class BaseWorker:
     def status(self) -> WorkerStatus:
         return self._status
 
-    def set_ring1(self, ring1: Any) -> None:
+    def set_ring1(self, ring1: Ring1Protocol) -> None:
         """Set reference to Ring 1 memory (called by Office)."""
         self._ring1 = ring1
 
@@ -410,19 +445,26 @@ class BaseWorker:
                 except Exception:
                     pass  # AutoTune failure is non-fatal
 
-        # Try worker's own provider first
+        # Try worker's own provider first, fall back to global router on failure
         self._ensure_own_provider()
+        response: str | None = None
+        model_name = model or self.model
         if self._own_provider is not None:
-            model_name = model or self.identity.api.model or self.model
+            own_model = self.identity.api.model or self.model
             # Strip provider prefix if present
-            if "/" in model_name:
-                model_name = model_name.split("/", 1)[1]
-            response = await self._own_provider.complete(
-                model=model_name,
-                messages=messages,
-                **kwargs,
-            )
-        else:
+            if "/" in own_model:
+                own_model = own_model.split("/", 1)[1]
+            try:
+                response = await self._own_provider.complete(
+                    model=own_model,
+                    messages=messages,
+                    **kwargs,
+                )
+            except Exception:
+                # Own provider failed — fall back to global router
+                response = None
+
+        if response is None:
             # Fall back to global router
             model_name = model or self.model
             response = await self.router.complete(

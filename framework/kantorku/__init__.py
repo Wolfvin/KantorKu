@@ -42,10 +42,12 @@ from kantorku.providers.retry import RetryPolicy, DEFAULT_RETRY_POLICY
 from kantorku.observability import get_tracer, get_metrics, Tracer, Metrics
 from kantorku.cost import CostTracker
 from kantorku.interface.protocol import OfficeEvent, EventType, parse_client_message
-from kantorku.dag import DAGResolver, TaskNode, DAGCycleError
+from kantorku.dag import DAGResolver, TaskNode
 from kantorku.cache import LLMCache
 from kantorku.delegation import DelegationManager, DelegationRequest, DelegationResult
 from kantorku.provider_response import ProviderResponse
+from kantorku.redteam.autotune import AutoTune
+from kantorku.redteam.stm import STMEngine
 from kantorku.errors import (
     KantorkuError,
     ProviderError,
@@ -63,6 +65,7 @@ from kantorku.errors import (
     NoContractError,
     ConfigError,
     WorkerNotFoundError,
+    DAGCycleError,
 )
 
 # P3: Persistence & Crash Recovery
@@ -170,6 +173,10 @@ __all__ = [
     "DAGResolver",
     "TaskNode",
     "DAGCycleError",
+
+    # Redteam / AutoTune / STM
+    "AutoTune",
+    "STMEngine",
     # Cache
     "LLMCache",
     # Delegation
@@ -195,6 +202,7 @@ __all__ = [
     "NoContractError",
     "ConfigError",
     "WorkerNotFoundError",
+    "DAGCycleError",
 
     # P3: Persistence
     "CheckpointManager",
