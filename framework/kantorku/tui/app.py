@@ -237,7 +237,8 @@ class ContractDisplay(Static):
                 total = len(todos)
                 pct = int((done / total) * 100) if total > 0 else 0
                 bar_len = 20
-                filled = int(bar_len * done / total) if total > 0 else 0
+                filled = min(int(bar_len * done / total), bar_len) if total > 0 else 0
+                filled = max(filled, 0)  # Guard against negative
                 bar = "\u2588" * filled + "\u2591" * (bar_len - filled)
                 parts.append(Text.from_markup(
                     f"\n[bold]Progress:[/bold] [{bar}] {pct}% ({done}/{total})"
@@ -352,9 +353,15 @@ class WorkersLiveStream(Static):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._entries: list[dict[str, Any]] = []
-        self._max_entries = 500
+        self._max_entries = 500  # Memory buffer; visible display shows last 50
         self._round: int = 0
         self._phase: str = ""  # idle, briefing, execution, verification, done
+
+        # Render throttle (20fps max)
+        self._last_render_time: float = 0.0
+        self._dirty: bool = False
+        self._pending_render: Any = None
+        self._render_cooldown: float = 0.05
 
     def add_event(self, event: dict[str, Any]) -> None:
         """Add an office event to the live stream."""
@@ -381,6 +388,8 @@ class WorkersLiveStream(Static):
             "middleware_before", "middleware_after",
             # v0.7.0 — revision brainstorming
             "revision_requested", "manager_brainstorming",
+            # v0.8.0 — work completion
+            "work_done",
         }
 
         if event_type not in relevant_types:
@@ -389,7 +398,7 @@ class WorkersLiveStream(Static):
         self._entries.append(event)
         if len(self._entries) > self._max_entries:
             self._entries = self._entries[-self._max_entries:]
-        self._render_stream()
+        self._schedule_render()
 
     def add_system_message(self, message: str, style: str = "dim") -> None:
         """Add a system/phase message to the stream."""
@@ -398,11 +407,34 @@ class WorkersLiveStream(Static):
             "content": message,
             "style": style,
         })
-        self._render_stream()
+        self._schedule_render()
 
     def clear(self) -> None:
         self._entries.clear()
         self._render_stream()
+
+    def _schedule_render(self) -> None:
+        """Throttled render — max 20fps."""
+        import time
+        now = time.monotonic()
+        if now - self._last_render_time >= self._render_cooldown:
+            self._render_stream()
+            self._last_render_time = now
+        else:
+            self._dirty = True
+            if self._pending_render is None:
+                self._pending_render = self.set_timer(
+                    self._render_cooldown, self._flush_pending_render
+                )
+
+    def _flush_pending_render(self) -> None:
+        """Flush a dirty render after the cooldown."""
+        import time
+        self._pending_render = None
+        if self._dirty:
+            self._dirty = False
+            self._render_stream()
+            self._last_render_time = time.monotonic()
 
     def _render_stream(self) -> None:
         if not self._entries:
@@ -820,7 +852,7 @@ class KantorKuTUI(App):
 
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit", show=True),
-        Binding("ctrl+c", "cancel_input", "Cancel", show=True),
+        Binding("escape", "cancel_input", "Cancel", show=True),
         Binding("ctrl+a", "accept_contract", "Accept", show=False),
         Binding("ctrl+r", "revise_contract", "Revise", show=False),
         Binding("ctrl+i", "disrupt", "Disrupt", show=False),
@@ -869,6 +901,9 @@ class KantorKuTUI(App):
         # Revision tracking
         self._revision_count: int = 0
         self._revision_feedback: str = ""
+
+        # Auto-accept flag for /code and /run
+        self._auto_accept_pending: bool = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -932,7 +967,7 @@ class KantorKuTUI(App):
             f"  \u2192 Manager brainstorms with workers \u2192 new contract!\n\n"
             f"[dim]Or type naturally: 'yes'/'ok' to accept, 'revise' to change\n"
             f"Slash commands: /help for full list\n"
-            f"Shortcuts: Ctrl+A=Accept  Ctrl+R=Revise  Ctrl+I=Disrupt[/dim]"
+            f"Shortcuts: Ctrl+A=Accept  Ctrl+R=Revise  Ctrl+I=Disrupt  Esc=Cancel[/dim]"
         )
 
         # Hide action buttons initially (no contract)
@@ -940,6 +975,24 @@ class KantorKuTUI(App):
 
         # Connect to server
         self._connect_and_listen()
+
+    # ── State Machine ────────────────────────────────────────────────
+
+    def _set_contract_state(self, new_state: str) -> None:
+        """Centralize ALL contract state transitions.
+
+        Sets self.contract_state, updates ContractDisplay,
+        and refreshes UI (action buttons, placeholder, subtitle).
+        """
+        self.contract_state = new_state
+        try:
+            cd = self.query_one("#contract-display", ContractDisplay)
+            cd.contract_state = new_state
+        except NoMatches:
+            pass
+        self._update_action_buttons()
+        self._update_input_placeholder()
+        self._update_subtitle()
 
     # ── Action Button Management ─────────────────────────────────────
 
@@ -1105,19 +1158,16 @@ class KantorKuTUI(App):
 
         elif event_type == "work_done":
             result = event.get("result", {})
-            self._add_manager_message(
-                f"[bold green]\u2713 Work complete![/bold green]"
-            )
+            self._set_contract_state("done")
             try:
-                contract_display = self.query_one("#contract-display", ContractDisplay)
-                contract_display.work_result = result
-                contract_display.contract_state = "done"
-                self.contract_state = "done"
-                self._update_action_buttons()
-                self._update_input_placeholder()
-                self._update_subtitle()
+                cd = self.query_one("#contract-display", ContractDisplay)
+                cd.work_result = result
+                workers_live = self.query_one("#workers-live", WorkersLiveStream)
+                workers_live._phase = "done"
+                workers_live.add_system_message("\u2705 All work complete!", "green bold")
             except NoMatches:
                 pass
+            self._add_manager_message("[bold green]\u2713 Work complete![/bold green]")
 
         elif event_type == "error":
             msg = event.get("message", "Unknown error")
@@ -1134,21 +1184,16 @@ class KantorKuTUI(App):
         """Handle contract-related events — update right panel."""
         event_type = event.get("type", "")
 
-        try:
-            contract_display = self.query_one("#contract-display", ContractDisplay)
-        except NoMatches:
-            return
-
         if event_type == "contract_ready":
             contract = event.get("contract", {})
-            contract_display.contract_data = contract
-            contract_display.contract_state = "contract_presented"
-            contract_display.revision_count = self._revision_count
+            try:
+                cd = self.query_one("#contract-display", ContractDisplay)
+                cd.contract_data = contract
+                cd.revision_count = self._revision_count
+            except NoMatches:
+                pass
             self.pending_contract = contract
-            self.contract_state = "contract_presented"
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
+            self._set_contract_state("contract_presented")
 
             if self._revision_count > 0:
                 self._add_manager_message(
@@ -1168,18 +1213,23 @@ class KantorKuTUI(App):
                 )
 
         elif event_type == "contract_accepted":
-            contract_display.contract_state = "accepted"
-            self.contract_state = "accepted"
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
+            self._set_contract_state("accepted")
 
         elif event_type == "work_started":
-            contract_display.contract_state = "working"
-            self.contract_state = "working"
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
+            self._set_contract_state("working")
+
+        elif event_type == "work_done":
+            result = event.get("result", {})
+            self._set_contract_state("done")
+            try:
+                cd = self.query_one("#contract-display", ContractDisplay)
+                cd.work_result = result
+                workers_live = self.query_one("#workers-live", WorkersLiveStream)
+                workers_live._phase = "done"
+                workers_live.add_system_message("\u2705 All work complete!", "green bold")
+            except NoMatches:
+                pass
+            self._add_manager_message("[bold green]\u2713 Work complete![/bold green]")
 
     # ── Input Handling ──────────────────────────────────────────────
 
@@ -1271,17 +1321,7 @@ class KantorKuTUI(App):
             self._add_manager_message("[yellow]No contract to revise yet. Chat with the Manager first![/yellow]")
             return
 
-        self.contract_state = "awaiting_revision"
-
-        try:
-            contract_display = self.query_one("#contract-display", ContractDisplay)
-            contract_display.contract_state = "awaiting_revision"
-        except NoMatches:
-            pass
-
-        self._update_action_buttons()
-        self._update_input_placeholder()
-        self._update_subtitle()
+        self._set_contract_state("awaiting_revision")
 
         self._add_manager_message(
             "[bold yellow]\u270f\ufe0f REVISE MODE[/bold yellow]\n"
@@ -1322,12 +1362,7 @@ class KantorKuTUI(App):
             self._add_manager_message(
                 "[bold yellow]\u26a1 DISRUPT \u2014 Pausing work to talk to Manager[/bold yellow]"
             )
-            self.contract_state = "client_feedback"
-            try:
-                contract_display = self.query_one("#contract-display", ContractDisplay)
-                contract_display.contract_state = "client_feedback"
-            except NoMatches:
-                pass
+            self._set_contract_state("client_feedback")
             try:
                 workers_live = self.query_one("#workers-live", WorkersLiveStream)
                 workers_live.add_system_message(
@@ -1335,9 +1370,6 @@ class KantorKuTUI(App):
                 )
             except NoMatches:
                 pass
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
         else:
             self._add_manager_message(
                 "[dim]No active work to disrupt. Just type your message![/dim]"
@@ -1394,24 +1426,14 @@ class KantorKuTUI(App):
 
         # If in revision mode, cancel back to contract_presented
         if self.contract_state == "awaiting_revision":
-            self.contract_state = "contract_presented"
-            try:
-                cd = self.query_one("#contract-display", ContractDisplay)
-                cd.contract_state = "contract_presented"
-            except NoMatches:
-                pass
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
+            self._set_contract_state("contract_presented")
             self._add_manager_message("[dim]Revision cancelled. Accept/Revise buttons are back.[/dim]")
 
     # ── Message Sending ─────────────────────────────────────────────
 
     async def _send_message(self, message: str) -> None:
         """Send a message to the Manager via WebSocket."""
-        self.contract_state = "manager_thinking"
-        self._update_input_placeholder()
-        self._update_subtitle()
+        self._set_contract_state("manager_thinking")
 
         try:
             async for event in self._connection.send_message(message):
@@ -1422,14 +1444,7 @@ class KantorKuTUI(App):
                     self._add_manager_message(
                         f"[bold green]Manager:[/bold green] {content}"
                     )
-                    self.contract_state = "clarifying"
-                    try:
-                        cd = self.query_one("#contract-display", ContractDisplay)
-                        cd.contract_state = "clarifying"
-                    except NoMatches:
-                        pass
-                    self._update_input_placeholder()
-                    self._update_subtitle()
+                    self._set_contract_state("clarifying")
 
                 elif event_type == "manager_question":
                     content = event.get("content", "")
@@ -1440,23 +1455,23 @@ class KantorKuTUI(App):
                 elif event_type == "contract_ready":
                     contract = event.get("contract", {})
                     self.pending_contract = contract
-                    self.contract_state = "contract_presented"
                     try:
                         cd = self.query_one("#contract-display", ContractDisplay)
                         cd.contract_data = contract
-                        cd.contract_state = "contract_presented"
                         cd.revision_count = self._revision_count
                     except NoMatches:
                         pass
-                    self._update_action_buttons()
-                    self._update_input_placeholder()
-                    self._update_subtitle()
+                    self._set_contract_state("contract_presented")
                     self._add_manager_message(
                         f"[bold cyan]\U0001f4cb Contract ready![/bold cyan] "
                         f"Review in right panel.\n"
                         f"[bold green]Click \u2713 ACCEPT[/bold green] to finalize  |  "
                         f"[bold yellow]Click \u270f REVISE[/bold yellow] to request changes"
                     )
+                    # Auto-accept if /code or /run requested it
+                    if getattr(self, '_auto_accept_pending', False):
+                        self._auto_accept_pending = False
+                        asyncio.create_task(self._send_accept())
 
                 elif event_type == "error":
                     msg = event.get("message", "Unknown error")
@@ -1494,14 +1509,10 @@ class KantorKuTUI(App):
         # Show ACCEPTED state in right panel
         try:
             cd = self.query_one("#contract-display", ContractDisplay)
-            cd.contract_state = "accepted"
             cd.revision_count = 0
-            self.contract_state = "accepted"
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
         except NoMatches:
             pass
+        self._set_contract_state("accepted")
 
         try:
             workers_live = self.query_one("#workers-live", WorkersLiveStream)
@@ -1517,42 +1528,11 @@ class KantorKuTUI(App):
 
         if result and result.get("type") == "error":
             self._add_manager_message(f"[red]Accept failed: {result.get('message', '')}[/red]")
-            self.contract_state = "contract_presented"
-            try:
-                cd = self.query_one("#contract-display", ContractDisplay)
-                cd.contract_state = "contract_presented"
-            except NoMatches:
-                pass
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
+            self._set_contract_state("contract_presented")
         elif result:
-            # Transition to working state
-            try:
-                cd = self.query_one("#contract-display", ContractDisplay)
-                cd.contract_state = "working"
-                self.contract_state = "working"
-                self._update_action_buttons()
-                self._update_input_placeholder()
-                self._update_subtitle()
-            except NoMatches:
-                pass
-
-            # If result came back immediately (quick work)
-            self._add_manager_message("[bold green]\u2713 Work complete![/bold green]")
-            self.contract_state = "done"
-            try:
-                cd = self.query_one("#contract-display", ContractDisplay)
-                cd.work_result = result
-                cd.contract_state = "done"
-                workers_live = self.query_one("#workers-live", WorkersLiveStream)
-                workers_live._phase = "done"
-                workers_live.add_system_message("\u2705 All work complete!", "green bold")
-            except NoMatches:
-                pass
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
+            # Transition to working state — do NOT set "done" immediately;
+            # the work_done event will handle that transition.
+            self._set_contract_state("working")
 
     async def _send_revise(self, feedback: str) -> None:
         """Request a contract revision.
@@ -1595,14 +1575,10 @@ class KantorKuTUI(App):
         # Set state to clarifying (Manager is thinking about revision)
         try:
             cd = self.query_one("#contract-display", ContractDisplay)
-            cd.contract_state = "manager_thinking"
             cd.revision_count = self._revision_count
-            self.contract_state = "manager_thinking"
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
         except NoMatches:
             pass
+        self._set_contract_state("manager_thinking")
 
         # Send revision request to server
         async for event in self._connection.revise_contract(feedback):
@@ -1620,30 +1596,18 @@ class KantorKuTUI(App):
                     f"[bold yellow]Manager asks:[/bold yellow] {content}"
                 )
                 # Manager is asking a question — set to clarifying
-                self.contract_state = "clarifying"
-                try:
-                    cd = self.query_one("#contract-display", ContractDisplay)
-                    cd.contract_state = "clarifying"
-                except NoMatches:
-                    pass
-                self._update_action_buttons()
-                self._update_input_placeholder()
-                self._update_subtitle()
+                self._set_contract_state("clarifying")
 
             elif event_type == "contract_ready":
                 contract = event.get("contract", {})
                 self.pending_contract = contract
-                self.contract_state = "contract_presented"
                 try:
                     cd = self.query_one("#contract-display", ContractDisplay)
                     cd.contract_data = contract
-                    cd.contract_state = "contract_presented"
                     cd.revision_count = self._revision_count
                 except NoMatches:
                     pass
-                self._update_action_buttons()
-                self._update_input_placeholder()
-                self._update_subtitle()
+                self._set_contract_state("contract_presented")
                 self._add_manager_message(
                     f"[bold cyan]\U0001f4cb Revised contract ready! (Rev #{self._revision_count})[/bold cyan]\n"
                     f"Review it in the right panel.\n"
@@ -1680,8 +1644,8 @@ class KantorKuTUI(App):
                 await self._connection.connect()
                 self.connection_state = "connected"
                 self._reconnect_attempts = 0
+                self._update_subtitle()  # Set connection_state BEFORE subtitle
                 self._add_manager_message("[green]\u2713 Reconnected![/green]")
-                self._update_subtitle()
                 # Restart event listener
                 self._event_listener_running = True
                 await self._listen_office_events()
@@ -1768,6 +1732,37 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
             self.connection_state = "error"
             self._add_manager_message(f"[red bold]\u2717 Failed to start: {e}[/red bold]")
             self._update_subtitle()
+            # Auto-reconnect for embedded mode
+            await self._embedded_reconnect()
+
+    async def _embedded_reconnect(self) -> None:
+        """Attempt to reinitialize the embedded Office on failure."""
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            delay = 5.0 * attempt
+            self._add_manager_message(
+                f"[dim]Retrying embedded init ({attempt}/{max_attempts}) in {delay:.0f}s...[/dim]"
+            )
+            await asyncio.sleep(delay)
+            try:
+                from kantorku.office import Office
+                if self.config_path:
+                    self._office = Office.from_config(self.config_path)
+                else:
+                    self._office = Office()
+                await self._office.initialize()
+                self.connection_state = "connected"
+                self._add_manager_message("[green]\u2713 Embedded Office reconnected![/green]")
+                self._update_subtitle()
+                self._event_listener_running = True
+                await self._listen_embedded_events()
+                return
+            except Exception as e:
+                self._add_manager_message(f"[red]Retry {attempt} failed: {e}[/red]")
+        self._add_manager_message(
+            "[red bold]\u2717 Could not initialize embedded Office after retries.[/red bold]\n"
+            "[dim]Check your config and restart.[/dim]"
+        )
 
     async def _listen_embedded_events(self) -> None:
         """Listen to embedded office events."""
@@ -1786,6 +1781,8 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
         except Exception as e:
             if self._event_listener_running:
                 self._add_manager_message(f"[yellow]Event stream ended: {e}[/yellow]")
+                # Attempt reconnect if stream ended unexpectedly
+                await self._embedded_reconnect()
 
     async def _send_message(self, message: str) -> None:
         """Send message using embedded Office."""
@@ -1793,9 +1790,7 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
             self._add_manager_message("[red]Office not initialized[/red]")
             return
 
-        self.contract_state = "manager_thinking"
-        self._update_input_placeholder()
-        self._update_subtitle()
+        self._set_contract_state("manager_thinking")
 
         try:
             async for event in self._office.chat(self._session_id, message):
@@ -1806,14 +1801,7 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
                     self._add_manager_message(
                         f"[bold green]Manager:[/bold green] {content}"
                     )
-                    self.contract_state = "clarifying"
-                    try:
-                        cd = self.query_one("#contract-display", ContractDisplay)
-                        cd.contract_state = "clarifying"
-                    except NoMatches:
-                        pass
-                    self._update_input_placeholder()
-                    self._update_subtitle()
+                    self._set_contract_state("clarifying")
 
                 elif event_type == "manager_question":
                     content = event.get("content", "")
@@ -1824,23 +1812,23 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
                 elif event_type == "contract_ready":
                     contract = event.get("contract", {})
                     self.pending_contract = contract
-                    self.contract_state = "contract_presented"
                     try:
                         cd = self.query_one("#contract-display", ContractDisplay)
                         cd.contract_data = contract
-                        cd.contract_state = "contract_presented"
                         cd.revision_count = self._revision_count
                     except NoMatches:
                         pass
-                    self._update_action_buttons()
-                    self._update_input_placeholder()
-                    self._update_subtitle()
+                    self._set_contract_state("contract_presented")
                     self._add_manager_message(
                         f"[bold cyan]\U0001f4cb Contract ready![/bold cyan] "
                         f"Review in right panel.\n"
                         f"[bold green]Click \u2713 ACCEPT[/bold green] to finalize  |  "
                         f"[bold yellow]Click \u270f REVISE[/bold yellow] for changes"
                     )
+                    # Auto-accept if /code or /run requested it
+                    if getattr(self, '_auto_accept_pending', False):
+                        self._auto_accept_pending = False
+                        asyncio.create_task(self._send_accept())
 
                 elif event_type == "error":
                     msg = event.get("message", "Unknown error")
@@ -1868,14 +1856,10 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
         # Show ACCEPTED state
         try:
             cd = self.query_one("#contract-display", ContractDisplay)
-            cd.contract_state = "accepted"
             cd.revision_count = 0
-            self.contract_state = "accepted"
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
         except NoMatches:
             pass
+        self._set_contract_state("accepted")
 
         try:
             workers_live = self.query_one("#workers-live", WorkersLiveStream)
@@ -1891,40 +1875,11 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
 
             if result and result.get("type") == "error":
                 self._add_manager_message(f"[red]Accept failed: {result.get('message', '')}[/red]")
-                self.contract_state = "contract_presented"
-                try:
-                    cd = self.query_one("#contract-display", ContractDisplay)
-                    cd.contract_state = "contract_presented"
-                except NoMatches:
-                    pass
-                self._update_action_buttons()
-                self._update_input_placeholder()
-                self._update_subtitle()
+                self._set_contract_state("contract_presented")
             elif result:
-                try:
-                    cd = self.query_one("#contract-display", ContractDisplay)
-                    cd.contract_state = "working"
-                    self.contract_state = "working"
-                    self._update_action_buttons()
-                    self._update_input_placeholder()
-                    self._update_subtitle()
-                except NoMatches:
-                    pass
-
-                self._add_manager_message("[bold green]\u2713 Work complete![/bold green]")
-                self.contract_state = "done"
-                try:
-                    cd = self.query_one("#contract-display", ContractDisplay)
-                    cd.work_result = result
-                    cd.contract_state = "done"
-                    workers_live = self.query_one("#workers-live", WorkersLiveStream)
-                    workers_live._phase = "done"
-                    workers_live.add_system_message("\u2705 All work complete!", "green bold")
-                except NoMatches:
-                    pass
-                self._update_action_buttons()
-                self._update_input_placeholder()
-                self._update_subtitle()
+                # Transition to working — do NOT set "done" immediately;
+                # the work_done event will handle that transition.
+                self._set_contract_state("working")
 
         except Exception as e:
             self._add_manager_message(f"[red]Accept error: {e}[/red]")
@@ -1964,14 +1919,10 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
 
         try:
             cd = self.query_one("#contract-display", ContractDisplay)
-            cd.contract_state = "manager_thinking"
             cd.revision_count = self._revision_count
-            self.contract_state = "manager_thinking"
-            self._update_action_buttons()
-            self._update_input_placeholder()
-            self._update_subtitle()
         except NoMatches:
             pass
+        self._set_contract_state("manager_thinking")
 
         try:
             async for event in self._office.revise_contract(self._session_id, feedback):
@@ -1988,30 +1939,18 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
                     self._add_manager_message(
                         f"[bold yellow]Manager asks:[/bold yellow] {content}"
                     )
-                    self.contract_state = "clarifying"
-                    try:
-                        cd = self.query_one("#contract-display", ContractDisplay)
-                        cd.contract_state = "clarifying"
-                    except NoMatches:
-                        pass
-                    self._update_action_buttons()
-                    self._update_input_placeholder()
-                    self._update_subtitle()
+                    self._set_contract_state("clarifying")
 
                 elif event_type == "contract_ready":
                     contract = event.get("contract", {})
                     self.pending_contract = contract
-                    self.contract_state = "contract_presented"
                     try:
                         cd = self.query_one("#contract-display", ContractDisplay)
                         cd.contract_data = contract
-                        cd.contract_state = "contract_presented"
                         cd.revision_count = self._revision_count
                     except NoMatches:
                         pass
-                    self._update_action_buttons()
-                    self._update_input_placeholder()
-                    self._update_subtitle()
+                    self._set_contract_state("contract_presented")
                     self._add_manager_message(
                         f"[bold cyan]\U0001f4cb Revised contract ready! (Rev #{self._revision_count})[/bold cyan]\n"
                         f"Review it in the right panel.\n"

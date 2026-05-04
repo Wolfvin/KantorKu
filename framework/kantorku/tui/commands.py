@@ -95,6 +95,24 @@ def _office(tui: Any) -> Any:
     return getattr(tui, '_office', None)
 
 
+def _redteam_allowed(tui: Any) -> bool:
+    """Check if redteam commands are enabled."""
+    # Check config flag, default to True for solo dev
+    if hasattr(tui, '_office') and tui._office:
+        config = getattr(tui._office, 'config', None)
+        if config and hasattr(config, 'redteam_enabled'):
+            return config.redteam_enabled
+    # Check environment variable
+    return os.environ.get("KANTORKU_REDTEAM_ENABLED", "true").lower() in ("true", "1", "yes")
+
+
+def _redteam_gate(tui: Any) -> str | None:
+    """Returns error message if redteam is disabled, None if allowed."""
+    if not _redteam_allowed(tui):
+        return "[red bold]Redteam commands are disabled.[/red bold]\n[dim]Set KANTORKU_REDTEAM_ENABLED=true or enable in config.[/dim]"
+    return None
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Chat & Contracts
 # ═══════════════════════════════════════════════════════════════════
@@ -115,7 +133,7 @@ async def cmd_revise(tui: Any, args: str) -> str:
 
 @command("interrupt", "Interrupt work and talk to Manager (or Ctrl+I)", "/interrupt [reason]")
 async def cmd_interrupt(tui: Any, args: str) -> str:
-    tui._do_interrupt()
+    tui._do_disrupt()
     return "[yellow]⚡ Interrupting... You can now talk to the Manager.[/yellow]"
 
 @command("code", "Quick code task (auto-accept)", "/code <task>")
@@ -123,10 +141,9 @@ async def cmd_code(tui: Any, args: str) -> str:
     if not args:
         return "[yellow]Usage: /code <task>[/yellow]\n[dim]Example: /code implement a rate limiter[/dim]"
     await tui._send_message(args)
-    if tui.pending_contract:
-        await tui._send_accept()
-        return "[green]Code task submitted & accepted![/green]"
-    return "[yellow]Waiting for contract...[/yellow]"
+    # Contract will arrive asynchronously — set a flag for auto-accept
+    tui._auto_accept_pending = True
+    return "[green]Code task sent. Will auto-accept when contract arrives.[/green]"
 
 @command("ask", "Ask the Conductor a question", "/ask <question>")
 async def cmd_ask(tui: Any, args: str) -> str:
@@ -141,10 +158,9 @@ async def cmd_run(tui: Any, args: str) -> str:
     if not args:
         return "[yellow]Usage: /run <message>[/yellow]\n[dim]Sends message, auto-accepts, waits for work done[/dim]"
     await tui._send_message(args)
-    if tui.pending_contract:
-        await tui._send_accept()
-        return "[green]Task submitted, accepted, running...[/green]"
-    return "[yellow]Waiting for contract...[/yellow]"
+    # Contract will arrive asynchronously — set a flag for auto-accept
+    tui._auto_accept_pending = True
+    return "[green]Task sent. Will auto-accept when contract arrives.[/green]"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1019,6 +1035,9 @@ async def cmd_snapshots(tui: Any, args: str) -> str:
 
 @command("redteam", "Redteam analysis suite", "/redteam <text>")
 async def cmd_redteam(tui: Any, args: str) -> str:
+    gate = _redteam_gate(tui)
+    if gate:
+        return gate
     from io import StringIO
     from rich.console import Console
     from kantorku.tui.markdown_renderer import render_redteam_analysis
@@ -1069,6 +1088,9 @@ async def cmd_redteam(tui: Any, args: str) -> str:
 
 @command("stm", "Semantic Transformation Modules", "/stm <text>")
 async def cmd_stm(tui: Any, args: str) -> str:
+    gate = _redteam_gate(tui)
+    if gate:
+        return gate
     if not args.strip():
         return "[yellow]Usage: /stm <text>[/yellow]\n[dim]Modules: hedge_reducer, direct_mode, casual[/dim]"
     try:
@@ -1089,6 +1111,9 @@ async def cmd_stm(tui: Any, args: str) -> str:
 
 @command("autotune", "Context-adaptive sampling", "/autotune <text>")
 async def cmd_autotune(tui: Any, args: str) -> str:
+    gate = _redteam_gate(tui)
+    if gate:
+        return gate
     if not args.strip():
         return "[yellow]Usage: /autotune <text>[/yellow]"
     try:
@@ -1108,6 +1133,9 @@ async def cmd_autotune(tui: Any, args: str) -> str:
 
 @command("classify", "Classify prompt harm level", "/classify <text>")
 async def cmd_classify(tui: Any, args: str) -> str:
+    gate = _redteam_gate(tui)
+    if gate:
+        return gate
     if not args.strip():
         return "[yellow]Usage: /classify <text>[/yellow]"
     try:
@@ -1134,6 +1162,9 @@ async def cmd_classify(tui: Any, args: str) -> str:
 
 @command("godmode", "Generate GODMODE liberation prompt", "/godmode")
 async def cmd_godmode(tui: Any, args: str) -> str:
+    gate = _redteam_gate(tui)
+    if gate:
+        return gate
     try:
         from kantorku.redteam.godmode import GodModePrompt
         gmp = GodModePrompt()
@@ -1152,6 +1183,9 @@ async def cmd_godmode(tui: Any, args: str) -> str:
 
 @command("score", "Score a response quality", "/score <response>")
 async def cmd_score(tui: Any, args: str) -> str:
+    gate = _redteam_gate(tui)
+    if gate:
+        return gate
     if not args.strip():
         return "[yellow]Usage: /score <response_text>[/yellow]"
     try:
@@ -1174,6 +1208,9 @@ async def cmd_score(tui: Any, args: str) -> str:
 
 @command("parseltongue", "Encode text with parseltongue", "/parseltongue <text>")
 async def cmd_parseltongue(tui: Any, args: str) -> str:
+    gate = _redteam_gate(tui)
+    if gate:
+        return gate
     if not args.strip():
         return "[yellow]Usage: /parseltongue <text>[/yellow]"
     try:
@@ -1314,6 +1351,23 @@ async def cmd_transcript(tui: Any, args: str) -> str:
             return console.file.getvalue()
         else:
             lines.append("  [dim]No transcript entries yet[/dim]")
+    elif _remote(tui):
+        try:
+            detail = await tui._connection.get_session_detail(tui._session_id)
+            if detail:
+                transcript = detail.get("transcript", {})
+                entries = transcript.get("entries", [])
+                if entries:
+                    g = render_transcript(entries)
+                    console = Console(file=StringIO(), force_terminal=True)
+                    console.print(g)
+                    return console.file.getvalue()
+                else:
+                    lines.append("  [dim]No transcript entries yet[/dim]")
+            else:
+                lines.append("  [dim]Session detail unavailable[/dim]")
+        except Exception as e:
+            lines.append(f"  [dim]Error fetching transcript: {e}[/dim]")
     else:
-        lines.append("  [dim]Transcript only in embedded mode[/dim]")
+        lines.append("  [dim]Not connected[/dim]")
     return "\n".join(lines)
