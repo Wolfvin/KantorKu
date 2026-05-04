@@ -26,13 +26,13 @@ from pathlib import Path
 def cmd_serve(args: argparse.Namespace) -> None:
     """Start the kantorku server."""
     import uvicorn
-    from kantorku.server import create_office
+    from kantorku.interface.server import create_office
 
     config_path = getattr(args, "config", None)
     office = create_office(config_path)
 
     uvicorn.run(
-        "kantorku.server:app",
+        "kantorku.interface.server:app",
         host=getattr(args, "host", "0.0.0.0"),
         port=getattr(args, "port", 8000),
         reload=getattr(args, "reload", False),
@@ -363,7 +363,7 @@ def cmd_worker_list(args: argparse.Namespace) -> None:
     registry = WorkerRegistry(router=router, bus=bus)
 
     # Discover built-in workers
-    builtin_dir = Path(__file__).parent / "workers"
+    builtin_dir = Path(__file__).parent.parent / "workers"
     if builtin_dir.exists():
         registry.discover_workers(builtin_dir)
 

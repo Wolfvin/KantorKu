@@ -317,7 +317,7 @@ story.append(body('Untuk kemudahan development, Anda bisa menggunakan file .env 
 
 story.append(code('# .env (JANGAN commit ke Git!)\nANTHROPIC_API_KEY=sk-ant-...\nGOOGLE_API_KEY=AIza...\nMINIMAX_API_KEY=mmx-...\nDEEPSEEK_API_KEY=sk-...'))
 
-story.append(code('# Muat sebelum menjalankan:\nset -a && source .env && set +a\npython -m kantorku.server'))
+story.append(code('# Muat sebelum menjalankan:\nset -a && source .env && set +a\npython -m kantorku.interface.server'))
 
 story.append(h2('4.3 Setup Ollama (Gratis, Lokal)'))
 story.append(body('Ollama adalah cara paling mudah untuk menjalankan LLM secara lokal tanpa API key. Ini sangat cocok untuk development dan testing karena sepenuhnya gratis dan data tidak pernah meninggalkan mesin Anda. Setelah Ollama terinstal, Anda tinggal pull model yang diinginkan dan menjalankan server.'))
@@ -347,7 +347,7 @@ story.append(code('office = Office.from_config("kantorku.toml")\nawait office.in
 story.append(h2('5.3 Server Mode (WebSocket)'))
 story.append(body('Jalankan kantorku sebagai server untuk terhubung dengan frontend (Tauri, React, dll). Server menyediakan dua channel WebSocket independen: /ws/client untuk Panel 1 dan /ws/office untuk Panel 2. Ini memungkinkan arsitektur dual-panel seperti yang dijelaskan dalam arsitektur kantorku.'))
 
-story.append(code('# Jalankan server\nkantorku --config kantorku.toml --port 8000\n\n# atau dengan uvicorn langsung:\nuvicorn kantorku.server:app --host 0.0.0.0 --port 8000'))
+story.append(code('# Jalankan server\nkantorku --config kantorku.toml --port 8000\n\n# atau dengan uvicorn langsung:\nuvicorn kantorku.interface.server:app --host 0.0.0.0 --port 8000'))
 
 story.append(h3('WebSocket Channel 1: /ws/client'))
 story.append(body('Channel untuk interaksi user dengan Manager (Panel 1). Client mengirim pesan dan menerima respons dari Conductor, termasuk contract_ready event ketika kontrak siap.'))

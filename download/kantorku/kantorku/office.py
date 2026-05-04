@@ -73,8 +73,8 @@ from kantorku.errors import OfficeNotInitializedError, NoContractError
 # P3 imports
 from kantorku.persistence import CheckpointManager, CrashRecovery, OfficeSnapshot
 from kantorku.task_queue import TaskQueue
-from kantorku.middleware import MiddlewarePipeline, MiddlewareContext
-from kantorku.health import HealthChecker
+from kantorku.interface.middleware import MiddlewarePipeline, MiddlewareContext
+from kantorku.interface.health import HealthChecker
 
 # P4: Session transcripts (per-session context tracking)
 from kantorku.layers.session_transcript import SessionTranscript as _SessionTranscript

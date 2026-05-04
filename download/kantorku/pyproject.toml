@@ -60,7 +60,7 @@ dev = [
 ]
 
 [project.scripts]
-kantorku = "kantorku.cli:main"
+kantorku = "kantorku.tui.cli:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

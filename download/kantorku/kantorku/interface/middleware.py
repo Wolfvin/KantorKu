@@ -18,7 +18,7 @@ Each middleware sees the full context and can:
 - Handle exceptions from the operation
 
 Usage:
-    from kantorku.middleware import MiddlewarePipeline, LoggingMiddleware, AuthMiddleware
+    from kantorku.interface.middleware import MiddlewarePipeline, LoggingMiddleware, AuthMiddleware
 
     pipeline = MiddlewarePipeline()
     pipeline.add(AuthMiddleware(api_key_header="X-API-Key"))
@@ -44,7 +44,7 @@ from typing import Any, Callable, Awaitable
 
 from kantorku.observability import get_tracer, get_metrics
 
-logger = logging.getLogger("kantorku.middleware")
+logger = logging.getLogger("kantorku.interface.middleware")
 
 
 # ── Middleware Context ────────────────────────────────────────────────

@@ -7,7 +7,7 @@ SSE (/events/stream/{session_id}): Server-Sent Events for non-WS clients
 Health (/health/*): Liveness, readiness, dashboard
 
 Usage:
-    uvicorn kantorku.server:app --host 0.0.0.0 --port 8000
+    uvicorn kantorku.interface.server:app --host 0.0.0.0 --port 8000
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ from sse_starlette.sse import EventSourceResponse
 from kantorku.office import Office
 from kantorku.events.bus import EventBus
 from kantorku.config.settings import KantorkuConfig
-from kantorku.health import HealthChecker, HealthStatus
-from kantorku.middleware import (
+from kantorku.interface.health import HealthChecker, HealthStatus
+from kantorku.interface.middleware import (
     MiddlewarePipeline,
     MiddlewareContext,
     LoggingMiddleware,
@@ -38,7 +38,7 @@ from kantorku.middleware import (
     AuditMiddleware,
 )
 
-logger = logging.getLogger("kantorku.server")
+logger = logging.getLogger("kantorku.interface.server")
 
 
 # Global office instance — initialized on startup
@@ -440,7 +440,7 @@ def main():
     office = create_office(args.config)
 
     uvicorn.run(
-        "kantorku.server:app",
+        "kantorku.interface.server:app",
         host=args.host,
         port=args.port,
         reload=False,

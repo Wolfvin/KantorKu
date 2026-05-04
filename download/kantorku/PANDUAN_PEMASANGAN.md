@@ -736,7 +736,7 @@ Status:     Stub — akan diimplementasikan di Fase 3
 kantorku --config kantorku.toml --port 8000
 
 # Atau dengan uvicorn langsung
-uvicorn kantorku.server:app --host 0.0.0.0 --port 8000
+uvicorn kantorku.interface.server:app --host 0.0.0.0 --port 8000
 ```
 
 ### 9.2 REST Endpoints

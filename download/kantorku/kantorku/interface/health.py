@@ -13,7 +13,7 @@ This module enables kantorku to run reliably in production by
 continuously monitoring system health and surfacing issues early.
 
 Usage:
-    from kantorku.health import HealthChecker, HealthStatus
+    from kantorku.interface.health import HealthChecker, HealthStatus
 
     health = HealthChecker(office=office)
     await health.start()
@@ -44,7 +44,7 @@ from typing import Any
 
 from kantorku.observability import get_tracer
 
-logger = logging.getLogger("kantorku.health")
+logger = logging.getLogger("kantorku.interface.health")
 
 
 # ── Health Status ─────────────────────────────────────────────────────

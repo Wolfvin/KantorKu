@@ -5,7 +5,7 @@ Type-safe message definitions for both Panel 1 (client ↔ manager)
 and Panel 2 (office event stream) WebSocket channels.
 
 Usage:
-    from kantorku.protocol import ClientMessage, OfficeEvent
+    from kantorku.interface.protocol import ClientMessage, OfficeEvent
 
     # Parse incoming client message
     msg = ClientMessage.model_validate_json(raw_json)

@@ -371,7 +371,7 @@ class TestMiddlewarePipeline:
 
     @pytest.mark.asyncio
     async def test_basic_pipeline(self):
-        from kantorku.middleware import MiddlewarePipeline, MiddlewareContext
+        from kantorku.interface.middleware import MiddlewarePipeline, MiddlewareContext
 
         pipeline = MiddlewarePipeline()
 
@@ -387,7 +387,7 @@ class TestMiddlewarePipeline:
 
     @pytest.mark.asyncio
     async def test_before_hook(self):
-        from kantorku.middleware import Middleware, MiddlewarePipeline, MiddlewareContext
+        from kantorku.interface.middleware import Middleware, MiddlewarePipeline, MiddlewareContext
 
         class EnrichMiddleware(Middleware):
             async def before(self, ctx: MiddlewareContext) -> MiddlewareContext:
@@ -407,7 +407,7 @@ class TestMiddlewarePipeline:
 
     @pytest.mark.asyncio
     async def test_before_short_circuit(self):
-        from kantorku.middleware import Middleware, MiddlewarePipeline, MiddlewareContext
+        from kantorku.interface.middleware import Middleware, MiddlewarePipeline, MiddlewareContext
 
         class BlockMiddleware(Middleware):
             async def before(self, ctx: MiddlewareContext) -> MiddlewareContext:
@@ -432,7 +432,7 @@ class TestMiddlewarePipeline:
 
     @pytest.mark.asyncio
     async def test_logging_middleware(self):
-        from kantorku.middleware import LoggingMiddleware, MiddlewarePipeline, MiddlewareContext
+        from kantorku.interface.middleware import LoggingMiddleware, MiddlewarePipeline, MiddlewareContext
 
         pipeline = MiddlewarePipeline()
         pipeline.add(LoggingMiddleware())
@@ -448,7 +448,7 @@ class TestMiddlewarePipeline:
 
     @pytest.mark.asyncio
     async def test_rate_limit_middleware(self):
-        from kantorku.middleware import RateLimitMiddleware, MiddlewarePipeline, MiddlewareContext
+        from kantorku.interface.middleware import RateLimitMiddleware, MiddlewarePipeline, MiddlewareContext
 
         pipeline = MiddlewarePipeline()
         pipeline.add(RateLimitMiddleware(max_requests=2, window_seconds=60))
@@ -466,7 +466,7 @@ class TestMiddlewarePipeline:
 
     @pytest.mark.asyncio
     async def test_cost_guard_middleware(self):
-        from kantorku.middleware import CostGuardMiddleware, MiddlewarePipeline, MiddlewareContext
+        from kantorku.interface.middleware import CostGuardMiddleware, MiddlewarePipeline, MiddlewareContext
         from kantorku.cost import CostTracker
 
         tracker = CostTracker()
@@ -493,21 +493,21 @@ class TestHealthChecker:
     """Test health monitoring."""
 
     def test_liveness(self):
-        from kantorku.health import HealthChecker, HealthStatus
+        from kantorku.interface.health import HealthChecker, HealthStatus
         checker = HealthChecker()
         result = checker.liveness()
         assert result.status == HealthStatus.HEALTHY
         assert result.is_healthy
 
     def test_readiness_without_office(self):
-        from kantorku.health import HealthChecker, HealthStatus
+        from kantorku.interface.health import HealthChecker, HealthStatus
         checker = HealthChecker()
         result = checker.readiness()
         # Without office initialized, should be unhealthy
         assert result.status == HealthStatus.UNHEALTHY
 
     def test_alert_system(self):
-        from kantorku.health import AlertSystem
+        from kantorku.interface.health import AlertSystem
         alerts = AlertSystem()
 
         alert = alerts.trigger("critical", "anthropic", "Circuit breaker open")
@@ -522,7 +522,7 @@ class TestHealthChecker:
         assert len(active) == 0
 
     def test_worker_health_update(self):
-        from kantorku.health import HealthChecker
+        from kantorku.interface.health import HealthChecker
         checker = HealthChecker()
 
         checker.update_worker_health("coder_backend", completed=True, duration_seconds=5.0)
@@ -531,7 +531,7 @@ class TestHealthChecker:
         assert status.tasks_completed == 1
 
     def test_provider_health_update(self):
-        from kantorku.health import HealthChecker
+        from kantorku.interface.health import HealthChecker
         checker = HealthChecker()
 
         checker.update_provider_health("anthropic", success=True, latency_ms=150.0)
@@ -542,7 +542,7 @@ class TestHealthChecker:
         assert status.success_rate == 1.0
 
     def test_consecutive_failures_triggers_unhealthy(self):
-        from kantorku.health import HealthChecker
+        from kantorku.interface.health import HealthChecker
         checker = HealthChecker(worker_failure_threshold=3)
 
         for i in range(3):
@@ -552,7 +552,7 @@ class TestHealthChecker:
         assert not status.is_healthy
 
     def test_dashboard(self):
-        from kantorku.health import HealthChecker
+        from kantorku.interface.health import HealthChecker
         checker = HealthChecker()
         dashboard = checker.dashboard()
         assert "status" in dashboard
@@ -565,13 +565,13 @@ class TestHealthStatus:
     """Test health status enums and data classes."""
 
     def test_health_status_values(self):
-        from kantorku.health import HealthStatus
+        from kantorku.interface.health import HealthStatus
         assert HealthStatus.HEALTHY.value == "healthy"
         assert HealthStatus.DEGRADED.value == "degraded"
         assert HealthStatus.UNHEALTHY.value == "unhealthy"
 
     def test_health_check_result_to_dict(self):
-        from kantorku.health import HealthCheckResult, HealthStatus
+        from kantorku.interface.health import HealthCheckResult, HealthStatus
         result = HealthCheckResult(
             name="test",
             status=HealthStatus.HEALTHY,
@@ -583,7 +583,7 @@ class TestHealthStatus:
         assert d["status"] == "healthy"
 
     def test_aggregated_health_to_dict(self):
-        from kantorku.health import AggregatedHealth, HealthStatus, HealthCheckResult
+        from kantorku.interface.health import AggregatedHealth, HealthStatus, HealthCheckResult
         health = AggregatedHealth(
             status=HealthStatus.DEGRADED,
             checks=[
@@ -630,7 +630,7 @@ class TestP3Integration:
     @pytest.mark.asyncio
     async def test_middleware_with_cost_guard(self):
         """Test middleware pipeline with cost guard integration."""
-        from kantorku.middleware import MiddlewarePipeline, MiddlewareContext, LoggingMiddleware, RateLimitMiddleware
+        from kantorku.interface.middleware import MiddlewarePipeline, MiddlewareContext, LoggingMiddleware, RateLimitMiddleware
         from kantorku.cost import CostTracker
 
         tracker = CostTracker()
@@ -680,7 +680,7 @@ class TestP3Integration:
     @pytest.mark.asyncio
     async def test_health_with_mock_office(self):
         """Test health checker with a mock-like office."""
-        from kantorku.health import HealthChecker, HealthStatus
+        from kantorku.interface.health import HealthChecker, HealthStatus
 
         # Minimal mock office
         class MockOffice:

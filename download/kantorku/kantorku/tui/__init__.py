@@ -63,5 +63,6 @@ Usage:
 """
 
 from kantorku.tui.app import KantorKuTUI, EmbeddedKantorKuTUI
+from kantorku.tui.cli import main as cli_main
 
-__all__ = ["KantorKuTUI", "EmbeddedKantorKuTUI"]
+__all__ = ["KantorKuTUI", "EmbeddedKantorKuTUI", "cli_main"]

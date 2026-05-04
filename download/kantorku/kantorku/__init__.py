@@ -41,7 +41,7 @@ from kantorku.providers.circuit_breaker import CircuitBreaker, CircuitState
 from kantorku.providers.retry import RetryPolicy, DEFAULT_RETRY_POLICY
 from kantorku.observability import get_tracer, get_metrics, Tracer, Metrics
 from kantorku.cost import CostTracker
-from kantorku.protocol import OfficeEvent, EventType, parse_client_message
+from kantorku.interface.protocol import OfficeEvent, EventType, parse_client_message
 from kantorku.dag import DAGResolver, TaskNode, DAGCycleError
 from kantorku.cache import LLMCache
 from kantorku.delegation import DelegationManager, DelegationRequest, DelegationResult
@@ -85,7 +85,7 @@ from kantorku.task_queue import (
 )
 
 # P3: Middleware Pipeline
-from kantorku.middleware import (
+from kantorku.interface.middleware import (
     Middleware,
     MiddlewarePipeline,
     MiddlewareContext,
@@ -100,7 +100,7 @@ from kantorku.middleware import (
 )
 
 # P3: Health Monitoring
-from kantorku.health import (
+from kantorku.interface.health import (
     HealthChecker,
     HealthStatus,
     HealthCheckResult,
