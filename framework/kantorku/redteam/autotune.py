@@ -13,7 +13,7 @@ improves parameter selection over time.
     creative       — Story, poetry, brainstorming
     analytical     — Analysis, comparison, research
     conversational — Casual chat, short messages
-    chaotic        — Glitch, random, absurdist
+    review         — Code review, auditing, verification
 
 5 Strategy Profiles:
     precise   — temp: 0.2,  top_p: 0.85, top_k: 30
@@ -22,7 +22,7 @@ improves parameter selection over time.
     chaotic   — temp: 1.6,  top_p: 0.98, top_k: 100
 
 Usage:
-    at = AutoTune()
+    at = AutoTune(worker_id="coder_rust")
     params = at.analyze("Write a Python function to sort a list", history=messages)
     # → { temperature: 0.15, top_p: 0.80, top_k: 25, ... }
 """
@@ -30,10 +30,15 @@ Usage:
 from __future__ import annotations
 
 import enum
+import json
+import logging
 import math
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("kantorku.autotune")
 
 
 # ── Context Types ───────────────────────────────────────────────────
@@ -44,7 +49,7 @@ class ContextType(str, enum.Enum):
     CREATIVE = "creative"
     ANALYTICAL = "analytical"
     CONVERSATIONAL = "conversational"
-    CHAOTIC = "chaotic"
+    REVIEW = "review"  # Replaces CHAOTIC — code review, auditing, verification
 
 
 # ── Detection Patterns ──────────────────────────────────────────────
@@ -74,11 +79,33 @@ CONTEXT_PATTERNS: dict[ContextType, list[re.Pattern]] = {
         re.compile(r"\b(chat|talk|tell me about|what do you think|opinion|feel|believe)\b", re.I),
         re.compile(r"^.{0,30}$"),
     ],
-    ContextType.CHAOTIC: [
-        re.compile(r"\b(chaos|random|wild|crazy|absurd|surreal|glitch|corrupt|break|destroy|unleash|madness|void|entropy)\b", re.I),
-        re.compile(r"\b(gl1tch|h4ck|pwn|1337|l33t)\b", re.I),
-        re.compile(r"(!{3,}|\?{3,}|\.{4,})"),
+    ContextType.REVIEW: [
+        re.compile(r"\b(review|audit|verify|check|inspect|approve|reject|approve|feedback|approve|lint|quality|standard|compliance|conform)\b", re.I),
+        re.compile(r"\b(code review|pull request review|architecture review|security audit|performance review)\b", re.I),
+        re.compile(r"\b(looks good|needs changes|nit|suggestion|concern|risk|issue|problem|violation)\b", re.I),
+        re.compile(r"\b(best practice|clean code|solid|dry|kiss|anti-?pattern|code smell)\b", re.I),
     ],
+}
+
+# Worker identity bias — certain workers always lean toward specific context types
+WORKER_CONTEXT_BIAS: dict[str, ContextType] = {
+    # Coding workers → CODE bias
+    "coder_frontend": ContextType.CODE,
+    "coder_backend": ContextType.CODE,
+    "coder_wiring": ContextType.CODE,
+    # Verification workers → REVIEW bias
+    "verifier_designer": ContextType.REVIEW,
+    "verifier_engineer": ContextType.REVIEW,
+    "auditor": ContextType.REVIEW,
+    # Support workers
+    "debugger": ContextType.CODE,
+    "scout": ContextType.ANALYTICAL,
+    "scribe": ContextType.ANALYTICAL,
+    "summarizer": ContextType.ANALYTICAL,
+    "sentinel": ContextType.ANALYTICAL,
+    # Translation workers
+    "intake": ContextType.CONVERSATIONAL,
+    "narrator": ContextType.CONVERSATIONAL,
 }
 
 
@@ -139,7 +166,18 @@ CONTEXT_PROFILES: dict[ContextType, SamplingParams] = {
     ContextType.CREATIVE: SamplingParams(temperature=1.15, top_p=0.95, top_k=85, frequency_penalty=0.50, presence_penalty=0.70, repetition_penalty=1.20),
     ContextType.ANALYTICAL: SamplingParams(temperature=0.40, top_p=0.88, top_k=40, frequency_penalty=0.20, presence_penalty=0.15, repetition_penalty=1.08),
     ContextType.CONVERSATIONAL: SamplingParams(temperature=0.75, top_p=0.90, top_k=50, frequency_penalty=0.10, presence_penalty=0.10, repetition_penalty=1.00),
-    ContextType.CHAOTIC: SamplingParams(temperature=1.70, top_p=0.99, top_k=100, frequency_penalty=0.80, presence_penalty=0.90, repetition_penalty=1.30),
+    ContextType.REVIEW: SamplingParams(temperature=0.30, top_p=0.85, top_k=30, frequency_penalty=0.15, presence_penalty=0.05, repetition_penalty=1.03),
+}
+
+# Per-provider supported parameters — filter out unsupported ones before calling API
+PROVIDER_PARAMS: dict[str, list[str]] = {
+    "anthropic": ["temperature", "top_p"],
+    "google": ["temperature", "top_p", "top_k"],
+    "deepseek": ["temperature", "top_p", "top_k", "frequency_penalty"],
+    "ollama": ["temperature", "top_p", "top_k", "repetition_penalty"],
+    "minimax": ["temperature", "top_p"],
+    "openai": ["temperature", "top_p", "frequency_penalty", "presence_penalty"],
+    "xai": ["temperature", "top_p", "frequency_penalty", "presence_penalty"],
 }
 
 
@@ -152,6 +190,9 @@ MAX_LEARNED_WEIGHT = 0.5
 SAMPLES_FOR_MAX_WEIGHT = 20
 
 NEUTRAL_PARAMS = SamplingParams(temperature=0.7, top_p=0.9, top_k=50, frequency_penalty=0.2, presence_penalty=0.2, repetition_penalty=1.1)
+
+# Default path for EMA persistence
+EMA_PERSIST_PATH = "data/autotune_ema.json"
 
 
 @dataclass
@@ -170,26 +211,42 @@ class AutoTune:
     LLM sampling parameters. Includes EMA-based online learning.
 
     Usage:
-        at = AutoTune()
+        at = AutoTune(worker_id="coder_rust")
         result = at.analyze("Write a Python function to sort a list")
         print(result.params.to_dict())
         # → { temperature: 0.15, top_p: 0.80, top_k: 25, ... }
     """
 
-    def __init__(self) -> None:
+    def __init__(self, worker_id: str = "", persist_path: str = EMA_PERSIST_PATH) -> None:
+        self.worker_id = worker_id
+        self._persist_path = persist_path
         self._feedback_history: list[FeedbackEntry] = []
         # Per-context EMA running averages for positive/negative feedback
         self._positive_ema: dict[ContextType, dict[str, float]] = {}
         self._negative_ema: dict[ContextType, dict[str, float]] = {}
         self._sample_counts: dict[ContextType, int] = {}
 
-    def classify(self, text: str, history: list[str] | None = None) -> tuple[ContextType, float]:
+        # Try to load persisted EMA state
+        self._load_ema()
+
+    def classify(
+        self,
+        text: str,
+        history: list[str] | None = None,
+        worker_id: str = "",
+    ) -> tuple[ContextType, float]:
         """
         Classify text into a context type.
+
+        Args:
+            text: The prompt text to classify
+            history: List of recent message strings
+            worker_id: Worker identity for context bias override
 
         Returns:
             (context_type, confidence) tuple
         """
+        effective_worker_id = worker_id or self.worker_id
         scores: dict[ContextType, float] = {}
 
         # Score current message (3x weight)
@@ -209,28 +266,37 @@ class AutoTune:
                         if pattern.search(msg):
                             scores[ctx_type] = scores.get(ctx_type, 0) + 1.0
 
+        # Worker identity bias — add weight for the worker's natural context
+        if effective_worker_id and effective_worker_id in WORKER_CONTEXT_BIAS:
+            bias_type = WORKER_CONTEXT_BIAS[effective_worker_id]
+            scores[bias_type] = scores.get(bias_type, 0) + 3.0  # Same weight as one pattern match
+
         if not scores or max(scores.values()) == 0:
             return ContextType.CONVERSATIONAL, 0.3
 
         best_type = max(scores, key=lambda k: scores[k])
         total = sum(scores.values())
-        confidence = min(scores[best_type] / 12.0, 1.0)
+        # FIX: Confidence = proportion of best score relative to total
+        # (was hardcoded /12.0 which made almost everything low-confidence)
+        confidence = scores[best_type] / total if total > 0 else 0.3
 
         return best_type, confidence
 
     def analyze(
         self,
         text: str,
-        history: list[str] | None = None,
+        history: list[str] | list[dict[str, str]] | None = None,
         strategy: str | None = None,
+        worker_id: str = "",
     ) -> AutoTuneResult:
         """
         Analyze text and return optimal sampling parameters.
 
         Args:
             text: User query
-            history: Recent conversation history
+            history: Recent conversation history (list[str] or list[dict] with "content" key)
             strategy: Override with a fixed strategy (precise, balanced, creative, chaotic)
+            worker_id: Worker identity for context bias
 
         Returns:
             AutoTuneResult with context_type, confidence, params
@@ -244,8 +310,23 @@ class AutoTune:
                 strategy=strategy,
             )
 
+        # FIX: Extract content from dict-style history if needed
+        history_texts: list[str] | None = None
+        if history:
+            history_texts = []
+            for msg in history:
+                if isinstance(msg, dict):
+                    content = msg.get("content", "")
+                    if content:
+                        history_texts.append(content)
+                elif isinstance(msg, str):
+                    history_texts.append(msg)
+            if not history_texts:
+                history_texts = None
+
         # Classify context
-        context_type, confidence = self.classify(text, history)
+        effective_worker_id = worker_id or self.worker_id
+        context_type, confidence = self.classify(text, history_texts, effective_worker_id)
 
         # Get base profile for context type
         base_params = CONTEXT_PROFILES[context_type]
@@ -273,8 +354,8 @@ class AutoTune:
             params = self._apply_adjustments(params, learned_adjustments, weight)
 
         # Conversation length adaptation
-        if history and len(history) > 10:
-            boost = min((len(history) - 10) * 0.01, 0.15)
+        if history_texts and len(history_texts) > 10:
+            boost = min((len(history_texts) - 10) * 0.01, 0.15)
             params.repetition_penalty += boost
             params.frequency_penalty += boost * 0.5
 
@@ -307,6 +388,26 @@ class AutoTune:
                 self._negative_ema[context_type][key] = (1 - EMA_ALPHA) * old + EMA_ALPHA * value
 
         self._sample_counts[context_type] = self._sample_counts.get(context_type, 0) + 1
+
+        # Persist EMA state after each feedback
+        self._save_ema()
+
+    def filter_params_for_provider(
+        self, params: SamplingParams, provider: str
+    ) -> dict[str, Any]:
+        """
+        Filter sampling parameters based on what the provider supports.
+
+        Not all providers support all parameters (e.g. Anthropic doesn't
+        support top_k). This method returns only the supported params as a dict.
+        """
+        supported = PROVIDER_PARAMS.get(provider, ["temperature", "top_p"])
+        result: dict[str, Any] = {}
+        param_dict = params.to_dict()
+        for key in supported:
+            if key in param_dict:
+                result[key] = param_dict[key]
+        return result
 
     def _blend(self, primary: SamplingParams, secondary: SamplingParams, weight: float) -> SamplingParams:
         """Linearly blend two parameter sets."""
@@ -352,6 +453,72 @@ class AutoTune:
             repetition_penalty=params.repetition_penalty + adjustments.get("repetition_penalty", 0) * weight,
         )
         return result
+
+    # ── EMA Persistence ─────────────────────────────────────────────
+
+    def _save_ema(self) -> None:
+        """Persist EMA state to JSON file (flush after each feedback)."""
+        try:
+            path = Path(self._persist_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+            data = {
+                "positive_ema": {
+                    ct.value: params for ct, params in self._positive_ema.items()
+                },
+                "negative_ema": {
+                    ct.value: params for ct, params in self._negative_ema.items()
+                },
+                "sample_counts": {
+                    ct.value: count for ct, count in self._sample_counts.items()
+                },
+            }
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.debug(f"AutoTune EMA persist failed: {e}")
+
+    def _load_ema(self) -> None:
+        """Load persisted EMA state from JSON file."""
+        try:
+            path = Path(self._persist_path)
+            if not path.exists():
+                return
+
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Restore positive EMA
+            for ct_str, params in data.get("positive_ema", {}).items():
+                try:
+                    ct = ContextType(ct_str)
+                    self._positive_ema[ct] = {k: float(v) for k, v in params.items()}
+                except ValueError:
+                    continue
+
+            # Restore negative EMA
+            for ct_str, params in data.get("negative_ema", {}).items():
+                try:
+                    ct = ContextType(ct_str)
+                    self._negative_ema[ct] = {k: float(v) for k, v in params.items()}
+                except ValueError:
+                    continue
+
+            # Restore sample counts
+            for ct_str, count in data.get("sample_counts", {}).items():
+                try:
+                    ct = ContextType(ct_str)
+                    self._sample_counts[ct] = int(count)
+                except ValueError:
+                    continue
+
+            logger.debug(
+                f"AutoTune loaded EMA state: "
+                f"{sum(self._sample_counts.values())} samples across "
+                f"{len(self._sample_counts)} context types"
+            )
+        except Exception as e:
+            logger.debug(f"AutoTune EMA load failed: {e}")
 
 
 @dataclass

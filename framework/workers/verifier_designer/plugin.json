@@ -5,7 +5,7 @@
   "display_name": "Design Verifier",
   "api": {
     "provider": "google",
-    "model": "gemini-2.5-pro",
+    "model": "gemini-3-1-pro",
     "api_key": "${GOOGLE_API_KEY}"
   },
   "squad": "verification",
@@ -13,5 +13,6 @@
   "description": "Reviews visual output — design consistency, UX quality, accessibility, responsive design, color & typography",
   "tags": ["visual-review", "ux-evaluation", "design-consistency", "accessibility-audit", "multimodal", "ui-quality"],
   "capabilities": ["visual-review", "ux-evaluation", "design-consistency", "accessibility-audit"],
-  "interacts_with": ["coder_frontend", "auditor"]
+  "interacts_with": ["coder_frontend", "auditor"],
+  "stm_enabled": true
 }

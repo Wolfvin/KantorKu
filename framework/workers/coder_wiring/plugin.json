@@ -4,14 +4,15 @@
   "subcategory": "integration",
   "display_name": "Wiring Coder",
   "api": {
-    "provider": "openai",
-    "model": "codex-5.3",
-    "api_key": "${OPENAI_API_KEY}"
+    "provider": "google",
+    "model": "gemini-3-1-pro",
+    "api_key": "${GOOGLE_API_KEY}"
   },
   "squad": "coding",
   "role": "API/WebSocket/MCP/Glue Specialist",
   "description": "Writes integration code — API wiring, WebSocket, MCP, glue between services, third-party SDK integration",
-  "tags": ["api-design", "websocket", "mcp", "integration", "glue-code", "codex", "sdk", "middleware"],
-  "capabilities": ["api-design", "websocket", "mcp", "integration", "glue-code", "codex"],
-  "interacts_with": ["coder_frontend", "coder_backend", "scout", "verifier_engineer"]
+  "tags": ["api-design", "websocket", "mcp", "integration", "glue-code", "gemini", "sdk", "middleware"],
+  "capabilities": ["api-design", "websocket", "mcp", "integration", "glue-code", "sdk"],
+  "interacts_with": ["coder_frontend", "coder_backend", "scout", "verifier_engineer"],
+  "stm_enabled": true
 }

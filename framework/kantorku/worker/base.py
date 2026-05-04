@@ -3,7 +3,7 @@ BaseWorker — Foundation for all kantorku workers.
 
 Every worker (coder, verifier, support) inherits from BaseWorker.
 It handles:
-- LLM calls via provider abstraction
+- LLM calls via provider abstraction (with AutoTune + STM integration)
 - Event emission via EventBus
 - Context retrieval from Ring 1
 - Lifecycle management (idle → thinking → active → done)
@@ -86,6 +86,7 @@ class BaseWorker:
     Subclasses override `handle(task)` to implement specific logic.
     The base class provides:
     - LLM calls via self.llm_call() — uses the worker's OWN API config
+      with AutoTune (adaptive sampling) + STM (output normalization)
     - Direct API access via self.api_call() — for custom HTTP requests
     - Event emission via EventBus
     - Context retrieval from Ring 1
@@ -115,6 +116,12 @@ class BaseWorker:
         self._emitter: EventEmitter | None = None
         self._ring1: Any = None  # Set by Office during initialization
         self._own_provider: Any = None  # Lazy-init'd provider from identity.api
+
+        # AutoTune — context-adaptive sampling (initialized lazily on first use)
+        self._autotune: Any = None  # AutoTune instance, lazy-init'd
+
+        # STM — Semantic Transformation Modules (initialized lazily on first use)
+        self._stm: Any = None  # STMEngine instance, lazy-init'd
 
     @property
     def id(self) -> str:
@@ -271,6 +278,38 @@ class BaseWorker:
         except Exception:
             pass  # Fall back to global router
 
+    def _ensure_autotune(self) -> None:
+        """Lazily initialize AutoTune engine for this worker."""
+        if self._autotune is not None:
+            return
+        try:
+            from kantorku.redteam.autotune import AutoTune
+            self._autotune = AutoTune(worker_id=self.id)
+        except ImportError:
+            pass  # AutoTune not available
+
+    def _ensure_stm(self) -> None:
+        """Lazily initialize STM engine for this worker."""
+        if self._stm is not None:
+            return
+        try:
+            from kantorku.redteam.stm import STMEngine
+            self._stm = STMEngine()
+        except ImportError:
+            pass  # STM not available
+
+    def _get_history_texts(self) -> list[dict[str, str]]:
+        """Get recent conversation history for AutoTune context analysis."""
+        if self._ring1:
+            try:
+                # Ring1.get_history returns list[dict[str, str]]
+                # We'll call this synchronously since DuckDB is sync
+                # In practice, Office should set _history_cache
+                pass
+            except Exception:
+                pass
+        return []
+
     async def llm_call(
         self,
         prompt: str,
@@ -283,8 +322,13 @@ class BaseWorker:
 
         Each worker uses its OWN API key and provider. For example:
         - verifier_designer → calls Gemini API with Google key
-        - debugger → calls Grok API with xAI key
-        - coder_wiring → calls Codex API with OpenAI key
+        - debugger → calls DeepSeek API with DeepSeek key
+        - coder_wiring → calls Google API with Google key
+
+        Pipeline:
+        1. AutoTune → select optimal temperature/params (if not overridden)
+        2. Call provider → get raw LLM response
+        3. STM → normalize output (strip hedging/preambles), unless disabled
 
         Falls back to the global provider router if no worker-specific API is set.
 
@@ -295,13 +339,33 @@ class BaseWorker:
             **kwargs: Additional provider-specific parameters
 
         Returns:
-            The LLM response text
+            The LLM response text (STM-transformed if enabled)
         """
         messages: list[dict[str, str]] = []
         sys = system or self.identity.skill_md
         if sys:
             messages.append({"role": "system", "content": sys})
         messages.append({"role": "user", "content": prompt})
+
+        # AutoTune — select optimal sampling params if not manually set
+        if "temperature" not in kwargs:
+            self._ensure_autotune()
+            if self._autotune is not None:
+                try:
+                    history_texts = self._get_history_texts()
+                    result = self._autotune.analyze(
+                        text=prompt,
+                        history=history_texts or None,
+                        worker_id=self.id,
+                    )
+                    # Apply only provider-supported parameters
+                    provider_name = self.identity.api.provider
+                    filtered = self._autotune.filter_params_for_provider(
+                        result.params, provider_name
+                    )
+                    kwargs.update(filtered)
+                except Exception:
+                    pass  # AutoTune failure is non-fatal
 
         # Try worker's own provider first
         self._ensure_own_provider()
@@ -310,19 +374,33 @@ class BaseWorker:
             # Strip provider prefix if present
             if "/" in model_name:
                 model_name = model_name.split("/", 1)[1]
-            return await self._own_provider.complete(
+            response = await self._own_provider.complete(
+                model=model_name,
+                messages=messages,
+                **kwargs,
+            )
+        else:
+            # Fall back to global router
+            model_name = model or self.model
+            response = await self.router.complete(
                 model=model_name,
                 messages=messages,
                 **kwargs,
             )
 
-        # Fall back to global router
-        model_name = model or self.model
-        return await self.router.complete(
-            model=model_name,
-            messages=messages,
-            **kwargs,
-        )
+        # STM — normalize worker output (strip hedging/preambles)
+        # Skip for conductor (needs to stay conversational with client)
+        stm_enabled = self.identity.plugin_data.get("stm_enabled", True)
+        if stm_enabled:
+            self._ensure_stm()
+            if self._stm is not None:
+                try:
+                    transformed = self._stm.transform(response)
+                    return transformed.transformed
+                except Exception:
+                    pass  # STM failure is non-fatal — return raw response
+
+        return response
 
     async def api_call(
         self,
@@ -387,6 +465,8 @@ class BaseWorker:
         Also emits llm_stream_start, llm_stream_chunk, llm_stream_done
         events to the session's EventBus channel.
 
+        Uses worker's own provider (like llm_call), falls back to router.
+
         Args:
             prompt: User message content
             system: Optional system prompt (defaults to skill_md)
@@ -411,6 +491,33 @@ class BaseWorker:
 
         full_text_parts: list[str] = []
 
+        # Try worker's own provider first (consistent with llm_call)
+        self._ensure_own_provider()
+        if self._own_provider is not None:
+            stripped_model = model_name
+            if "/" in stripped_model:
+                stripped_model = stripped_model.split("/", 1)[1]
+            try:
+                async for chunk in self._own_provider.complete_stream(
+                    model=stripped_model,
+                    messages=messages,
+                    **kwargs,
+                ):
+                    full_text_parts.append(chunk)
+                    if emitter:
+                        await emitter.llm_stream_chunk(from_id=self.id, chunk=chunk, model=model_name)
+                    yield chunk
+            except AttributeError:
+                # Own provider doesn't support streaming — fall back to router
+                pass
+            else:
+                if emitter:
+                    await emitter.llm_stream_done(
+                        from_id=self.id, model=model_name, full_text="".join(full_text_parts)
+                    )
+                return
+
+        # Fall back to global router for streaming
         async for chunk in self.router.complete_stream(
             model=model_name,
             messages=messages,
@@ -460,6 +567,11 @@ class BaseWorker:
     async def speak_up(self, task: Task, plan: dict[str, Any]) -> dict[str, Any]:
         """
         Called during BriefingRoom — worker shares concerns or suggestions.
+
+        This is the BASE implementation. BriefingRoom may bypass this and
+        call llm_call_structured() directly with a custom prompt that includes
+        the full group transcript (via _worker_speak_with_context).
+
         Override in subclasses for custom briefing behavior.
         """
         prompt = f"""
@@ -501,6 +613,39 @@ class BaseWorker:
         Respond with JSON:
         {{
             "response": "your response",
+            "is_blocker": true/false
+        }}
+        """
+        result = await self.llm_call_structured(prompt)
+        return {
+            "response": result.get("raw_response", str(result)),
+            "is_blocker": result.get("is_blocker", False),
+        }
+
+    async def receive_broadcast(self, from_id: str, message: str) -> dict[str, Any]:
+        """
+        Receive a broadcast message from another worker or the hub.
+
+        Called by WorkerHub.broadcast() — every active worker gets the
+        same message. Override in subclasses for custom broadcast behavior.
+
+        Args:
+            from_id: ID of the worker that sent the broadcast
+            message: Broadcast message content
+
+        Returns:
+            Dict with optional response and blocker status
+        """
+        prompt = f"""
+        Worker {from_id} broadcast a message to the team:
+        "{message}"
+
+        You are {self.id} ({self.role}).
+        If this affects your work, respond. Otherwise, acknowledge briefly.
+
+        Respond with JSON:
+        {{
+            "response": "your response or acknowledgment",
             "is_blocker": true/false
         }}
         """

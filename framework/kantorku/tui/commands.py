@@ -413,7 +413,7 @@ async def cmd_context(tui: Any, args: str) -> str:
             if args.strip():
                 # Get specific context
                 try:
-                    ctx = o.ring1.get_context(args.strip())
+                    ctx = await o.ring1.get_context(args.strip())
                     if ctx:
                         lines.append(f"  [bold]ID:[/bold] {ctx.get('id', '?')}")
                         lines.append(f"  [bold]Source:[/bold] {ctx.get('source', '?')}")
@@ -1317,8 +1317,9 @@ async def cmd_theme(tui: Any, args: str) -> str:
     tui.CSS = f"""
     Screen {{ layout: vertical; }}
     #main-container {{ layout: horizontal; height: 1fr; }}
-    #chat-panel {{ width: 60%; height: 100%; border: solid {t['primary']}; border-title-color: {t['primary']}; }}
-    #right-panel {{ width: 40%; height: 100%; }}
+    #left-panel {{ width: 30%; height: 100%; border: solid {t['primary']}; border-title-color: {t['primary']}; }}
+    #center-panel {{ width: 40%; height: 100%; }}
+    #right-panel {{ width: 30%; height: 100%; }}
     #contract-area {{ border: solid {t['success']}; border-title-color: {t['success']}; }}
     """
     try:

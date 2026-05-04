@@ -4,15 +4,15 @@
   "subcategory": "debugging",
   "display_name": "Root Cause Analyst",
   "api": {
-    "provider": "xai",
-    "model": "grok-3",
-    "api_key": "${XAI_API_KEY}",
-    "base_url": "https://api.x.ai/v1"
+    "provider": "deepseek",
+    "model": "deepseek-v3-2",
+    "api_key": "${DEEPSEEK_API_KEY}"
   },
   "squad": "support",
   "role": "Root Cause Analyst",
   "description": "Analyzes bugs and errors — root cause analysis, stack trace reading, bug triaging, fix suggestions",
-  "tags": ["root-cause-analysis", "stack-trace", "bug-triage", "fix-suggestion", "debugging", "grok"],
+  "tags": ["root-cause-analysis", "stack-trace", "bug-triage", "fix-suggestion", "debugging", "deepseek"],
   "capabilities": ["root-cause-analysis", "stack-trace-reading", "bug-triaging", "fix-suggestion"],
-  "interacts_with": ["coder_backend", "coder_frontend", "watchdog"]
+  "interacts_with": ["coder_backend", "coder_frontend", "sentinel"],
+  "stm_enabled": true
 }

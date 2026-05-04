@@ -1669,11 +1669,18 @@ class KantorKuTUI(App):
             return
 
         try:
-            cd = self.query_one("#contract-display", ContractDisplay)
-
-            # Update worker status
+            # Update worker status in the workers live stream panel
             if hasattr(office, 'get_worker_status'):
                 workers = office.get_worker_status()
+                try:
+                    wls = self.query_one("#workers-live", WorkersLiveStream)
+                    if hasattr(wls, '_workers_status'):
+                        wls._workers_status = {
+                            w.get("id", f"worker-{i}"): w
+                            for i, w in enumerate(workers)
+                        }
+                except NoMatches:
+                    pass
 
             # Update pool status
             if hasattr(office, 'get_pool_status'):

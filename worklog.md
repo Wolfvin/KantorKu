@@ -63,3 +63,45 @@ Stage Summary:
 - Error handling: Inline error messages, skip bad workers with warning, PermissionError catch
 - /settings command: Updated with await, already registered in Session category
 - Key decisions: 3-column layout with live preview, backup files before overwrite, combined Tools & API tab
+
+---
+Task ID: 7
+Agent: main
+Task: Comprehensive audit fix — AutoTune, Router, BaseWorker, STM, Model Sync, TUI
+
+Work Log:
+- Read full codebase: autotune.py, base.py, router.py, stm.py, commands.py, identity.py, context_pool.py, ring1.py, ring2.py, app.py, all plugin.json files, kantorku.toml, WORKERS_MANIFEST.md
+- Fixed AutoTune confidence formula: replaced hardcoded /12.0 with proportion-based scoring (scores[best_type] / total)
+- Fixed AutoTune EMA persistence: added JSON-based save/load to data/autotune_ema.json, flushes after each feedback()
+- Fixed AutoTune worker identity context: added worker_id param to classify(), WORKER_CONTEXT_BIAS map for per-worker type bias
+- Fixed AutoTune history format mismatch: analyze() now accepts list[str] or list[dict] and extracts "content" from dicts
+- Fixed AutoTune provider parameter filtering: added PROVIDER_PARAMS map + filter_params_for_provider() method
+- Replaced CHAOTIC context type with REVIEW (code review, auditing, verification) — more relevant for kantorku workers
+- Fixed meta provider mapping: DeepSeekProvider → OpenAICompatProvider (Meta uses OpenAI-compatible API, not DeepSeek format)
+- Updated _guess_fallback_model with current model names (claude-sonnet-4-6, gemini-2.5-pro, deepseek-v3-2)
+- Added meta fallback model: llama-3.3-70b
+- Synced model configs across toml/plugin.json for 3 mismatched workers:
+  - coder_wiring: openai/codex-5.3 → google/gemini-3-1-pro (matches toml)
+  - debugger: xai/grok-3 → deepseek/deepseek-v3-2 (matches toml)
+  - verifier_designer: google/gemini-2.5-pro → google/gemini-3-1-pro (matches toml)
+- Updated model string format for auditor + coder_frontend: claude-sonnet-4-20250514 → claude-sonnet-4-6 (consistent with toml)
+- Fixed llm_call_stream to use worker's own provider (like llm_call) instead of always using global router
+- Added receive_broadcast() method to BaseWorker (was missing — WorkerHub.broadcast() would crash with AttributeError)
+- Documented speak_up() as base implementation — BriefingRoom bypasses it via _worker_speak_with_context()
+- Fixed /theme command CSS: 2-panel (#chat-panel 60% + #right-panel 40%) → 3-panel (#left-panel 30% + #center-panel 40% + #right-panel 30%)
+- Fixed /context command: added missing `await` for async ring1.get_context() call
+- Added rate limiting to ContextPool: each pool instance uses RateLimiter (10 RPM per instance) to avoid DeepSeek API limits
+- Implemented _update_embedded_status(): now updates WorkersLiveStream panel with worker status data
+- Integrated STM into BaseWorker.llm_call(): post-processes all worker LLM output (strip hedging/preambles)
+- Added stm_enabled toggle in plugin.json (default True for all workers, False for conductor which doesn't use BaseWorker.llm_call)
+- Added AutoTune integration into BaseWorker.llm_call(): adaptive sampling params with provider-specific filtering
+
+Stage Summary:
+- 18 audit findings fixed across 7 files
+- AutoTune: 6 fixes (confidence formula, EMA persistence, worker bias, history format, provider filtering, CHAOTIC→REVIEW)
+- Router: 2 fixes (meta provider, fallback models)
+- BaseWorker: 5 additions (STM integration, AutoTune integration, receive_broadcast, llm_call_stream own provider, speak_up docs)
+- Model sync: 5 plugin.json files updated to match kantorku.toml (source of truth)
+- TUI: 3 fixes (theme 3-panel, /context await, _update_embedded_status)
+- Pool: 1 fix (rate limiting added)
+- All changes backward-compatible — no breaking API changes

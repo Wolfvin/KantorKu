@@ -85,7 +85,7 @@ class ProviderRouter:
         "deepseek": DeepSeekProvider,
         "openai": OpenAICompatProvider,
         "xai": OpenAICompatProvider,  # xAI uses OpenAI-compatible API
-        "meta": DeepSeekProvider,  # Meta uses OpenAI-compatible via proxy
+        "meta": OpenAICompatProvider,  # Meta uses OpenAI-compatible API
         "ollama": OllamaProvider,
     }
 
@@ -494,13 +494,14 @@ class ProviderRouter:
     def _guess_fallback_model(self, fallback_provider: str, original_model: str) -> str:
         """Guess an appropriate model name for a fallback provider."""
         defaults = {
-            "anthropic": "claude-sonnet-4-20250514",
-            "google": "gemini-2.0-flash",
-            "deepseek": "deepseek-chat",
+            "anthropic": "claude-sonnet-4-6",
+            "google": "gemini-2.5-pro",
+            "deepseek": "deepseek-v3-2",
             "minimax": "minimax-m2-7",
             "openai": "gpt-4o",
             "xai": "grok-3",
             "ollama": "llama3",
+            "meta": "llama-3.3-70b",
         }
         return defaults.get(fallback_provider, original_model)
 

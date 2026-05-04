@@ -7,6 +7,9 @@ The pool manages multiple DeepSeek instances that:
 - Store results in Ring 1 for instant access
 
 Queue is FIFO — no priority system. Simple by design.
+
+Rate limiting: Each pool instance respects the provider's rate limit
+via the router's RateLimiter to avoid hitting DeepSeek API limits.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from kantorku.events.bus import EventBus
 from kantorku.events.emitter import EventEmitter
 from kantorku.pool.pool_worker import PoolWorker
 from kantorku.memory.ring1 import Ring1Memory
+from kantorku.providers.rate_limiter import RateLimiter
 
 
 @dataclass
@@ -46,12 +50,15 @@ class ContextResult:
 
 class ContextPool:
     """
-    DeepSeek Context Pool with FIFO queue.
+    DeepSeek Context Pool with FIFO queue and rate limiting.
 
     Pool instances standby and listen to the queue.
     Proactive: prefetch during briefing breakdown.
     Reactive: fetch when a worker requests context.
     No priority system — FIFO, simple by design.
+
+    Rate limiting: Each pool worker inherits the router's RateLimiter
+    to avoid hitting provider API limits when all 3 instances are active.
 
     Usage:
         pool = ContextPool(
@@ -59,6 +66,7 @@ class ContextPool:
             size=3,
             bus=bus,
             ring1=ring1,
+            router=router,  # Pass router for rate limiting
         )
         await pool.start()
 
@@ -75,15 +83,28 @@ class ContextPool:
         size: int = 3,
         bus: EventBus | None = None,
         ring1: Ring1Memory | None = None,
+        router: Any = None,  # ProviderRouter — passed to pool workers for rate limiting
     ) -> None:
         self.model = model
         self.size = size
         self.bus = bus or EventBus()
         self.ring1 = ring1
+        self.router = router
+
+        # Rate limiter for pool workers — conservative defaults
+        # DeepSeek free tier: ~3 RPM, paid: ~60 RPM
+        # We use 10 RPM per instance to be safe
+        self._rate_limiter = RateLimiter()
+        self._rate_limiter.configure(
+            "deepseek",
+            rps=0.17,  # ~10 RPM per instance
+            max_concurrent=2,
+            burst=3,
+        )
 
         self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self.instances: list[PoolWorker] = [
-            PoolWorker(instance_id=i, model=model)
+            PoolWorker(instance_id=i, model=model, router=router)
             for i in range(size)
         ]
         self._running = False
@@ -118,17 +139,19 @@ class ContextPool:
     ) -> None:
         """
         Proactive prefetch — called during briefing when todos are broken down.
-        Enters the FIFO queue like any other job.
+        Enters the FIFO queue like any other job. Rate-limited before enqueue.
         """
         emitter = EventEmitter(self.bus, session_id)
 
-        await self.queue.put({
-            "type": "prefetch",
-            "task_id": task_id,
-            "query": self._build_query(query),
-            "raw_query": query,
-            "session_id": session_id,
-        })
+        # Apply rate limiting before enqueue
+        async with self._rate_limiter.limit("deepseek"):
+            await self.queue.put({
+                "type": "prefetch",
+                "task_id": task_id,
+                "query": self._build_query(query),
+                "raw_query": query,
+                "session_id": session_id,
+            })
 
         await emitter.context_fetch_start(
             instance=-1,  # Not yet assigned
@@ -145,17 +168,19 @@ class ContextPool:
     ) -> None:
         """
         Reactive request — called when a worker needs additional context.
-        Enters the FIFO queue like any other job.
+        Enters the FIFO queue like any other job. Rate-limited before enqueue.
         """
         emitter = EventEmitter(self.bus, session_id)
 
-        await self.queue.put({
-            "type": "reactive",
-            "worker_id": worker_id,
-            "task_id": task_id,
-            "query": query,
-            "session_id": session_id,
-        })
+        # Apply rate limiting before enqueue
+        async with self._rate_limiter.limit("deepseek"):
+            await self.queue.put({
+                "type": "reactive",
+                "worker_id": worker_id,
+                "task_id": task_id,
+                "query": query,
+                "session_id": session_id,
+            })
 
         await emitter.context_requested(
             from_id=worker_id,
@@ -186,4 +211,5 @@ Format: file location + brief snippet + reason for relevance."""
                 }
                 for inst in self.instances
             ],
+            "rate_limit": self._rate_limiter.get_status(),
         }
