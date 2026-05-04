@@ -213,3 +213,36 @@ Stage Summary:
 - 10 total themes (was 5), default: synthwave
 - Premium coder aesthetic with neon HUD, tall borders, braille spinners
 - Pushed to GitHub successfully
+
+---
+Task ID: 10/10-audit-fixes
+Agent: Super Z (main)
+Task: Make KantorKu 10/10 — fix all audit v2 findings + premium TUI overhaul
+
+Work Log:
+- Read and analyzed all key files: office.py, base.py, notebook.py, app.py, settings_screen.py, commands.py, themes.py
+- Wired consider_speaking() in Office._run_personality_loop() — personality system now active during task execution
+- Injected ProjectNotebook with ExecutionChannel in _conduct() — propose() no longer crashes with AttributeError
+- Added notebook context injection into task.context for workers (notebook key in _build_context_section)
+- Fixed EmbeddedKantorKuTUI reconnect: exponential backoff 2s→4s→8s→16s→32s (was flat 5s×attempt), 5 attempts (was 3)
+- Fixed breadcrumb: FAILED state mapped to terminal phase 6 (was phase 4 = stuck at WORKING)
+- Fixed breadcrumb: FAILED shown as ✗ FAILED in red instead of ▶ WORKING
+- Fixed CLIENT_FEEDBACK mapped to phase 3 (was phase 4 = WORKING)
+- Improved DAGPanel: box-drawing chars ├─└─ for tree, █ block for squad headers, ⚡ for critical path
+- Added multi-line mode visual indicator: [MULTI] label in accent color + .multiline-active CSS class
+- Added redteam_enabled, personality_enabled, notebook_enabled to KantorkuConfig (from TOML office section)
+- Updated _redteam_allowed() to check config.redteam_enabled first, then env var
+- Added 3 new ultra-premium themes: glitch, dracula_pro, monokai_pro (13 total)
+- Added notebook context to BaseWorker._build_context_section()
+- Added personality task cleanup in _conduct() and cleanup_session()
+- Added 21 new tests: KantorkuConfig, WorkerPersonality, ProjectNotebook, ThemeSystem, DAGPanel, NotebookContext
+- All 245 tests passing
+
+Stage Summary:
+- 7 CRITICAL audit findings → ALL FIXED
+- 3 DESIGN findings → ALL FIXED
+- 2 MINOR findings → ALL FIXED
+- 3 new premium themes added (13 total)
+- 21 new tests (245 total, all passing)
+- Committed: 82ca868
+- Pushed to GitHub: https://github.com/Wolfvin/KantorKu.git
