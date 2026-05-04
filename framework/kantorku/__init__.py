@@ -114,7 +114,12 @@ from kantorku.interface.health import (
     AlertSystem,
 )
 
-__version__ = "0.4.0"
+# P4: Office Communication Maturation
+from kantorku.layers.group_channel import GroupChannel, GroupMessage, MessageType, DiscussionRound
+from kantorku.layers.todo_review import TodoReviewPhase, TodoReview, TodoReviewResult
+from kantorku.layers.session_transcript import SessionTranscript, TranscriptEntry
+
+__version__ = "0.1.0"
 __all__ = [
     # Core
     "Office",

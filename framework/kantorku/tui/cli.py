@@ -529,7 +529,8 @@ def cmd_tui(args: argparse.Namespace) -> None:
     try:
         from kantorku.tui.app import KantorKuTUI, EmbeddedKantorKuTUI
     except ImportError as e:
-        print(f"Error: TUI dependencies not installed. Install with: pip install textual rich")
+        print("Error: TUI dependencies not installed.")
+        print("  Install with: pip install kantorku[tui]")
         print(f"  Details: {e}")
         sys.exit(1)
 

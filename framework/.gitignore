@@ -40,6 +40,10 @@ data/
 kantorku.toml
 !kantorku.toml.example
 
+# Generated projects
+test-project/
+my-office/
+
 # Logs
 *.log
 logs/

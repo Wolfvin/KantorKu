@@ -68,7 +68,16 @@ Usage:
     kantorku tui --config ...       # Use config file
 """
 
-from kantorku.tui.app import KantorKuTUI, EmbeddedKantorKuTUI
+# Lazy imports — textual is an optional dependency.
+# This module must not crash when textual is not installed,
+# because the CLI entry point (kantorku.tui.cli:main) imports this package.
+
+try:
+    from kantorku.tui.app import KantorKuTUI, EmbeddedKantorKuTUI
+except ImportError:
+    KantorKuTUI = None       # type: ignore[assignment,misc]
+    EmbeddedKantorKuTUI = None  # type: ignore[assignment,misc]
+
 from kantorku.tui.cli import main as cli_main
 
 __all__ = ["KantorKuTUI", "EmbeddedKantorKuTUI", "cli_main"]
