@@ -1,0 +1,25 @@
+{
+  "positive_ema": {
+    "code": {
+      "temperature": 0.58,
+      "top_p": 0.885,
+      "top_k": 50.0,
+      "frequency_penalty": 0.16999999999999998,
+      "presence_penalty": 0.16999999999999998,
+      "repetition_penalty": 1.07
+    }
+  },
+  "negative_ema": {
+    "code": {
+      "temperature": 0.94,
+      "top_p": 0.9239999999999999,
+      "top_k": 50.0,
+      "frequency_penalty": 0.16999999999999998,
+      "presence_penalty": 0.16999999999999998,
+      "repetition_penalty": 1.07
+    }
+  },
+  "sample_counts": {
+    "code": 2
+  }
+}
