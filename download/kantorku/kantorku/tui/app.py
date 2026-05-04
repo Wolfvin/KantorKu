@@ -815,6 +815,128 @@ class AlertsPanel(Static):
         self.update(table)
 
 
+class TranscriptPanel(Static):
+    """Session transcript viewer — full conversation context per phase."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._entries: list[dict] = []
+
+    def update_entries(self, entries: list[dict] | None = None) -> None:
+        if entries is not None:
+            self._entries = entries
+        self._render()
+
+    def add_entry(self, entry: dict) -> None:
+        self._entries.append(entry)
+        self._render()
+
+    def _render(self) -> None:
+        from kantorku.tui.markdown_renderer import render_transcript
+        if not self._entries:
+            self.update(Panel(
+                "[dim]No transcript yet[/dim]\n\n"
+                "Session phases: client_discussion → team_briefing → todo_review → execution",
+                title="Transcript",
+                border_style="dim",
+            ))
+            return
+
+        self.update(Group(
+            Text.from_markup(f"[bold cyan]Session Transcript[/bold cyan] — {len(self._entries)} entries"),
+            render_transcript(self._entries),
+        ))
+
+
+class RedteamPanel(Static):
+    """Redteam analysis panel — classification, scoring, STM, parseltongue."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._last_analysis: dict[str, Any] = {}
+
+    def update_analysis(self, analysis: dict[str, Any] | None = None) -> None:
+        if analysis is not None:
+            self._last_analysis = analysis
+        self._render()
+
+    def _render(self) -> None:
+        from kantorku.tui.markdown_renderer import render_redteam_analysis
+        if not self._last_analysis:
+            self.update(Panel(
+                "[dim]No redteam analysis yet[/dim]\n\n"
+                "Use /redteam <text> to analyze prompts\n"
+                "Use /classify, /stm, /parseltongue, /score for individual tools\n"
+                "Use /godmode for liberation prompt\n"
+                "Use /autotune for adaptive sampling",
+                title="Redteam",
+                border_style="red",
+            ))
+            return
+
+        self.update(Group(
+            Text.from_markup("[bold red]Redteam Analysis[/bold red]"),
+            render_redteam_analysis(self._last_analysis),
+        ))
+
+
+class MiddlewarePanel(Static):
+    """Middleware pipeline display panel."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._middlewares: list[dict] = []
+
+    def update_middleware(self, middlewares: list[dict] | None = None) -> None:
+        if middlewares is not None:
+            self._middlewares = middlewares
+        self._render()
+
+    def _render(self) -> None:
+        from kantorku.tui.markdown_renderer import render_middleware_pipeline
+        if not self._middlewares:
+            self.update(Panel(
+                "[dim]No middleware data[/dim]\n\n"
+                "Default pipeline: Logging → Auth → RateLimit → CostGuard →\n"
+                "Audit → Timeout → Retry → Caching\n\n"
+                "Use /middleware for details",
+                title="Middleware",
+                border_style="dim",
+            ))
+            return
+
+        self.update(render_middleware_pipeline(self._middlewares))
+
+
+class WorkerDetailPanel(Static):
+    """Worker identity detail panel — shows full WorkerAPI + capabilities."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._identity: dict[str, Any] = {}
+
+    def update_identity(self, identity: dict[str, Any] | None = None) -> None:
+        if identity is not None:
+            self._identity = identity
+        self._render()
+
+    def _render(self) -> None:
+        from kantorku.tui.markdown_renderer import render_worker_identity
+        if not self._identity:
+            self.update(Panel(
+                "[dim]No worker selected[/dim]\n\n"
+                "Use /worker-info <id> to view details",
+                title="Worker Detail",
+                border_style="dim",
+            ))
+            return
+
+        self.update(Group(
+            Text.from_markup("[bold cyan]Worker Identity[/bold cyan]"),
+            render_worker_identity(self._identity),
+        ))
+
+
 # ── Main TUI Application ────────────────────────────────────────────
 
 
@@ -823,7 +945,7 @@ class KantorKuTUI(App):
     KantorKu — Terminal UI for coders.
 
     A full-featured TUI that connects to the KantorKu multi-agent office
-    and provides an interactive terminal interface for all framework features:
+    and provides an interactive terminal interface for ALL framework features:
     - Chatting with the Conductor to negotiate contracts
     - Monitoring worker activity in real-time
     - Tracking provider health and costs
@@ -835,6 +957,10 @@ class KantorKuTUI(App):
     - Managing task queue and DLQ
     - Observing traces, metrics, and spans
     - Monitoring alerts
+    - Viewing session transcripts
+    - Redteam analysis (classify, STM, parseltongue, scoring, godmode)
+    - Middleware pipeline visualization
+    - Worker identity details
     """
 
     TITLE = "kantorku"
@@ -984,6 +1110,14 @@ class KantorKuTUI(App):
                         yield ObservabilityPanel(id="observe-panel")
                     with TabPane("Alerts", id="tab-alerts"):
                         yield AlertsPanel(id="alerts-panel")
+                    with TabPane("Transcript", id="tab-transcript"):
+                        yield TranscriptPanel(id="transcript-panel")
+                    with TabPane("Redteam", id="tab-redteam"):
+                        yield RedteamPanel(id="redteam-panel")
+                    with TabPane("Middleware", id="tab-middleware"):
+                        yield MiddlewarePanel(id="middleware-panel")
+                    with TabPane("Worker+", id="tab-worker-detail"):
+                        yield WorkerDetailPanel(id="worker-detail-panel")
 
         yield Footer()
 
@@ -995,11 +1129,18 @@ class KantorKuTUI(App):
             f"Session: {self._session_id}\n"
             f"Server: {self.server_url}\n\n"
             f"[dim]Type a message and press Enter to chat with the Conductor.[/dim]\n"
-            f"[dim]Slash commands: /help /status /workers /health /cost /memory /dag[/dim]\n"
-            f"[dim]  /briefing /pool /queue /trace /hooks /cache /config /alerts[/dim]\n"
-            f"[dim]  /export /theme /metrics /delegate /accept /revise /code /reset[/dim]\n"
-            f"[dim]Quick commands: accept, yes, revise <feedback>[/dim]\n"
-            f"[dim]Press Ctrl+Q to quit, Tab to switch panels, ↑/↓ for history.[/dim]\n"
+            f"[dim]40+ commands: /help for full list[/dim]\n"
+            f"[dim]Chat: /code /ask /run /accept /revise[/dim]\n"
+            f"[dim]Monitor: /status /workers /health /cost /alerts[/dim]\n"
+            f"[dim]Data: /memory /cache /context /dag /briefing /pool /queue[/dim]\n"
+            f"[dim]Observe: /trace /metrics /hooks /config /middleware[/dim]\n"
+            f"[dim]Workers: /hire /fire /hotplug /worker-info /generate-worker[/dim]\n"
+            f"[dim]Tasks: /enqueue /cancel /dlq /queue-purge[/dim]\n"
+            f"[dim]Provider: /provider /circuit-reset /rate-limit[/dim]\n"
+            f"[dim]Persist: /checkpoint /recover /snapshot /snapshots[/dim]\n"
+            f"[dim]Redteam: /redteam /classify /stm /parseltongue /godmode /score /autotune[/dim]\n"
+            f"[dim]Session: /reset /export /delegate /theme /transcript[/dim]\n"
+            f"[dim]Quick: accept, yes, revise <feedback>  |  ↑/↓ = history[/dim]\n"
         )
         self._connect()
 
@@ -1345,8 +1486,64 @@ class KantorKuTUI(App):
                         f"[dim]Context prefetched: {event.get('source', '?')}[/dim]"
                     )
                 elif event_type == "error_logged":
+                    error_data = event.get("error", {})
+                    if isinstance(error_data, dict):
+                        from kantorku.tui.markdown_renderer import render_error
+                        try:
+                            log = self.query_one("#chat-log", RichLog)
+                            log.write(render_error(error_data))
+                        except NoMatches:
+                            self._add_system_message(f"[red]Error: {error_data.get('message', '?')}[/red]")
+                    else:
+                        self._add_system_message(f"[red]Error: {error_data or '?'}[/red]")
+                elif event_type == "worker_hired":
                     self._add_system_message(
-                        f"[red]Error: {event.get('error', '?')}[/red]"
+                        f"[green bold]Worker hired: {event.get('worker_id', '?')}[/green bold]"
+                    )
+                    self._update_embedded_status() if hasattr(self, '_office') and self._office else None
+                elif event_type == "worker_fired":
+                    self._add_system_message(
+                        f"[red bold]Worker fired: {event.get('worker_id', '?')}[/red bold]"
+                    )
+                    self._update_embedded_status() if hasattr(self, '_office') and self._office else None
+                elif event_type == "circuit_open":
+                    provider = event.get("provider", "?")
+                    self._add_system_message(
+                        f"[red bold]Circuit breaker OPEN: {provider}[/red bold]"
+                    )
+                elif event_type == "circuit_closed":
+                    provider = event.get("provider", "?")
+                    self._add_system_message(
+                        f"[green]Circuit breaker closed: {provider}[/green]"
+                    )
+                elif event_type == "rate_limit_hit":
+                    provider = event.get("provider", "?")
+                    self._add_system_message(
+                        f"[yellow]Rate limit hit: {provider}[/yellow]"
+                    )
+                elif event_type == "cost_warning":
+                    self._add_system_message(
+                        f"[yellow bold]Cost warning: {event.get('message', '?')}[/yellow bold]"
+                    )
+                elif event_type == "checkpoint_saved":
+                    self._add_system_message(
+                        f"[green]Checkpoint saved: {event.get('session_id', '?')}[/green]"
+                    )
+                elif event_type == "crash_recovered":
+                    self._add_system_message(
+                        f"[yellow bold]Crash recovered: {event.get('session_id', '?')}[/yellow bold]"
+                    )
+                elif event_type == "task_recovered":
+                    self._add_system_message(
+                        f"[green]Task recovered: {event.get('task_id', '?')}[/green]"
+                    )
+                elif event_type == "task_timeout":
+                    self._add_system_message(
+                        f"[red]Task timeout: {event.get('task_id', '?')} ({event.get('timeout', '?')}s)[/red]"
+                    )
+                elif event_type == "delegation_request":
+                    self._add_system_message(
+                        f"[cyan]Delegation: {event.get('from', '?')} → {event.get('to', '?')}[/cyan]"
                     )
 
         except asyncio.CancelledError:
