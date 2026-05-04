@@ -5,18 +5,21 @@ from kantorku.worker.base import BaseWorker, Task, TaskResult
 
 class Scribe(BaseWorker):
     async def handle(self, task: Task) -> TaskResult:
-        prompt = f"""Write documentation for:
+        session_ctx = self._build_context_section(task)
+        conv_summary = self.get_conversation_summary(task.session_id)
 
-Task: {task.instruction}
-Context: {task.context}
+        context_parts = [f"Write documentation for:\n\nTask: {task.instruction}"]
 
-Create:
-1. API documentation
-2. Usage examples
-3. Configuration reference
-4. Migration guide (if applicable)
+        if session_ctx:
+            context_parts.append(session_ctx)
 
-Be clear, concise, and thorough."""
+        if conv_summary:
+            context_parts.append(
+                f"Previous documentation in this session:\n{conv_summary}"
+            )
 
-        response = await self.llm_call(prompt)
+        prompt = "\n\n".join(context_parts)
+        prompt += "\n\nCreate:\n1. API documentation\n2. Usage examples\n3. Configuration reference\n4. Migration guide (if applicable)\n\nBe clear, concise, and thorough."
+
+        response = await self.llm_call(prompt, session_id=task.session_id)
         return TaskResult(task_id=task.id, status="done", output=response)

@@ -26,22 +26,33 @@ When implementing features:
 
 class CoderFrontend(BaseWorker):
     async def handle(self, task: Task) -> TaskResult:
-        context = await self.get_context(task.id)
-        if context:
-            prompt = f"""Task: {task.instruction}
+        # Gather all context sources
+        ring1_ctx = await self.get_context(task.id)
+        session_ctx = self._build_context_section(task)
+        conv_summary = self.get_conversation_summary(task.session_id)
 
-Context already prepared:
-{context.get('summary', '')}
-Files: {context.get('files', [])}
-Patterns: {context.get('patterns', [])}
+        context_parts = [f"Task: {task.instruction}"]
 
-Verify this context is still relevant, then implement based on it.
-Focus on visual quality, component structure, and user experience."""
+        if session_ctx:
+            context_parts.append(session_ctx)
+
+        if conv_summary:
+            context_parts.append(
+                f"Your previous work in this session:\n{conv_summary}"
+            )
+
+        if ring1_ctx:
+            context_parts.append(
+                f"Prefetched context:\n"
+                f"{ring1_ctx.get('summary', '')}\n"
+                f"Files: {ring1_ctx.get('files', [])}\n"
+                f"Patterns: {ring1_ctx.get('patterns', [])}"
+            )
         else:
-            prompt = f"""Task: {task.instruction}
+            context_parts.append("No prefetched context available. Implement from scratch.")
 
-No prefetched context available. Implement from scratch.
-Focus on visual quality, component structure, and user experience."""
+        prompt = "\n\n".join(context_parts)
+        prompt += "\n\nFocus on visual quality, component structure, and user experience."
 
-        response = await self.llm_call(prompt)
+        response = await self.llm_call(prompt, session_id=task.session_id)
         return TaskResult(task_id=task.id, status="done", output=response, files=[])

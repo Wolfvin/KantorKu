@@ -30,18 +30,34 @@ Respond with JSON:
 
 class VerifierDesigner(BaseWorker):
     async def handle(self, task: Task) -> TaskResult:
+        # Extract specific keys (backward compatible)
         results = task.context.get("results", {})
         contract = task.context.get("contract", {})
 
-        prompt = f"""Review the following output for visual/UX quality:
+        # Also include full session context + conversation summary
+        session_ctx = self._build_context_section(task)
+        conv_summary = self.get_conversation_summary(task.session_id)
 
-Contract: {contract.get('title', 'Unknown')}
-Results: {results}
+        context_parts = [
+            f"Review the following output for visual/UX quality:\n\n"
+            f"Contract: {contract.get('title', 'Unknown') if isinstance(contract, dict) else contract}"
+        ]
 
-Check for visual consistency, accessibility, responsive design, and UX quality.
-Respond with JSON containing issues (list), approved (bool), and suggestions (list)."""
+        if results:
+            context_parts.append(f"Results:\n{results}")
 
-        result = await self.llm_call_structured(prompt)
+        if session_ctx:
+            context_parts.append(session_ctx)
+
+        if conv_summary:
+            context_parts.append(
+                f"Your previous reviews in this session:\n{conv_summary}"
+            )
+
+        prompt = "\n\n".join(context_parts)
+        prompt += "\n\nCheck for visual consistency, accessibility, responsive design, and UX quality. Respond with JSON containing issues (list), approved (bool), and suggestions (list)."
+
+        result = await self.llm_call_structured(prompt, session_id=task.session_id)
         issues = result.get("issues", [])
         approved = result.get("approved", len(issues) == 0)
 

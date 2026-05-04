@@ -20,7 +20,7 @@ Respond with JSON:
     "estimated_complexity": "simple|moderate|complex"
 }}"""
 
-        result = await self.llm_call_structured(prompt)
+        result = await self.llm_call_structured(prompt, session_id=task.session_id)
         return TaskResult(
             task_id=task.id,
             status="done",

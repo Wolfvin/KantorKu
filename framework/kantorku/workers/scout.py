@@ -5,15 +5,15 @@ from kantorku.worker.base import BaseWorker, Task, TaskResult
 
 class Scout(BaseWorker):
     async def handle(self, task: Task) -> TaskResult:
-        prompt = f"""Research the following topic:
+        session_ctx = self._build_context_section(task)
 
-Task: {task.instruction}
+        context_parts = [f"Research the following topic:\n\nTask: {task.instruction}"]
 
-Provide:
-1. Key findings and current state
-2. Best practices and recommendations
-3. Relevant libraries, tools, or patterns
-4. Potential pitfalls to avoid"""
+        if session_ctx:
+            context_parts.append(session_ctx)
 
-        response = await self.llm_call(prompt)
+        prompt = "\n\n".join(context_parts)
+        prompt += "\n\nProvide:\n1. Key findings and current state\n2. Best practices and recommendations\n3. Relevant libraries, tools, or patterns\n4. Potential pitfalls to avoid"
+
+        response = await self.llm_call(prompt, session_id=task.session_id)
         return TaskResult(task_id=task.id, status="done", output=response)

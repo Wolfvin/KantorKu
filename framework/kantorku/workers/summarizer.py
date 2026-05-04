@@ -5,16 +5,15 @@ from kantorku.worker.base import BaseWorker, Task, TaskResult
 
 class Summarizer(BaseWorker):
     async def handle(self, task: Task) -> TaskResult:
-        prompt = f"""Summarize the following content:
+        session_ctx = self._build_context_section(task)
 
-Task: {task.instruction}
-Content to summarize: {task.context}
+        context_parts = [f"Summarize the following content:\n\nTask: {task.instruction}"]
 
-Provide:
-1. Executive summary (2-3 sentences)
-2. Key points (bullet list)
-3. Action items (if any)
-4. Open questions (if any)"""
+        if session_ctx:
+            context_parts.append(session_ctx)
 
-        response = await self.llm_call(prompt)
+        prompt = "\n\n".join(context_parts)
+        prompt += "\n\nProvide:\n1. Executive summary (2-3 sentences)\n2. Key points (bullet list)\n3. Action items (if any)\n4. Open questions (if any)"
+
+        response = await self.llm_call(prompt, session_id=task.session_id)
         return TaskResult(task_id=task.id, status="done", output=response)

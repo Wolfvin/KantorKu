@@ -5,16 +5,15 @@ from kantorku.worker.base import BaseWorker, Task, TaskResult
 
 class Narrator(BaseWorker):
     async def handle(self, task: Task) -> TaskResult:
-        prompt = f"""Format the following result for client presentation:
+        session_ctx = self._build_context_section(task)
 
-Task: {task.instruction}
-Raw result: {task.context}
+        context_parts = [f"Format the following result for client presentation:\n\nTask: {task.instruction}"]
 
-Create a clean, professional summary that:
-1. Highlights key deliverables
-2. Notes any caveats or limitations
-3. Provides next steps
-4. Is concise but complete"""
+        if session_ctx:
+            context_parts.append(session_ctx)
 
-        response = await self.llm_call(prompt)
+        prompt = "\n\n".join(context_parts)
+        prompt += "\n\nCreate a clean, professional summary that:\n1. Highlights key deliverables\n2. Notes any caveats or limitations\n3. Provides next steps\n4. Is concise but complete"
+
+        response = await self.llm_call(prompt, session_id=task.session_id)
         return TaskResult(task_id=task.id, status="done", output=response)

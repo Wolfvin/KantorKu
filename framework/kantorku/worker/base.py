@@ -87,21 +87,33 @@ class BaseWorker:
     The base class provides:
     - LLM calls via self.llm_call() — uses the worker's OWN API config
       with AutoTune (adaptive sampling) + STM (output normalization)
+      + per-session conversation memory (history injection)
     - Direct API access via self.api_call() — for custom HTTP requests
     - Event emission via EventBus
     - Context retrieval from Ring 1
     - Lifecycle management (idle → thinking → active → done)
 
+    Conversation Memory:
+    Workers remember their own exchanges within a session via _conv_history.
+    Each llm_call() injects previous messages for that session, so the LLM
+    sees its own prior work. This is separate from task.context (which
+    carries cross-worker session state) and Ring1 (which carries
+    prefetched codebase context).
+
     Usage:
         class DesignerWorker(BaseWorker):
             async def handle(self, task: Task) -> TaskResult:
                 # Uses this worker's OWN API (e.g. Gemini)
-                response = await self.llm_call("Design a dashboard layout")
+                response = await self.llm_call("Design a dashboard layout",
+                                               session_id=task.session_id)
                 return TaskResult(task_id=task.id, output=response)
 
         worker = DesignerWorker(identity=identity, router=router, bus=bus)
         result = await worker.execute(task)
     """
+
+    # Maximum messages per session conversation history (10 exchanges = 20 msgs)
+    MAX_CONVERSATION_HISTORY: int = 20
 
     def __init__(
         self,
@@ -122,6 +134,13 @@ class BaseWorker:
 
         # STM — Semantic Transformation Modules (initialized lazily on first use)
         self._stm: Any = None  # STMEngine instance, lazy-init'd
+
+        # Per-session conversation memory
+        # Key: session_id, Value: list of {"role": "user"|"assistant", "content": ...}
+        # Workers remember their own exchanges within a session so the LLM
+        # sees what it did previously (Fix 2 — worker conversation memory)
+        self._conv_history: dict[str, list[dict[str, str]]] = {}
+        self._current_session_id: str = ""  # Set by execute() before handle()
 
     @property
     def id(self) -> str:
@@ -180,6 +199,9 @@ class BaseWorker:
             # Emit task_started
             await emitter.task_started(from_id=self.id)
             self._status = WorkerStatus.ACTIVE
+
+            # Set current session so llm_call() can track conversation history
+            self._current_session_id = task.session_id
 
             # Call subclass implementation with timeout
             if effective_timeout > 0:
@@ -315,6 +337,7 @@ class BaseWorker:
         prompt: str,
         system: str | None = None,
         model: str | None = None,
+        session_id: str = "",
         **kwargs: Any,
     ) -> str:
         """
@@ -326,9 +349,11 @@ class BaseWorker:
         - coder_wiring → calls Google API with Google key
 
         Pipeline:
-        1. AutoTune → select optimal temperature/params (if not overridden)
-        2. Call provider → get raw LLM response
-        3. STM → normalize output (strip hedging/preambles), unless disabled
+        1. Build messages (system + conversation history + current prompt)
+        2. AutoTune → select optimal temperature/params (if not overridden)
+        3. Call provider → get raw LLM response
+        4. Store exchange in conversation history (per-session memory)
+        5. STM → normalize output (strip hedging/preambles), unless disabled
 
         Falls back to the global provider router if no worker-specific API is set.
 
@@ -336,15 +361,27 @@ class BaseWorker:
             prompt: User message content
             system: Optional system prompt (defaults to SKILL.md)
             model: Override model (defaults to worker's API config)
+            session_id: Session ID for conversation memory injection.
+                        Falls back to self._current_session_id (set by execute()).
             **kwargs: Additional provider-specific parameters
 
         Returns:
             The LLM response text (STM-transformed if enabled)
         """
+        # Resolve session ID — explicit param takes priority, then _current_session_id
+        sid = session_id or self._current_session_id
+
+        # Build messages: system → conversation history → current prompt
         messages: list[dict[str, str]] = []
         sys = system or self.identity.skill_md
         if sys:
             messages.append({"role": "system", "content": sys})
+
+        # Inject conversation history for this session
+        # Workers remember their own exchanges so the LLM sees what it did before
+        if sid and sid in self._conv_history:
+            messages.extend(self._conv_history[sid])
+
         messages.append({"role": "user", "content": prompt})
 
         # AutoTune — select optimal sampling params if not manually set
@@ -387,6 +424,17 @@ class BaseWorker:
                 messages=messages,
                 **kwargs,
             )
+
+        # Store exchange in conversation history (raw, before STM)
+        # This lets the LLM see its own prior work on subsequent calls
+        if sid:
+            if sid not in self._conv_history:
+                self._conv_history[sid] = []
+            self._conv_history[sid].append({"role": "user", "content": prompt})
+            self._conv_history[sid].append({"role": "assistant", "content": response})
+            # Trim to max history — keep most recent exchanges
+            if len(self._conv_history[sid]) > self.MAX_CONVERSATION_HISTORY:
+                self._conv_history[sid] = self._conv_history[sid][-self.MAX_CONVERSATION_HISTORY:]
 
         # STM — normalize worker output (strip hedging/preambles)
         # Skip for conductor (needs to stay conversational with client)
@@ -466,21 +514,30 @@ class BaseWorker:
         events to the session's EventBus channel.
 
         Uses worker's own provider (like llm_call), falls back to router.
+        Injects conversation history for the session, just like llm_call().
 
         Args:
             prompt: User message content
             system: Optional system prompt (defaults to skill_md)
             model: Override model (defaults to worker's assigned model)
-            session_id: Session ID for event emission
+            session_id: Session ID for event emission + conversation memory
             **kwargs: Additional provider-specific parameters
 
         Yields:
             Token chunks as they arrive
         """
+        # Resolve session ID for conversation memory
+        sid = session_id or self._current_session_id
+
         messages: list[dict[str, str]] = []
         sys = system or self.identity.skill_md
         if sys:
             messages.append({"role": "system", "content": sys})
+
+        # Inject conversation history (same as llm_call)
+        if sid and sid in self._conv_history:
+            messages.extend(self._conv_history[sid])
+
         messages.append({"role": "user", "content": prompt})
 
         model_name = model or self.model
@@ -543,10 +600,17 @@ class BaseWorker:
         """
         Make an LLM call and parse the response as structured JSON.
         Falls back to raw text if parsing fails.
+
+        Supports session_id in kwargs for conversation memory (passed to llm_call).
         """
         import json
 
-        response = await self.llm_call(prompt, system, model, **kwargs)
+        # Extract session_id from kwargs to pass explicitly to llm_call
+        session_id = kwargs.pop("session_id", "")
+
+        response = await self.llm_call(
+            prompt, system, model, session_id=session_id, **kwargs
+        )
         try:
             # Try to extract JSON from response
             text = response.strip()
@@ -664,3 +728,113 @@ class BaseWorker:
             "status": self._status.value,
             "capabilities": self.identity.capabilities,
         }
+
+    # ── Context & Memory Helpers ──────────────────────────────────────
+
+    def _build_context_section(self, task: Task) -> str:
+        """
+        Build formatted context section from task.context for prompt injection.
+
+        Extracts and formats key context fields that the Office prepares:
+        - session_context: what happened so far in this session
+        - team_decisions: decisions from the briefing room
+        - results: output from previous workers
+        - contract: the original contract details
+        - Any other keys
+
+        Workers should include this in their prompts so the LLM knows
+        what happened in the session before this task arrived.
+
+        Args:
+            task: The task with context dict from Office/Conductor
+
+        Returns:
+            Formatted string ready to inject into a prompt, or "" if no context
+        """
+        if not task.context:
+            return ""
+
+        parts: list[str] = []
+
+        # Session context — what happened so far in this session
+        session_ctx = task.context.get("session_context", "")
+        if session_ctx:
+            parts.append(f"Session context (what happened so far):\n{session_ctx}")
+
+        # Team decisions from briefing room
+        team_decisions = task.context.get("team_decisions", [])
+        if team_decisions:
+            if isinstance(team_decisions, list):
+                decisions_text = "\n".join(f"- {d}" for d in team_decisions)
+            else:
+                decisions_text = str(team_decisions)
+            parts.append(f"Team decisions:\n{decisions_text}")
+
+        # Results from previous workers (if present)
+        results = task.context.get("results", "")
+        if results:
+            if isinstance(results, dict):
+                parts.append(f"Previous worker results:\n{results}")
+            else:
+                parts.append(f"Previous worker results:\n{results}")
+
+        # Contract details (if present)
+        contract = task.context.get("contract", "")
+        if contract:
+            if isinstance(contract, dict):
+                title = contract.get("title", "Unknown")
+                parts.append(f"Contract: {title}")
+            else:
+                parts.append(f"Contract: {contract}")
+
+        # Other context keys not yet handled
+        handled_keys = {"session_context", "team_decisions", "results", "contract"}
+        other = {k: v for k, v in task.context.items() if k not in handled_keys}
+        if other:
+            for k, v in other.items():
+                parts.append(f"{k}: {v}")
+
+        return "\n\n".join(parts)
+
+    def clear_conversation(self, session_id: str = "") -> None:
+        """
+        Clear conversation history for a session (or all sessions).
+
+        Call this when a session ends or on /reset.
+
+        Args:
+            session_id: Specific session to clear, or "" to clear all
+        """
+        if session_id:
+            self._conv_history.pop(session_id, None)
+        else:
+            self._conv_history.clear()
+
+    def get_conversation_summary(self, session_id: str = "") -> str:
+        """
+        Get a text summary of conversation history for context injection.
+
+        Useful for workers that want to include their own history as part
+        of a larger prompt, without relying on automatic llm_call() injection.
+
+        Args:
+            session_id: Session to summarize, or "" for current session
+
+        Returns:
+            Formatted summary string, or "" if no history
+        """
+        sid = session_id or self._current_session_id
+        if not sid or sid not in self._conv_history:
+            return ""
+        history = self._conv_history[sid]
+        if not history:
+            return ""
+        parts: list[str] = []
+        for msg in history:
+            role = msg["role"].capitalize()
+            content = msg["content"]
+            # Truncate long messages to keep summary manageable
+            if len(content) > 300:
+                content = content[:297] + "..."
+            parts.append(f"{role}: {content}")
+        return "\n".join(parts)
