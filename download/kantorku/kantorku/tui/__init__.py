@@ -6,25 +6,26 @@ a natural office workflow through chat-first interaction:
 
 Layout:
     ┌─────────────────────────────────────────────────────────────────────┐
-    │  kantorku v0.6.0  │  ⚡ working  │  conn:✓  │  $0.0023            │
+    │  kantorku v0.7.0  │  📋 contract_presented  │  conn:✓  │  rev:1  │
     ├──────────────┬───────────────────────────┬─────────────────────────┤
     │              │                           │                         │
     │   MANAGER    │      WORKERS LIVE         │      CONTRACT           │
     │   CHAT       │                           │                         │
-    │              │  👥 BRIEFING               │  📋 Contract: ...       │
-    │  You: Build  │    coder_backend: ...     │  State: PRESENTED       │
-    │  me X        │    coder_frontend: ...    │                         │
-    │              │    conductor: summary     │  Tasks (3):             │
-    │  Manager:    │                           │  ○ Implement rate limit │
-    │  Sure! Here  │  ⚡ EXECUTING             │  ○ Add UI               │
-    │  's the      │    ● coder_backend: ...   │  ○ Wire everything      │
-    │  contract... │    ○ coder_frontend: ...   │                         │
-    │              │                           │  [✓ ACCEPT] [✏ REVISE]  │
-    │  ──────────  │  🔍 VERIFYING             │                         │
-    │  [⚡ DISRUPT]│    ✓ Design: OK            │                         │
-    │              │    ✓ Engineering: OK      │                         │
-    │  > Type msg  │                           │                         │
+    │              │  👥 BRIEFING               │  📋 CONTRACT PRESENTED  │
+    │  You: Build  │    coder_backend: ...     │                         │
+    │  me X        │    coder_frontend: ...    │  Tasks (3):             │
+    │              │    conductor: summary     │  ○ Implement rate limit │
+    │  Manager:    │                           │  ○ Add UI               │
+    │  Sure! Here  │                           │  ○ Wire everything      │
+    │  's the      │                           │                         │
+    │  contract... │                           │  [✓ ACCEPT] [✏ REVISE]  │
     │              │                           │                         │
+    │  ──────────  │                           │                         │
+    │  [⚡ DISRUPT]│                           │  ─────────────────────  │
+    │              │                           │  After REVISE click:    │
+    │  > Type msg  │                           │  ✏️ AWAITING YOUR       │
+    │              │                           │    REVISION             │
+    │              │                           │  Write feedback below...│
     ├──────────────┴───────────────────────────┴─────────────────────────┤
     │  Ctrl+Q:Quit  Ctrl+A:Accept  Ctrl+R:Revise  Ctrl+I:Disrupt      │
     └─────────────────────────────────────────────────────────────────────┘
@@ -34,14 +35,18 @@ Panels:
     Center — Workers brainstorming & executing in real-time
     Right  — Contract display + Accept/Revise BUTTONS
 
-Chat-Driven Workflow:
-    1. Type naturally in LEFT panel — Manager handles everything
-    2. When contract is presented:
-       - Type "yes", "ok", "accept" → auto-accept
-       - Type "revise", "change X" → auto-revise with feedback
-       - Or click ✓ ACCEPT / ✏ REVISE buttons in right panel
-    3. Workers brainstorm & execute in CENTER panel (live)
-    4. Need to redirect? Click ⚡ DISRUPT or type "stop"/"wait"
+Contract Accept/Revise Flow:
+    1. Contract is presented in RIGHT panel with ACCEPT/REVISE buttons
+    2. Click ACCEPT:
+       - Contract is finalized and displayed as "CONTRACT ACCEPTED"
+       - Workers begin execution
+    3. Click REVISE:
+       - Enter revision mode (input placeholder changes)
+       - Write your feedback and press Enter
+       - Manager brainstorms with workers (visible in center panel)
+       - Manager may ask clarifying questions
+       - New contract is presented with ACCEPT/REVISE buttons again
+    4. Repeat until satisfied, then ACCEPT
 
 Natural Language Actions (no slash commands needed):
     Accept:  yes, ok, accept, approve, go ahead, sure, ship it, ...

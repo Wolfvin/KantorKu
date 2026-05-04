@@ -130,6 +130,9 @@ EVENT_STYLES = {
     "middleware_before": ("blue", "mw_before"),
     "middleware_after": ("blue", "mw_after"),
     "cost_warning": ("yellow bold", "cost_warn"),
+    # v0.7.0 revision events
+    "revision_requested": ("yellow bold", "revision"),
+    "manager_brainstorming": ("cyan bold", "brainstorm"),
 }
 
 # Contract/conductor state colors (all 11 states from Conductor)
@@ -138,17 +141,18 @@ CONTRACT_STATE_COLORS = {
     "manager_thinking": "yellow",
     "clarifying": "yellow",
     "contract_presented": "cyan",
+    "awaiting_revision": "yellow bold",
     "team_review": "magenta",
     "todo_review": "blue",
     "client_feedback": "yellow",
     "working": "green bold",
     "verifying": "magenta",
+    "accepted": "green bold",
     "done": "green",
     "failed": "red",
     "drafting": "yellow",
     "proposed": "cyan",
     "negotiating": "yellow",
-    "accepted": "green",
 }
 
 # Alert severity colors
@@ -235,16 +239,18 @@ PANEL_BORDER_COLORS = {
 
 # 3-Panel TUI state icons
 PANEL_STATE_ICONS = {
-    "idle": "💤",
-    "manager_thinking": "🤔",
-    "clarifying": "💬",
-    "contract_presented": "📋",
-    "team_review": "👥",
-    "todo_review": "📝",
-    "client_feedback": "🔄",
-    "working": "⚡",
-    "done": "✅",
-    "failed": "❌",
+    "idle": "\U0001f4a4",
+    "manager_thinking": "\U0001f914",
+    "clarifying": "\U0001f4ac",
+    "contract_presented": "\U0001f4cb",
+    "awaiting_revision": "\u270f\ufe0f",
+    "team_review": "\U0001f465",
+    "todo_review": "\U0001f4dd",
+    "client_feedback": "\U0001f504",
+    "working": "\u26a1",
+    "accepted": "\u2705",
+    "done": "\u2705",
+    "failed": "\u274c",
 }
 
 # Workers Live phase styling
