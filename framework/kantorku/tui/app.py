@@ -75,6 +75,7 @@ from kantorku.tui.themes import (
     CONTRACT_STATE_COLORS,
     PANEL_STATE_ICONS,
     WORKERS_PHASE_STYLES,
+    BRAILLE_SPINNER,
 )
 from kantorku.tui.markdown_renderer import (
     render_markdown,
@@ -239,7 +240,7 @@ class ConfirmDialog(ModalScreen[bool]):
         width: 60;
         height: auto;
         max-height: 20;
-        border: thick $warning;
+        border: tall $warning;
         background: $surface;
         padding: 1 2;
     }
@@ -259,12 +260,14 @@ class ConfirmDialog(ModalScreen[bool]):
         color: $text;
         text-style: bold;
         margin-right: 2;
+        border: tall $error;
     }
 
     ConfirmDialog #confirm-no {
         background: $primary;
         color: $text;
         text-style: bold;
+        border: tall $primary;
     }
     """
 
@@ -304,7 +307,7 @@ class ShortcutsScreen(ModalScreen[None]):
         width: 70;
         height: auto;
         max-height: 30;
-        border: thick $accent;
+        border: tall $accent;
         background: $surface;
         padding: 1 2;
     }
@@ -323,6 +326,7 @@ class ShortcutsScreen(ModalScreen[None]):
         margin-top: 1;
         background: $primary;
         color: $text;
+        border: tall $primary;
     }
     """
 
@@ -418,23 +422,23 @@ class ContractDisplay(Static):
     def _render(self) -> None:
         parts: list[Any] = []
 
-        # Header with state
+        # Header with state — coder-style icons (no emoji)
         state = self.contract_state
         state_color = CONTRACT_STATE_COLORS.get(state, "dim")
         state_icon = {
-            "idle": "\U0001f4a4",
-            "manager_thinking": "\U0001f914",
-            "clarifying": "\U0001f4ac",
-            "contract_presented": "\U0001f4cb",
-            "awaiting_revision": "\u270f\ufe0f",
-            "team_review": "\U0001f465",
-            "todo_review": "\U0001f4dd",
-            "client_feedback": "\U0001f504",
-            "working": "\u26a1",
-            "verifying": "\U0001f50d",
-            "accepted": "\u2705",
-            "done": "\u2705",
-            "failed": "\u274c",
+            "idle": "\u25cb",           # ○
+            "manager_thinking": "\u25d0",  # ◐
+            "clarifying": "\u25c7",     # ◇
+            "contract_presented": "\u25c8",  # ◈
+            "awaiting_revision": "\u270f",   # ✏
+            "team_review": "\u253c",    # ┼
+            "todo_review": "\u253c",    # ┼
+            "client_feedback": "\u21bb",  # ↻
+            "working": "\u26a1",        # ⚡
+            "verifying": "\u25c7",      # ◇
+            "accepted": "\u2713",       # ✓
+            "done": "\u2713",           # ✓
+            "failed": "\u2717",         # ✗
         }.get(state, "\u2753")
 
         state_labels = {
@@ -672,7 +676,8 @@ class EventFilterBar(Horizontal):
 class ThinkingIndicator(Static):
     """Pulsing spinner widget shown when the Manager is thinking.
 
-    Shows a rotating animation: ◐ → ◓ → ◑ → ◒
+    Shows a smooth braille animation: ⣾ → ⣽ → ⣻ → ⢿ → ⡿ → ⣟ → ⣯ → ⣷
+    8-frame braille is smoother than 4-frame ◐◓◑◒.
     Hidden by default; call start(message)/stop() to control.
     """
 
@@ -687,7 +692,7 @@ class ThinkingIndicator(Static):
     }
     """
 
-    _SPINNER_CHARS = ("◐", "◓", "◑", "◒")
+    _SPINNER_CHARS = BRAILLE_SPINNER
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__("", **kwargs)
@@ -1516,69 +1521,121 @@ class KantorKuTUI(App):
     Slash commands still work as secondary tools — /help for list.
     """
 
-    TITLE = "kantorku"
+    TITLE = "\u26a1 kantorku"
     SUB_TITLE = "Chat-Driven Office"
 
     COMMANDS = App.COMMANDS | {KantorKuCommandProvider}
 
     @staticmethod
     def _build_css(theme: dict[str, str]) -> str:
-        """Build the full CSS string from a theme dict."""
+        """Build the full CSS string from a theme dict — Premium Coder Aesthetic."""
+        border_dim = theme.get('border_dim', theme.get('surface', '#1e293b'))
+        glow = theme.get('glow', theme['primary'])
         return f"""
     Screen {{
         layout: vertical;
+        background: {theme['background']};
     }}
 
+    /* ── Custom Header ── */
+    Header {{
+        background: {theme['surface']};
+        border-bottom: tall {theme['primary']};
+        padding: 0 1;
+    }}
+
+    Header .header--title {{
+        color: {theme['primary']};
+        text-style: bold;
+    }}
+
+    Header .header--icon {{
+        color: {theme['primary']};
+    }}
+
+    /* ── Main 3-Panel Container ── */
     #main-container {{
         layout: horizontal;
         height: 1fr;
     }}
 
+    /* ── Left Panel: Manager Chat ── */
     #left-panel {{
         width: 30%;
         height: 100%;
-        border: solid {theme['primary']};
+        border: tall {theme['primary']};
         border-title-color: {theme['primary']};
+        border-title-background: {theme['surface']};
+        background: {theme['background']};
     }}
 
+    /* ── Center Panel: Tabbed Views ── */
     #center-panel {{
         width: 40%;
         height: 100%;
-        border: solid {theme['secondary']};
+        border: tall {theme['secondary']};
         border-title-color: {theme['secondary']};
+        border-title-background: {theme['surface']};
+        background: {theme['background']};
     }}
 
+    /* ── Right Panel: Contract ── */
     #right-panel {{
         width: 30%;
         height: 100%;
-        border: solid {theme['accent']};
+        border: tall {theme['accent']};
         border-title-color: {theme['accent']};
+        border-title-background: {theme['surface']};
+        background: {theme['background']};
     }}
 
+    /* ── Manager Chat Log ── */
     #manager-log {{
         height: 1fr;
         border: none;
         padding: 0 1;
+        scrollbar-size: 1 1;
+        scrollbar-color: {theme['primary']} 30%;
     }}
 
+    /* ── Contract Scroll Area ── */
     #contract-scroll {{
         height: 1fr;
+        scrollbar-size: 1 1;
+        scrollbar-color: {theme['accent']} 30%;
     }}
 
+    /* ── Input Area ── */
     #input-bar {{
         height: auto;
         dock: bottom;
         padding: 0 1;
+        background: {theme['surface']};
+        border-top: tall {theme['primary']} 40%;
     }}
 
     #chat-input {{
         dock: bottom;
+        background: {theme['surface']};
+        border: tall {border_dim};
+        color: {theme['text']};
+    }}
+
+    #chat-input:focus {{
+        border: tall {theme['primary']} 60%;
     }}
 
     #multiline-input {{
         dock: bottom;
         height: 5;
         display: none;
+        background: {theme['surface']};
+        border: tall {border_dim};
+        color: {theme['text']};
+    }}
+
+    #multiline-input:focus {{
+        border: tall {theme['primary']} 60%;
     }}
 
     #input-mode-indicator {{
@@ -1595,63 +1652,83 @@ class KantorKuTUI(App):
         color: {theme['muted']};
     }}
 
+    /* ── Lifecycle Breadcrumb ── */
     #lifecycle-breadcrumb {{
         height: 1;
         padding: 0 1;
         color: {theme['muted']};
+        background: {theme['surface']};
+        border-bottom: tall {border_dim};
     }}
 
+    /* ── DISRUPT Button ── Neon danger style */
     #disrupt-btn {{
         dock: bottom;
         margin: 0 1;
-        background: {theme['warning']};
-        color: $text;
+        background: {theme['warning']} 15%;
+        color: {theme['warning']};
         text-style: bold;
+        border: tall {theme['warning']};
     }}
 
     #disrupt-btn:hover {{
-        background: {theme['error']};
+        background: {theme['error']} 25%;
+        color: {theme['error']};
+        border: tall {theme['error']};
     }}
 
+    /* ── Action Bar (Accept/Revise) ── */
     #action-bar {{
         dock: bottom;
         height: auto;
         padding: 0 1;
+        background: {theme['surface']};
     }}
 
+    /* ── ACCEPT Button ── Neon success glow */
     #accept-btn {{
-        background: {theme['success']};
-        color: $text;
+        background: {theme['success']} 15%;
+        color: {theme['success']};
         text-style: bold;
         margin-right: 1;
+        border: tall {theme['success']};
     }}
 
     #accept-btn:hover {{
-        background: #059669;
-    }}
-
-    #accept-btn:disabled {{
-        background: $surface;
-        color: $text-disabled;
-        text-style: not bold;
-    }}
-
-    #revise-btn {{
-        background: {theme['accent']};
-        color: $text;
+        background: {theme['success']} 30%;
+        border: tall {theme['success']};
         text-style: bold;
     }}
 
+    #accept-btn:disabled {{
+        background: {theme['surface']};
+        color: {theme['muted']};
+        text-style: not bold;
+        border: tall {border_dim};
+    }}
+
+    /* ── REVISE Button ── Neon accent glow */
+    #revise-btn {{
+        background: {theme['accent']} 15%;
+        color: {theme['accent']};
+        text-style: bold;
+        border: tall {theme['accent']};
+    }}
+
     #revise-btn:hover {{
-        background: #d97706;
+        background: {theme['accent']} 30%;
+        border: tall {theme['accent']};
+        text-style: bold;
     }}
 
     #revise-btn:disabled {{
-        background: $surface;
-        color: $text-disabled;
+        background: {theme['surface']};
+        color: {theme['muted']};
         text-style: not bold;
+        border: tall {border_dim};
     }}
 
+    /* ── Center Panel Tabs ── */
     #center-tabs {{
         height: 1fr;
     }}
@@ -1660,27 +1737,62 @@ class KantorKuTUI(App):
         padding: 0 1;
     }}
 
-    #workers-scroll {{
-        height: 1fr;
+    TabbedContent Tabs {{
+        background: {theme['surface']};
     }}
 
+    TabbedContent Tabs Tab {{
+        color: {theme['muted']};
+    }}
+
+    TabbedContent Tabs Tab:hover {{
+        color: {theme['text']};
+        background: {theme['primary']} 15%;
+    }}
+
+    TabbedContent Tabs Tab.-active {{
+        color: {theme['primary']};
+        text-style: bold;
+        background: {theme['primary']} 10%;
+    }}
+
+    /* ── Workers Scroll ── */
+    #workers-scroll {{
+        height: 1fr;
+        scrollbar-size: 1 1;
+        scrollbar-color: {theme['secondary']} 30%;
+    }}
+
+    /* ── Event Filter Bar ── */
     #event-filter-bar {{
         height: auto;
         dock: top;
         padding: 0;
-        background: $surface;
+        background: {theme['surface']};
+        border-bottom: tall {border_dim};
     }}
 
     .filter-btn {{
         margin: 0 1;
         height: 1;
         min-width: 0;
+        background: transparent;
+        color: {theme['muted']};
+        border: none;
     }}
 
     .filter-btn.active {{
         text-style: bold;
+        color: {theme['primary']};
+        background: {theme['primary']} 10%;
     }}
 
+    .filter-btn:hover {{
+        color: {theme['text']};
+        background: {theme['primary']} 15%;
+    }}
+
+    /* ── Bottom Status Bar ── Premium HUD style */
     #status-bar {{
         dock: bottom;
         height: 1;
@@ -1694,6 +1806,7 @@ class KantorKuTUI(App):
         background: {theme['surface']};
         color: {theme['muted']};
         padding: 0 1;
+        border-top: tall {border_dim};
     }}
 
     #bottom-status-bar Static {{
@@ -1701,11 +1814,11 @@ class KantorKuTUI(App):
     }}
 
     #status-conn {{
-        color: green;
+        color: {theme['success']};
     }}
 
     #status-conn.disconnected {{
-        color: red;
+        color: {theme['error']};
     }}
 
     #status-session {{
@@ -1713,7 +1826,7 @@ class KantorKuTUI(App):
     }}
 
     #status-cost {{
-        color: yellow;
+        color: {theme['warning']};
     }}
 
     #status-calls {{
@@ -1721,7 +1834,51 @@ class KantorKuTUI(App):
     }}
 
     #status-phase {{
-        color: cyan;
+        color: {theme['info']};
+    }}
+
+    /* ── Footer ── */
+    Footer {{
+        background: {theme['surface']};
+        border-top: tall {border_dim};
+        color: {theme['muted']};
+    }}
+
+    Footer .footer--key {{
+        color: {theme['primary']};
+    }}
+
+    Footer .footer--description {{
+        color: {theme['muted']};
+    }}
+
+    /* ── Scrollbar global ── */
+    * {{
+        scrollbar-size: 1 1;
+    }}
+
+    /* ── RichLog scrollbar ── */
+    RichLog {{
+        scrollbar-size: 1 1;
+        scrollbar-color: {theme['primary']} 30%;
+    }}
+
+    /* ── Vertical Scroll ── */
+    VerticalScroll {{
+        scrollbar-size: 1 1;
+        scrollbar-color: {theme['primary']} 30%;
+    }}
+
+    /* ── Focus ring ── */
+    :focus {{
+        border: tall {glow} 60%;
+    }}
+
+    /* ── Notification toast ── */
+    Notification {{
+        background: {theme['surface']};
+        border: tall {theme['primary']};
+        color: {theme['text']};
     }}
     """
 
@@ -1799,7 +1956,7 @@ class KantorKuTUI(App):
         self._multiline_mode: bool = False
 
         # Current theme name
-        self._current_theme: str = "office"
+        self._current_theme: str = "synthwave"
 
         # Focus mode (hide center+right panels)
         self._focus_mode: bool = False
@@ -1876,27 +2033,23 @@ class KantorKuTUI(App):
 
     def on_mount(self) -> None:
         """Initialize connection and start background workers."""
-        self.title = f"kantorku \u2014 session {self._session_id}"
+        self.title = f"\u26a1 kantorku \u2014 {self._session_id}"
         self._add_manager_message(
-            f"[bold cyan]KantorKu TUI v0.9.0 \u2014 Chat-Driven Office[/bold cyan]\n"
-            f"Session: {self._session_id}\n"
-            f"Server: {self.server_url}\n\n"
-            f"[bold]How it works:[/bold]\n"
-            f"  [bold cyan]Left[/bold cyan]   \u2192 Chat with Manager (just type!)\n"
-            f"  [bold magenta]Center[/bold magenta] \u2192 Tabbed views: Workers / Briefing / DAG / Events\n"
-            f"  [bold yellow]Right[/bold yellow]  \u2192 Review contracts & click Accept/Revise\n\n"
-            f"[bold green]Contract flow:[/bold green]\n"
-            f"  Contract shown \u2192 Click [bold green]ACCEPT[/bold green] to finalize\n"
-            f"  Want changes? Click [bold yellow]REVISE[/bold yellow] \u2192 write feedback\n"
-            f"  \u2192 Manager brainstorms with workers \u2192 new contract!\n\n"
-            f"[bold]Center Panel Tabs:[/bold]\n"
-            f"  [bold]Workers[/bold] \u2014 Filtered live stream of worker activity\n"
-            f"  [bold]Briefing[/bold] \u2014 Conversation view of briefing room\n"
-            f"  [bold]DAG[/bold] \u2014 Task dependency tree visualization\n"
-            f"  [bold]Events[/bold] \u2014 Unfiltered scrollable event log\n\n"
-            f"[dim]Or type naturally: 'yes'/'ok' to accept, 'revise' to change\n"
-            f"Slash commands: /help for full list\n"
-            f"Shortcuts: Ctrl+P=Commands  Ctrl+A=Accept  Ctrl+R=Revise  Ctrl+I=Disrupt  Ctrl+M=Multi-line  F1=Help  Esc=Cancel[/dim]"
+            f"[bold {KANTORKU_THEME['primary']}]\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/]\n"
+            f"[bold {KANTORKU_THEME['primary']}]\u2502[/] [bold]KantorKu v0.9.0[/]  [dim]\u2014  Chat-Driven Office for Coders[/]\n"
+            f"[bold {KANTORKU_THEME['primary']}]\u2502[/] [dim]session:[/dim] {self._session_id}  [dim]\u2502[/dim]  [dim]server:[/dim] {self.server_url}\n"
+            f"[bold {KANTORKU_THEME['primary']}]\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500[/]\n"
+            f"\n"
+            f"[bold]Panels:[/]\n"
+            f"  [{KANTORKU_THEME['primary']}]\u258c[/] Left    \u2192 Chat with Manager (just type!)\n"
+            f"  [{KANTORKU_THEME['secondary']}]\u258c[/] Center  \u2192 Workers / Briefing / DAG / Events\n"
+            f"  [{KANTORKU_THEME['accent']}]\u258c[/] Right   \u2192 Review contracts & Accept/Revise\n"
+            f"\n"
+            f"[bold {KANTORKU_THEME['success']}]Contract flow:[/]\n"
+            f"  Contract \u2192 [{KANTORKU_THEME['success']}]ACCEPT[/] to finalize \u2502 [{KANTORKU_THEME['accent']}]REVISE[/] to change \u2502 [{KANTORKU_THEME['warning']}]DISRUPT[/] to pause\n"
+            f"\n"
+            f"[dim]Natural language: 'yes'/'ok' = accept, 'revise'/'change X' = revise, 'stop' = disrupt\n"
+            f"Shortcuts: Ctrl+P Commands \u2502 Ctrl+A Accept \u2502 Ctrl+R Revise \u2502 Ctrl+I Disrupt \u2502 F1 Help \u2502 Ctrl+Shift+T Theme[/dim]"
         )
 
         # Hide action buttons initially (no contract)
@@ -2003,17 +2156,17 @@ class KantorKuTUI(App):
         inp.placeholder = placeholders.get(self.contract_state, "Talk to Manager...")
 
     def _update_subtitle(self) -> None:
-        """Update the app subtitle with current state info."""
+        """Update the app subtitle with current state info — coder-style HUD."""
         state_icons = {
-            ContractState.IDLE: "\U0001f4a4",
-            ContractState.MANAGER_THINKING: "\U0001f914",
-            ContractState.CLARIFYING: "\U0001f4ac",
-            ContractState.CONTRACT_PRESENTED: "\U0001f4cb",
-            ContractState.AWAITING_REVISION: "\u270f\ufe0f",
-            ContractState.WORKING: "\u26a1",
-            ContractState.ACCEPTED: "\u2705",
-            ContractState.DONE: "\u2705",
-            ContractState.FAILED: "\u274c",
+            ContractState.IDLE: "\u25cb",           # ○
+            ContractState.MANAGER_THINKING: "\u25d0",  # ◐
+            ContractState.CLARIFYING: "\u25c7",     # ◇
+            ContractState.CONTRACT_PRESENTED: "\u25c8",  # ◈
+            ContractState.AWAITING_REVISION: "\u270f",   # ✏
+            ContractState.WORKING: "\u26a1",        # ⚡
+            ContractState.ACCEPTED: "\u2713",       # ✓
+            ContractState.DONE: "\u2713",           # ✓
+            ContractState.FAILED: "\u2717",         # ✗
         }
         icon = state_icons.get(self.contract_state, "\u25cb")
         conn = "\u2713" if self.connection_state == "connected" else "\u2717"
@@ -2165,11 +2318,11 @@ class KantorKuTUI(App):
             if i < current_idx:
                 parts.append(f"[green]\u2713 {label}[/green]")
             elif i == current_idx:
-                parts.append(f"[bold cyan]\u25b6 {label}[/bold cyan]")
+                parts.append(f"[bold {KANTORKU_THEME['primary']}]\u25b6 {label}[/]")
             else:
                 parts.append(f"[dim]{label}[/dim]")
 
-        bc_el.update(" \u2192 ".join(parts))
+        bc_el.update(f" \u2502 ".join(parts))
 
     # ── Multi-line Input Mode ────────────────────────────────────────
 

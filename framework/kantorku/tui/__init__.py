@@ -2,38 +2,44 @@
 kantorku.tui — Chat-Driven 3-Panel Office Interface for Coders.
 
 A full-featured TUI built with Textual + Rich that provides
-a natural office workflow through chat-first interaction:
+a natural office workflow through chat-first interaction,
+styled with a premium coder/hacker aesthetic.
 
 Layout:
     ┌─────────────────────────────────────────────────────────────────────┐
-    │  kantorku v0.7.0  │  📋 contract_presented  │  conn:✓  │  rev:1  │
-    ├──────────────┬───────────────────────────┬─────────────────────────┤
-    │              │                           │                         │
-    │   MANAGER    │      WORKERS LIVE         │      CONTRACT           │
-    │   CHAT       │                           │                         │
-    │              │  👥 BRIEFING               │  📋 CONTRACT PRESENTED  │
-    │  You: Build  │    coder_backend: ...     │                         │
-    │  me X        │    coder_frontend: ...    │  Tasks (3):             │
-    │              │    conductor: summary     │  ○ Implement rate limit │
-    │  Manager:    │                           │  ○ Add UI               │
-    │  Sure! Here  │                           │  ○ Wire everything      │
-    │  's the      │                           │                         │
-    │  contract... │                           │  [✓ ACCEPT] [✏ REVISE]  │
-    │              │                           │                         │
-    │  ──────────  │                           │                         │
-    │  [⚡ DISRUPT]│                           │  ─────────────────────  │
-    │              │                           │  After REVISE click:    │
-    │  > Type msg  │                           │  ✏️ AWAITING YOUR       │
-    │              │                           │    REVISION             │
-    │              │                           │  Write feedback below...│
-    ├──────────────┴───────────────────────────┴─────────────────────────┤
-    │  Ctrl+Q:Quit  Ctrl+A:Accept  Ctrl+R:Revise  Ctrl+I:Disrupt      │
+    │  ⚡ kantorku  │  ◈ contract_presented  │  conn:✓  │  rev:1       │
+    ├──────────────┬───────────────────────┬─────────────────────────────┤
+    │              │                       │                             │
+    │   MANAGER    │      WORKERS LIVE     │      CONTRACT               │
+    │   CHAT       │                       │                             │
+    │              │  ┼ BRIEFING            │  ◈ CONTRACT PRESENTED       │
+    │  You: Build  │    coder_backend: ... │                             │
+    │  me X        │    coder_frontend: .. │  Tasks (3):                 │
+    │              │    conductor: summary │  ○ Implement rate limit     │
+    │  Manager:    │                       │  ○ Add UI                   │
+    │  Sure! Here  │                       │  ○ Wire everything          │
+    │  's the      │                       │                             │
+    │  contract... │                       │  [✓ ACCEPT] [✏ REVISE]      │
+    │              │                       │                             │
+    │  ──────────  │                       │  ─────────────────────────  │
+    │  [⚡ DISRUPT]│                       │  After REVISE click:        │
+    │              │                       │  ✏ AWAITING YOUR            │
+    │  > Type msg  │                       │    REVISION                 │
+    │              │                       │  Write feedback below...    │
+    ├──────────────┴───────────────────────┴─────────────────────────────┤
+    │  ● conn │ session │ $0.0000 │ 3 calls │ contract_presented        │
+    ├─────────────────────────────────────────────────────────────────────┤
+    │  Ctrl+Q:Quit  Ctrl+A:Accept  Ctrl+R:Revise  Ctrl+I:Disrupt       │
     └─────────────────────────────────────────────────────────────────────┘
 
 Panels:
     Left   — Chat with Manager (Conductor) + Disrupt button
     Center — Workers brainstorming & executing in real-time
     Right  — Contract display + Accept/Revise BUTTONS
+
+Themes (Ctrl+Shift+T to cycle):
+    synthwave (default), office, midnight, terminal, cyberpunk,
+    forest, hackerman, neon_nights, tokyo_night, void
 
 Contract Accept/Revise Flow:
     1. Contract is presented in RIGHT panel with ACCEPT/REVISE buttons

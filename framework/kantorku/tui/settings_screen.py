@@ -179,7 +179,7 @@ SettingsScreen {{
     color: {KANTORKU_THEME['text']};
     padding: 0 2;
     height: 3;
-    border-bottom: solid {KANTORKU_THEME['primary']};
+    border-bottom: tall {KANTORKU_THEME['primary']};
 }}
 
 #settings-header-label {{
@@ -195,14 +195,14 @@ SettingsScreen {{
 #sidebar {{
     width: 26;
     height: 1fr;
-    border-right: solid {KANTORKU_THEME['primary']};
+    border-right: tall {KANTORKU_THEME['primary']};
     background: {KANTORKU_THEME['surface']};
     layout: vertical;
 }}
 
 #sidebar-header {{
     background: {KANTORKU_THEME['surface']};
-    color: {KANTORKU_THEME['text']};
+    color: {KANTORKU_THEME['primary']};
     padding: 0 1;
     height: 2;
     text-style: bold;
@@ -210,6 +210,8 @@ SettingsScreen {{
 
 #worker-list {{
     height: 1fr;
+    scrollbar-size: 1 1;
+    scrollbar-color: {KANTORKU_THEME['primary']} 30%;
 }}
 
 #worker-list ListItem {{
@@ -233,26 +235,28 @@ SettingsScreen {{
 }}
 
 #new-worker-btn {{
-    background: {KANTORKU_THEME['info']};
-    color: $text;
+    background: {KANTORKU_THEME['info']} 15%;
+    color: {KANTORKU_THEME['info']};
     text-style: bold;
     width: 100%;
+    border: tall {KANTORKU_THEME['info']};
 }}
 
 #new-worker-btn:hover {{
-    background: {KANTORKU_THEME['info']};
+    background: {KANTORKU_THEME['info']} 30%;
     color: $text;
 }}
 
 #delete-worker-btn {{
-    background: {KANTORKU_THEME['error']};
-    color: $text;
+    background: {KANTORKU_THEME['error']} 15%;
+    color: {KANTORKU_THEME['error']};
     text-style: bold;
     width: 100%;
+    border: tall {KANTORKU_THEME['error']};
 }}
 
 #delete-worker-btn:hover {{
-    background: {KANTORKU_THEME['error']};
+    background: {KANTORKU_THEME['error']} 30%;
     color: $text;
 }}
 
@@ -269,16 +273,19 @@ SettingsScreen {{
 
 #skill-textarea {{
     height: 1fr;
+    scrollbar-size: 1 1;
 }}
 
 /* Tools & API tab */
 #tools-api-content {{
     height: 1fr;
     padding: 0 1;
+    scrollbar-size: 1 1;
+    scrollbar-color: {KANTORKU_THEME['primary']} 30%;
 }}
 
 .tools-section-header {{
-    color: {KANTORKU_THEME['text']};
+    color: {KANTORKU_THEME['primary']};
     text-style: bold;
     margin-top: 1;
     height: 2;
@@ -301,10 +308,11 @@ SettingsScreen {{
     background: {KANTORKU_THEME['surface']};
     color: {KANTORKU_THEME['error']};
     margin-left: 1;
+    border: tall {KANTORKU_THEME['error']} 30%;
 }}
 
 .tool-remove-btn:hover {{
-    background: {KANTORKU_THEME['error']};
+    background: {KANTORKU_THEME['error']} 25%;
     color: $text;
 }}
 
@@ -322,14 +330,15 @@ SettingsScreen {{
 
 .tool-add-btn {{
     width: 10;
-    background: {KANTORKU_THEME['info']};
-    color: $text;
+    background: {KANTORKU_THEME['info']} 15%;
+    color: {KANTORKU_THEME['info']};
     text-style: bold;
     margin-left: 1;
+    border: tall {KANTORKU_THEME['info']};
 }}
 
 .tool-add-btn:hover {{
-    background: {KANTORKU_THEME['info']};
+    background: {KANTORKU_THEME['info']} 30%;
     color: $text;
 }}
 
@@ -359,6 +368,8 @@ SettingsScreen {{
 #skills-tab-content {{
     height: 1fr;
     padding: 0 1;
+    scrollbar-size: 1 1;
+    scrollbar-color: {KANTORKU_THEME['primary']} 30%;
 }}
 
 .skill-item-row {{
@@ -386,27 +397,29 @@ SettingsScreen {{
 
 .skill-add-btn {{
     width: 14;
-    background: {KANTORKU_THEME['accent']};
-    color: $text;
+    background: {KANTORKU_THEME['accent']} 15%;
+    color: {KANTORKU_THEME['accent']};
     text-style: bold;
     margin-left: 1;
+    border: tall {KANTORKU_THEME['accent']};
 }}
 
 .skill-add-btn:hover {{
-    background: {KANTORKU_THEME['accent']};
+    background: {KANTORKU_THEME['accent']} 30%;
     color: $text;
 }}
 
 #add-skill-file-btn {{
-    background: {KANTORKU_THEME['accent']};
-    color: $text;
+    background: {KANTORKU_THEME['accent']} 15%;
+    color: {KANTORKU_THEME['accent']};
     text-style: bold;
     margin-top: 1;
     width: 100%;
+    border: tall {KANTORKU_THEME['accent']};
 }}
 
 #add-skill-file-btn:hover {{
-    background: {KANTORKU_THEME['accent']};
+    background: {KANTORKU_THEME['accent']} 30%;
     color: $text;
 }}
 
@@ -417,17 +430,19 @@ SettingsScreen {{
     padding: 0 1;
     background: {KANTORKU_THEME['surface']};
     layout: horizontal;
+    border-top: tall {KANTORKU_THEME['primary']} 30%;
 }}
 
 #save-worker-btn {{
-    background: {KANTORKU_THEME['success']};
-    color: $text;
+    background: {KANTORKU_THEME['success']} 15%;
+    color: {KANTORKU_THEME['success']};
     text-style: bold;
     margin-right: 1;
+    border: tall {KANTORKU_THEME['success']};
 }}
 
 #save-worker-btn:hover {{
-    background: {KANTORKU_THEME['success']};
+    background: {KANTORKU_THEME['success']} 30%;
     color: $text;
 }}
 
@@ -441,23 +456,26 @@ SettingsScreen {{
 #preview-panel {{
     width: 32;
     height: 1fr;
-    border-left: solid {KANTORKU_THEME['accent']};
+    border-left: tall {KANTORKU_THEME['accent']};
     background: {KANTORKU_THEME['surface']};
     layout: vertical;
+    scrollbar-size: 1 1;
+    scrollbar-color: {KANTORKU_THEME['accent']} 30%;
 }}
 
 #preview-header {{
     background: {KANTORKU_THEME['surface']};
-    color: {KANTORKU_THEME['text']};
+    color: {KANTORKU_THEME['accent']};
     padding: 0 1;
     height: 2;
     text-style: bold;
-    border-bottom: solid {KANTORKU_THEME['muted']};
+    border-bottom: tall {KANTORKU_THEME['muted']} 40%;
 }}
 
 #preview-content {{
     height: 1fr;
     padding: 0 1;
+    scrollbar-size: 1 1;
 }}
 """
 

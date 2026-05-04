@@ -1330,7 +1330,7 @@ async def cmd_theme(tui: Any, args: str) -> str:
     name = args.strip().lower()
     available = list_themes()
     if not name:
-        current = getattr(tui, '_current_theme', 'office')
+        current = getattr(tui, '_current_theme', 'synthwave')
         return (
             f"[bold cyan]Themes[/bold cyan] (current: [bold]{current}[/bold])\n"
             f"  Available: {', '.join(available)}\n"
