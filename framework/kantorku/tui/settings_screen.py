@@ -43,6 +43,7 @@ from textual.widgets import (
     Label,
     ListItem,
     ListView,
+    Select,
     Static,
     TabbedContent,
     TabPane,
@@ -87,6 +88,22 @@ AVAILABLE_TOOLS = [
     "broadcast",
     "delegate",
 ]
+
+# Provider yang didukung oleh KantorKu (harus match PROVIDER_MAP di router.py)
+VALID_PROVIDERS = [
+    ("anthropic", "Anthropic (Claude)"),
+    ("google", "Google (Gemini)"),
+    ("minimax", "MiniMax"),
+    ("deepseek", "DeepSeek"),
+    ("openai", "OpenAI"),
+    ("xai", "xAI (Grok)"),
+    ("meta", "Meta (Llama)"),
+    ("ollama", "Ollama (Local)"),
+]
+
+# Default provider/model untuk worker baru
+DEFAULT_PROVIDER = "ollama"
+DEFAULT_MODEL = "llama3"
 
 
 def _mask_value(value: str) -> str:
@@ -528,9 +545,11 @@ class SettingsScreen(Screen):
                             yield Label("API Config", classes="tools-section-header")
                             with Horizontal(classes="api-field-row"):
                                 yield Label("Provider", classes="api-field-label")
-                                yield Input(
+                                yield Select(
+                                    [(label, value) for value, label in VALID_PROVIDERS],
                                     id="worker-api-provider",
-                                    placeholder="e.g. anthropic",
+                                    allow_blank=True,
+                                    prompt="Select provider...",
                                 )
                             with Horizontal(classes="api-field-row"):
                                 yield Label("Model", classes="api-field-label")
@@ -651,9 +670,13 @@ class SettingsScreen(Screen):
         api_cache = self._worker_api_cache.get(worker.id, {})
         if api:
             try:
-                self.query_one("#worker-api-provider", Input).value = (
-                    api_cache.get("provider", api.provider or "")
-                )
+                provider_val = api_cache.get("provider", api.provider or "")
+                select = self.query_one("#worker-api-provider", Select)
+                # Set value langsung; Select.value menerima string atau Select.BLANK
+                if provider_val:
+                    select.value = provider_val
+                else:
+                    select.value = Select.BLANK
             except Exception:
                 pass
             try:
@@ -731,8 +754,15 @@ class SettingsScreen(Screen):
 
         # Cache API fields
         api_cache: dict[str, str] = {}
+        # Provider pakai Select widget — baca .value berbeda dari Input
+        try:
+            provider_select = self.query_one("#worker-api-provider", Select)
+            provider_val = provider_select.value
+            if provider_val is not Select.BLANK and provider_val:
+                api_cache["provider"] = str(provider_val)
+        except Exception:
+            pass
         for field_id, key in [
-            ("#worker-api-provider", "provider"),
             ("#worker-api-model", "model"),
             ("#worker-api-key", "api_key"),
             ("#worker-api-base-url", "base_url"),
@@ -901,6 +931,13 @@ class SettingsScreen(Screen):
             self._cache_current_worker_edits()
             self._refresh_preview_for_current()
 
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Update preview saat Select provider berubah."""
+        select_id = event.select.id or ""
+        if select_id == "worker-api-provider":
+            self._cache_current_worker_edits()
+            self._refresh_preview_for_current()
+
     def _refresh_preview_for_current(self) -> None:
         """Refresh preview untuk worker yang sedang dipilih."""
         if not self.selected_worker_id:
@@ -935,6 +972,29 @@ class SettingsScreen(Screen):
 
             # Flush caches
             self._cache_current_worker_edits()
+
+            # Validate provider
+            api_cache = self._worker_api_cache.get(wid, {})
+            provider = api_cache.get("provider", worker.api.provider or "")
+            valid_provider_values = [v for v, _ in VALID_PROVIDERS]
+            if provider and provider not in valid_provider_values:
+                self._set_worker_save_status(
+                    f"[red]{CROSS_MARK} Invalid provider: '{provider}'[/red]\n"
+                    f"[dim]Valid: {', '.join(valid_provider_values)}[/dim]"
+                )
+                return
+
+            # Warn if using default/stub config
+            warnings: list[str] = []
+            if provider == DEFAULT_PROVIDER and worker.api.model == DEFAULT_MODEL:
+                warnings.append(f"provider={DEFAULT_PROVIDER}/{DEFAULT_MODEL} (default)")
+            if worker.squad == "support" and worker.role == "New worker":
+                warnings.append("squad/role still at defaults")
+            if warnings:
+                # Show warning but still allow save
+                self._set_worker_save_status(
+                    f"[yellow]⚠ Warning: {'; '.join(warnings)}[/yellow]"
+                )
 
             # Backup & write SKILL.md
             skill_text = self._worker_skill_cache.get(wid, worker.skill_md or "")
@@ -1050,7 +1110,7 @@ class SettingsScreen(Screen):
             # Buat plugin.json
             identity = WorkerIdentity(
                 id=new_id,
-                api=WorkerAPI(provider="ollama", model="llama3"),
+                api=WorkerAPI(provider=DEFAULT_PROVIDER, model=DEFAULT_MODEL),
                 squad="support",
                 role="New worker",
             )
@@ -1081,7 +1141,8 @@ class SettingsScreen(Screen):
                 self._populate_worker_detail(new_worker)
 
             self._set_worker_save_status(
-                f"[green]{CHECK_MARK} Created: {new_id}[/green]"
+                f"[green]{CHECK_MARK} Created: {new_id}[/green] "
+                f"[yellow]⚠ Update provider, model, squad & role before deploying![/yellow]"
             )
 
         except FileExistsError:
