@@ -53,16 +53,18 @@ KantorKu adalah framework orchestrasi multi-agent LLM yang memodelkan kantor dig
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      KantorKu                           │
-├────────────────┬──────────────────┬─────────────────────┤
-│   interface/   │   framework/     │      cli/           │
-│   (Next.js)    │   (Python)       │   (Node.js)         │
-│                │                  │                     │
-│  🖥️ Web UI     │  🐍 Backend      │  ⌨️ Terminal tool   │
-│  Dashboard     │  Workers engine  │  Setup wizard       │
-│  Chat panel    │  Memory rings    │  Interactive chat   │
-│  Monitoring    │  Provider router │  Worker management  │
-│  Settings      │  Event bus       │  Status check       │
-└────────────────┴──────────────────┴─────────────────────┘
+├────────────────┬────────────────────────────────────────┤
+│   interface/   │   framework/                           │
+│   (Next.js)    │   (Python)                             │
+│                │                                        │
+│  🖥️ Web UI     │  🐍 Backend engine                     │
+│  Dashboard     │  Workers + Memory + Providers          │
+│  Chat panel    │  Event bus + DAG + Hooks               │
+│  Monitoring    │  ┌──────────┐  ┌──────────────────┐   │
+│  Settings      │  │ tui/     │  │ interface/       │   │
+│                │  │ CLI+TUI  │  │ Server+MW+Health │   │
+│                │  └──────────┘  └──────────────────┘   │
+└────────────────┴────────────────────────────────────────┘
 ```
 
 ### Framework Layers (20+)
@@ -169,9 +171,8 @@ cd KantorKu
 
 **Via CLI (Recommended)**:
 ```bash
-cd cli
-npm install
-npm link
+cd framework
+pip install -e ".[all]"
 kantorku setup
 ```
 
@@ -206,12 +207,13 @@ npm install
 npm run dev
 ```
 
-### 3c. Run CLI Only
+### 3c. Run TUI/CLI
 ```bash
-cd cli
-npm install
-npm link
-kantorku chat
+cd framework
+pip install -e ".[all]"
+kantorku tui         # Terminal UI mode
+kantorku chat        # Chat mode
+kantorku --help      # All commands
 ```
 
 ---
@@ -240,12 +242,13 @@ Untuk menjalankan KantorKu dengan biaya minimal:
 
 ---
 
-## CLI
+## CLI / TUI
 
 ```bash
 kantorku              # Show banner & quick start
 kantorku init         # Scaffold new project
 kantorku setup        # Interactive API key wizard
+kantorku tui          # Terminal UI (Textual)
 kantorku chat         # Chat with Conductor
 kantorku serve        # Start Python backend
 kantorku dev          # Start Next.js interface
@@ -286,13 +289,29 @@ KantorKu/
 ├── framework/              # Python backend
 │   ├── kantorku/           # Main package
 │   │   ├── office.py       # Office class (entry point)
-│   │   ├── server.py       # FastAPI + WebSocket + SSE
+│   │   ├── interface/      # Server-side infrastructure
+│   │   │   ├── server.py   # FastAPI + WebSocket + SSE
+│   │   │   ├── middleware.py # Auth, logging, rate-limit, cost guard
+│   │   │   ├── health.py   # Health monitoring
+│   │   │   ├── protocol.py # WS/SSE message protocol
+│   │   │   ├── persistence.py # Checkpoint & crash recovery
+│   │   │   └── task_queue.py # Persistent queue + DLQ
+│   │   ├── tui/            # Terminal UI + CLI (merged)
+│   │   │   ├── app.py      # TUI app (Textual)
+│   │   │   ├── cli.py      # CLI entry point
+│   │   │   ├── connection.py # WS/HTTP/SSE client
+│   │   │   ├── commands.py # Slash commands
+│   │   │   ├── themes.py   # Color schemes
+│   │   │   └── markdown_renderer.py # Rich markdown
 │   │   ├── layers/         # Conductor, BriefingRoom, GroupChannel...
 │   │   ├── workers/        # 14 built-in workers
 │   │   ├── providers/      # 7 LLM providers + router
 │   │   ├── memory/         # 3-Ring memory system
 │   │   ├── pool/           # Context pool
 │   │   ├── events/         # EventBus + EventEmitter
+│   │   ├── redteam/        # Adversarial testing tools
+│   │   ├── worker/         # Base classes + registry
+│   │   ├── config/         # Settings (TOML loader)
 │   │   └── ...             # DAG, hooks, cost, cache, etc.
 │   ├── workers/            # Worker plugins (SKILL.md + plugin.json)
 │   ├── examples/           # Usage examples
@@ -300,20 +319,12 @@ KantorKu/
 │   ├── kantorku.toml       # Configuration
 │   └── pyproject.toml      # Python package
 │
-├── interface/              # Next.js frontend
+├── interface/              # Next.js frontend (Web UI)
 │   ├── src/
 │   │   ├── app/            # Next.js App Router + API routes
 │   │   ├── components/     # UI components (kantorku/ + shadcn/ui)
 │   │   ├── hooks/          # Custom React hooks
 │   │   └── lib/kantorku/   # Types, store, workers data, API client
-│   ├── package.json
-│   └── ...
-│
-├── cli/                    # Node.js CLI tool
-│   ├── src/
-│   │   ├── index.ts        # Main entry + commands
-│   │   ├── commands/       # setup, chat, serve, dev, workers, status
-│   │   └── lib/            # config, api client
 │   ├── package.json
 │   └── ...
 │

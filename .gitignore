@@ -13,9 +13,9 @@ node_modules
 # ── Testing ─────────────────────────────────────────────────────
 /coverage
 
-# ── Next.js ─────────────────────────────────────────────────────
-/.next/
-/out/
+# ── Next.js (interface) ─────────────────────────────────────────
+/interface/.next/
+/interface/out/
 
 # ── Production ──────────────────────────────────────────────────
 /build
@@ -36,11 +36,17 @@ env/
 *.db
 *.duckdb
 *.sqlite3
+!framework/kantorku/memory/*.py
+
+# ── Data / Snapshots ────────────────────────────────────────────
+data/
+*.json.bak
 
 # ── Misc ────────────────────────────────────────────────────────
 .DS_Store
 *.pem
 Thumbs.db
+upload/
 
 # ── Debug ───────────────────────────────────────────────────────
 npm-debug.log*
@@ -78,6 +84,7 @@ next-env.d.ts
 .z-ai-config
 local-*
 prompt
+agent-ctx/
 
 # ── Skills ──────────────────────────────────────────────────────
 /skills/
