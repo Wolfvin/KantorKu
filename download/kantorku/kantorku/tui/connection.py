@@ -8,6 +8,7 @@ Supports:
 - SSE for event streaming (fallback when WS unavailable)
 - Auto-reconnection on disconnect
 - Fixed HTTP fallbacks using correct server endpoints
+- Interrupt support for 3-panel TUI workflow
 """
 
 from __future__ import annotations
@@ -528,3 +529,46 @@ class OfficeConnection:
         except Exception:
             pass
         return []
+
+    async def send_interrupt(self, reason: str = "") -> dict[str, Any] | None:
+        """
+        Send an interrupt message to pause work and talk to the Manager.
+
+        In 3-panel mode, this sends a user_message with [INTERRUPT] prefix
+        which tells the Conductor to pause and give control back to the client.
+
+        Args:
+            reason: Optional reason for the interrupt
+
+        Returns:
+            Response from the server, or None if failed
+        """
+        content = f"[INTERRUPT] {reason}" if reason else "[INTERRUPT]"
+
+        # Try WebSocket first
+        try:
+            import websockets
+        except ImportError:
+            return {"type": "error", "message": "WebSocket required for interrupt"}
+
+        ws_url = self.server_url.replace("http://", "ws://").replace("https://", "wss://")
+
+        try:
+            async with websockets.connect(f"{ws_url}/ws/client") as ws:
+                await ws.send(json.dumps({
+                    "type": "user_message",
+                    "content": content,
+                    "session_id": self.session_id,
+                }))
+
+                # Read first response
+                async for raw in ws:
+                    try:
+                        data = json.loads(raw)
+                        return data
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            return {"type": "error", "message": f"Interrupt failed: {e}"}
+
+        return None

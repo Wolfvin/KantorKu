@@ -3,7 +3,7 @@ Slash Commands — Complete command system for the KantorKu TUI.
 
 40+ commands covering ALL framework features:
 
-Chat & Contracts: /accept /ask /code /revise /run
+Chat & Contracts: /accept /ask /code /revise /run /interrupt
 Monitoring: /status /workers /health /cost /alerts /sessions
 Memory & Data: /memory /cache /context /dag /briefing /pool /queue
 Observability: /trace /metrics /hooks /config /middleware
@@ -46,7 +46,7 @@ def command(name: str, description: str, usage: str = ""):
 def get_help_text() -> str:
     max_name = max(len(n) for n in COMMANDS) if COMMANDS else 0
     categories = {
-        "Chat & Contracts": ["accept", "ask", "code", "revise", "run"],
+        "Chat & Contracts": ["accept", "ask", "code", "revise", "run", "interrupt"],
         "Monitoring": ["status", "workers", "health", "cost", "alerts", "sessions"],
         "Memory & Data": ["memory", "cache", "context", "dag", "briefing", "pool", "queue"],
         "Observability": ["trace", "metrics", "hooks", "config", "middleware"],
@@ -99,19 +99,24 @@ def _office(tui: Any) -> Any:
 # Chat & Contracts
 # ═══════════════════════════════════════════════════════════════════
 
-@command("accept", "Accept current contract", "/accept")
+@command("accept", "Accept current contract (or Ctrl+A)", "/accept")
 async def cmd_accept(tui: Any, args: str) -> str:
     if not tui.pending_contract:
-        return "[yellow]No contract to accept.[/yellow]"
+        return "[yellow]No contract to accept yet. Chat with the Manager first![/yellow]"
     await tui._send_accept()
-    return "[green]Contract accepted![/green]"
+    return "[green]Contract accepted! Workers are starting...[/green]"
 
-@command("revise", "Revise contract with feedback", "/revise <feedback>")
+@command("revise", "Revise contract with feedback (or Ctrl+R)", "/revise <feedback>")
 async def cmd_revise(tui: Any, args: str) -> str:
     if not args:
-        return "[yellow]Usage: /revise <feedback>[/yellow]"
+        return "[yellow]Usage: /revise <feedback>[/yellow]\n[dim]Example: /revise I want more detail on the API design[/dim]"
     await tui._send_revise(args)
     return f"[yellow]Revision requested: {args}[/yellow]"
+
+@command("interrupt", "Interrupt work and talk to Manager (or Ctrl+I)", "/interrupt [reason]")
+async def cmd_interrupt(tui: Any, args: str) -> str:
+    tui._do_interrupt()
+    return "[yellow]⚡ Interrupting... You can now talk to the Manager.[/yellow]"
 
 @command("code", "Quick code task (auto-accept)", "/code <task>")
 async def cmd_code(tui: Any, args: str) -> str:

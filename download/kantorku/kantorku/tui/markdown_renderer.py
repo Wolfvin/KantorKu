@@ -105,6 +105,28 @@ def render_contract_summary(contract: dict[str, Any]) -> Text:
             dep_str = f" [dim](depends: {','.join(str(d) for d in deps[:3])})[/dim]" if deps else ""
             lines.append(f"  [{color}]{icon}[/{color}] [{assigned}]{squad_str} {desc[:60]}{dep_str}")
 
+        # Progress bar
+        done = sum(1 for t in todos if t.get("status") == "done")
+        total = len(todos)
+        pct = int((done / total) * 100) if total > 0 else 0
+        bar_len = 20
+        filled = int(bar_len * done / total) if total > 0 else 0
+        bar = "\u2588" * filled + "\u2591" * (bar_len - filled)
+        lines.append(f"\n[bold]Progress:[/bold] [{bar}] {pct}% ({done}/{total})")
+
+    # Team feedback
+    team_feedback = contract.get("team_feedback_rounds", [])
+    if team_feedback:
+        lines.append(f"\n[bold magenta]Team Feedback:[/bold magenta] {len(team_feedback)} round(s)")
+        for i, round_data in enumerate(team_feedback[-2:]):
+            concerns = round_data.get("concerns", [])
+            decisions = round_data.get("decisions", [])
+            if concerns:
+                lines.append(f"  Round {i+1}: [yellow]{len(concerns)} concern(s)[/yellow]")
+            if decisions:
+                for d in decisions[:2]:
+                    lines.append(f"  [green]\u2713 {d[:40]}[/green]")
+
     return Text.from_markup("\n".join(lines))
 
 

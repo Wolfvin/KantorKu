@@ -212,6 +212,11 @@ HARM_COLORS = {
 
 # Panel border colors
 PANEL_BORDER_COLORS = {
+    # 3-Panel TUI v0.5.0
+    "manager_chat": KANTORKU_THEME["primary"],
+    "workers_live": KANTORKU_THEME["secondary"],
+    "contract": KANTORKU_THEME["accent"],
+    # Legacy tab panels (still accessible via slash commands)
     "workers": KANTORKU_THEME["primary"],
     "events": KANTORKU_THEME["info"],
     "health": KANTORKU_THEME["success"],
@@ -226,4 +231,28 @@ PANEL_BORDER_COLORS = {
     "redteam": KANTORKU_THEME["error"],
     "middleware": KANTORKU_THEME["info"],
     "worker_detail": KANTORKU_THEME["primary"],
+}
+
+# 3-Panel TUI state icons
+PANEL_STATE_ICONS = {
+    "idle": "💤",
+    "manager_thinking": "🤔",
+    "clarifying": "💬",
+    "contract_presented": "📋",
+    "team_review": "👥",
+    "todo_review": "📝",
+    "client_feedback": "🔄",
+    "working": "⚡",
+    "done": "✅",
+    "failed": "❌",
+}
+
+# Workers Live phase styling
+WORKERS_PHASE_STYLES = {
+    "idle": ("dim", "IDLE"),
+    "briefing": ("magenta bold", "👥 BRIEFING"),
+    "execution": ("green bold", "⚡ EXECUTING"),
+    "verification": ("blue bold", "🔍 VERIFYING"),
+    "done": ("green", "✅ COMPLETE"),
+    "failed": ("red bold", "❌ FAILED"),
 }

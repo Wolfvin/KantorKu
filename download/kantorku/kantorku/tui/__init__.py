@@ -1,40 +1,46 @@
 """
-kantorku.tui — Terminal User Interface for coders.
+kantorku.tui — 3-Panel Office Interface for Coders.
 
 A full-featured TUI built with Textual + Rich that provides
-a powerful terminal-first interface to ALL KantorKu features.
+a natural office workflow through 3 panels:
 
 Layout:
-    ┌─────────────────────────────────────────────────────────────────┐
-    │  kantorku v0.4.0  │  Connected  │  session: abc123            │
-    ├────────────────────────────────┬────────────────────────────────┤
-    │                                │  [Workers] [Events] [Health]  │
-    │   Chat with Conductor         │  [Memory]  [DAG]   [Briefing] │
-    │                                │  [Pool]    [Queue] [Observe]  │
-    │   > your message here         │  [Alerts]                      │
-    │                                │                                │
-    │   Conductor responds...       │  (tabbed content)              │
-    │                                │                                │
-    ├────────────────────────────────┴────────────────────────────────┤
-    │  Ctrl+Q:Quit  Tab:Switch  Enter:Send  ↑/↓:History  Ctrl+C:Cancel│
-    └─────────────────────────────────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │  kantorku v0.5.0  │  Connected  │  session: abc123                 │
+    ├──────────────┬───────────────────────────┬─────────────────────────┤
+    │              │                           │                         │
+    │   MANAGER    │      WORKERS LIVE         │      CONTRACT           │
+    │   CHAT       │                           │                         │
+    │              │  👥 BRIEFING               │  📋 Contract: ...       │
+    │  You: Build  │    coder_backend: ...     │  State: presented       │
+    │  me X        │    coder_frontend: ...    │                         │
+    │              │    conductor: summary     │  Tasks (3):             │
+    │  Manager:    │                           │  ○ Implement rate limit │
+    │  Sure! Let   │  ⚡ EXECUTING             │  ○ Add UI               │
+    │  me draft... │    ● coder_backend: ...   │  ○ Wire everything      │
+    │              │    ○ coder_frontend: ...   │                         │
+    │  ──────────  │                           │  [ACCEPT] [REVISE]      │
+    │  [INTERRUPT] │  🔍 VERIFYING             │                         │
+    │              │    ✓ Design: OK            │                         │
+    │  > type msg  │    ✓ Engineering: OK      │                         │
+    │              │                           │                         │
+    ├──────────────┴───────────────────────────┴─────────────────────────┤
+    │  Ctrl+Q:Quit  Ctrl+A:Accept  Ctrl+R:Revise  Ctrl+I:Interrupt    │
+    └─────────────────────────────────────────────────────────────────────┘
 
 Panels:
-    Workers   — Live worker grid with status icons
-    Events    — Real-time office event stream
-    Health    — Provider health, circuit breakers, cost, alerts
-    Memory    — 3-Ring memory explorer (Ring1/Ring2/Ring3)
-    DAG       — Task dependency graph visualization
-    Briefing  — Briefing room transcript viewer
-    Pool      — Context pool prefetch status
-    Queue     — Task queue & dead letter queue
-    Observe   — Observability (spans, metrics, traces)
-    Alerts    — Active health alerts
+    Left   — Chat with Manager (Conductor) + Interrupt button
+    Center — Workers brainstorming & executing in real-time
+    Right  — Contract display with Accept/Revise actions
 
-Commands:
-    /help /status /workers /health /cost /memory /dag /briefing
-    /pool /queue /trace /metrics /hooks /cache /config /alerts
-    /delegate /export /theme /accept /revise /code /ask /reset /sessions
+Workflow:
+    1. Chat with Manager in LEFT panel
+    2. Manager drafts contract → appears in RIGHT panel
+    3. Accept contract → Workers brainstorm in CENTER panel
+    4. Workers execute → Live output in CENTER panel
+    5. Need to change direction? Hit INTERRUPT → back to Manager chat
+
+Slash commands still work as secondary tools — /help for list.
 
 Usage:
     kantorku tui                    # Connect to default server
