@@ -67,7 +67,7 @@ pip install kantorku[ollama]
 ### 2.2 Metode B: Instal dari Source
 
 ```bash
-git clone https://github.com/your-org/kantorku.git
+git clone https://github.com/Wolfvin/KantorKu.git
 cd kantorku
 pip install -e ".[dev]"
 python tests/test_office.py  # verifikasi

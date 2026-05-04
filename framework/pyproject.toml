@@ -9,16 +9,26 @@ description = "Kantor digital yang sesungguhnya — AI worker orchestration fram
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-authors = [{ name = "kantorku team" }]
-keywords = ["ai", "agents", "orchestration", "llm", "multi-agent"]
+authors = [{ name = "Wolfvin" }]
+keywords = ["ai", "agents", "orchestration", "llm", "multi-agent", "office", "tui", "textual"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: AsyncIO",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Shells",
+    "Topic :: Terminals",
 ]
+license-files = ["LICENSE"]
+
+[project.urls]
+Homepage = "https://github.com/Wolfvin/KantorKu"
+Repository = "https://github.com/Wolfvin/KantorKu"
+Issues = "https://github.com/Wolfvin/KantorKu/issues"
+Discussions = "https://github.com/Wolfvin/KantorKu/discussions"
 
 dependencies = [
     "fastapi>=0.115.0",
