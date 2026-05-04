@@ -2,7 +2,10 @@
 Themes — Color themes and style constants for the KantorKu TUI.
 
 Provides complete styling for ALL framework features:
-- KANTORKU_THEME: Primary color palette applied to all CSS
+- KANTORKU_THEMES: Named theme dict (5 built-in themes)
+- KANTORKU_THEME: Alias to KANTORKU_THEMES["office"] for backward compat
+- get_theme(): Get a theme by name
+- list_themes(): List available theme names
 - SQUAD_COLORS: Per-squad color mapping
 - STATUS_ICONS: Unicode icons for worker/task/queue/contract states
 - STATUS_COLORS: Color names for status states
@@ -16,20 +19,92 @@ Provides complete styling for ALL framework features:
 - TASK_STATE_ICONS: Icons for task queue states
 """
 
-# KantorKu color palette
-KANTORKU_THEME = {
-    "primary": "#00d4aa",
-    "secondary": "#7c3aed",
-    "accent": "#f59e0b",
-    "success": "#10b981",
-    "error": "#ef4444",
-    "warning": "#f59e0b",
-    "info": "#3b82f6",
-    "muted": "#6b7280",
-    "background": "#0f172a",
-    "surface": "#1e293b",
-    "text": "#f1f5f9",
+# ── Named Themes ────────────────────────────────────────────────────
+
+KANTORKU_THEMES: dict[str, dict[str, str]] = {
+    "office": {
+        "primary": "#00d4aa",
+        "secondary": "#7c3aed",
+        "accent": "#f59e0b",
+        "success": "#10b981",
+        "error": "#ef4444",
+        "warning": "#f59e0b",
+        "info": "#3b82f6",
+        "muted": "#6b7280",
+        "background": "#0f172a",
+        "surface": "#1e293b",
+        "text": "#f1f5f9",
+    },
+    "midnight": {
+        "primary": "#06b6d4",
+        "secondary": "#8b5cf6",
+        "accent": "#f97316",
+        "success": "#10b981",
+        "error": "#ef4444",
+        "warning": "#f59e0b",
+        "info": "#3b82f6",
+        "muted": "#6b7280",
+        "background": "#0a0a0a",
+        "surface": "#171717",
+        "text": "#f1f5f9",
+    },
+    "terminal": {
+        "primary": "#00ff00",
+        "secondary": "#00cc00",
+        "accent": "#ffff00",
+        "success": "#00ff00",
+        "error": "#ff4444",
+        "warning": "#ffff00",
+        "info": "#00cc00",
+        "muted": "#008800",
+        "background": "#000000",
+        "surface": "#0a0a0a",
+        "text": "#00ff00",
+    },
+    "cyberpunk": {
+        "primary": "#ff00ff",
+        "secondary": "#00ffff",
+        "accent": "#ffff00",
+        "success": "#00ff88",
+        "error": "#ff0055",
+        "warning": "#ff8800",
+        "info": "#00ffff",
+        "muted": "#885588",
+        "background": "#0d0221",
+        "surface": "#150535",
+        "text": "#ff88ff",
+    },
+    "forest": {
+        "primary": "#22c55e",
+        "secondary": "#059669",
+        "accent": "#f59e0b",
+        "success": "#22c55e",
+        "error": "#dc2626",
+        "warning": "#f59e0b",
+        "info": "#0ea5e9",
+        "muted": "#4d7c4d",
+        "background": "#0f1a0f",
+        "surface": "#1a2e1a",
+        "text": "#d4f0d4",
+    },
 }
+
+# Backward compatibility — alias to default theme
+KANTORKU_THEME = KANTORKU_THEMES["office"]
+
+# Default theme name
+DEFAULT_THEME = "office"
+
+
+def get_theme(name: str) -> dict[str, str]:
+    """Get a theme dict by name. Falls back to DEFAULT_THEME if not found."""
+    return KANTORKU_THEMES.get(name, KANTORKU_THEMES[DEFAULT_THEME])
+
+
+def list_themes() -> list[str]:
+    """List all available theme names."""
+    return list(KANTORKU_THEMES.keys())
+
 
 # Squad color mapping
 SQUAD_COLORS = {
@@ -214,7 +289,8 @@ HARM_COLORS = {
     "critical": "red bold",
 }
 
-# Panel border colors
+# Panel border colors — built from KANTORKU_THEME for backward compat
+# (These are module-level and use the default "office" theme colors)
 PANEL_BORDER_COLORS = {
     # 3-Panel TUI v0.5.0
     "manager_chat": KANTORKU_THEME["primary"],
@@ -256,9 +332,9 @@ PANEL_STATE_ICONS = {
 # Workers Live phase styling
 WORKERS_PHASE_STYLES = {
     "idle": ("dim", "IDLE"),
-    "briefing": ("magenta bold", "👥 BRIEFING"),
-    "execution": ("green bold", "⚡ EXECUTING"),
-    "verification": ("blue bold", "🔍 VERIFYING"),
-    "done": ("green", "✅ COMPLETE"),
-    "failed": ("red bold", "❌ FAILED"),
+    "briefing": ("magenta bold", "\U0001f465 BRIEFING"),
+    "execution": ("green bold", "\u26a1 EXECUTING"),
+    "verification": ("blue bold", "\U0001f50d VERIFYING"),
+    "done": ("green", "\u2705 COMPLETE"),
+    "failed": ("red bold", "\u274c FAILED"),
 }

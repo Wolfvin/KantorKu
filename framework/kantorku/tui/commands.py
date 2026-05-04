@@ -1296,36 +1296,36 @@ async def cmd_delegate(tui: Any, args: str) -> str:
         lines.append("  [dim]Only in embedded mode[/dim]")
     return "\n".join(lines)
 
-@command("theme", "Switch color theme", "/theme [dark|light|kantorku]")
+@command("theme", "Switch color theme", "/theme [office|midnight|terminal|cyberpunk|forest]")
 async def cmd_theme(tui: Any, args: str) -> str:
-    from kantorku.tui.themes import KANTORKU_THEME
-    name = args.strip().lower() or "kantorku"
-    themes = {
-        "kantorku": KANTORKU_THEME,
-        "dark": {"primary": "#58a6ff", "secondary": "#bc8cff", "accent": "#f0883e",
-                 "success": "#3fb950", "error": "#f85149", "warning": "#d29922",
-                 "info": "#58a6ff", "muted": "#8b949e", "background": "#0d1117",
-                 "surface": "#161b22", "text": "#c9d1d9"},
-        "light": {"primary": "#0969da", "secondary": "#8250df", "accent": "#bf8700",
-                  "success": "#1a7f37", "error": "#cf222e", "warning": "#9a6700",
-                  "info": "#0969da", "muted": "#656d76", "background": "#ffffff",
-                  "surface": "#f6f8fa", "text": "#1f2328"},
-    }
-    if name not in themes:
-        return f"[yellow]Unknown theme: {name}[/yellow]\n[dim]Available: {', '.join(themes.keys())}[/dim]"
-    t = themes[name]
-    tui.CSS = f"""
+    from kantorku.tui.themes import KANTORKU_THEMES, list_themes, get_theme
+    name = args.strip().lower()
+    available = list_themes()
+    if not name:
+        current = getattr(tui, '_current_theme', 'office')
+        return (
+            f"[bold cyan]Themes[/bold cyan] (current: [bold]{current}[/bold])\n"
+            f"  Available: {', '.join(available)}\n"
+            f"[dim]Usage: /theme <name>[/dim]"
+        )
+    if name not in KANTORKU_THEMES:
+        return f"[yellow]Unknown theme: {name}[/yellow]\n[dim]Available: {', '.join(available)}[/dim]"
+    if hasattr(tui, '_apply_theme'):
+        tui._apply_theme(name)
+    else:
+        # Fallback for non-KantorKuTUI
+        t = get_theme(name)
+        tui.CSS = f"""
     Screen {{ layout: vertical; }}
     #main-container {{ layout: horizontal; height: 1fr; }}
     #left-panel {{ width: 30%; height: 100%; border: solid {t['primary']}; border-title-color: {t['primary']}; }}
     #center-panel {{ width: 40%; height: 100%; }}
     #right-panel {{ width: 30%; height: 100%; }}
-    #contract-area {{ border: solid {t['success']}; border-title-color: {t['success']}; }}
     """
-    try:
-        tui.screen.styles.update(tui.CSS)
-    except Exception:
-        pass
+        try:
+            tui.screen.styles.update(tui.CSS)
+        except Exception:
+            pass
     return f"[green]Theme: {name}[/green]"
 
 @command("transcript", "View session transcript", "/transcript")
