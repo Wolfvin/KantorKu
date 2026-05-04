@@ -129,3 +129,23 @@ Stage Summary:
 - Overall audit score: 8.0/10 → 9.5/10
 - 10 files modified, 206 insertions, 13 deletions
 - Push: https://github.com/Wolfvin/KantorKu.git (f9a378d)
+---
+Task ID: tui-overhaul
+Agent: main
+Task: Research GitHub TUI projects, extract ideas, implement improvements to KantorKu TUI until 10/10
+
+Work Log:
+- Searched 20+ GitHub TUI projects (Textual examples, ChatGPT-TUI, Harlequin, textual-devtools, Open Interpreter, Frogmouth, tickrs, trogon)
+- Created comprehensive research report at docs/tui-research-report.md
+- Identified 10 key gaps: no command palette, no streaming cursor, no event filtering, no worker grid, no multi-line input, no notifications, no screen stack, full re-render on every event, no theme switching, no undo/redo
+- Phase 1: Command Palette (Ctrl+P), Notification/Toast System, Enhanced Status Bar, Confirm Dialog, Shortcuts Cheatsheet (F1)
+- Phase 2: Tabbed Center Panel (Workers/Briefing/DAG/Events), Event Filter Bar, Multi-line Input (Ctrl+M), BriefingPanel, DAGPanel, EventLogPanel
+- Phase 3: 5 Named Themes (office/midnight/terminal/cyberpunk/forest), Collapsible Contract Display (Rich Tree), Focus Mode (Ctrl+F), Context-Aware Action Hints, Lifecycle Breadcrumb
+- Quality fixes: WorkersLiveStream scrollable (VerticalScroll), Event rendering dispatch dict (38 renderers), ContractState enum, ThinkingIndicator spinner
+- Committed and pushed as 1dfffcb
+
+Stage Summary:
+- 10 major new TUI features implemented across 3 phases
+- 4 quality fixes (scrollable, dispatch dict, enum, spinner)
+- Audit score improved from ~5/10 to ~8.5/10 average
+- All changes pushed to GitHub main branch
