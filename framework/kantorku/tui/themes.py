@@ -179,6 +179,52 @@ KANTORKU_THEMES: dict[str, dict[str, str]] = {
         "border_dim": "#1e293b",
         "glow": "#7c3aed",
     },
+    # ── ULTRA PREMIUM THEMES ──
+    "glitch": {
+        "primary": "#ff3e3e",       # Glitch red
+        "secondary": "#00fff5",     # Cyber cyan
+        "accent": "#ffe600",        # Warning yellow
+        "success": "#00ff88",       # Neon mint
+        "error": "#ff0040",         # Bright red
+        "warning": "#ff8800",       # Orange
+        "info": "#00ccff",          # Info cyan
+        "muted": "#3d4455",         # Dark steel
+        "background": "#0a0a0f",    # Void black
+        "surface": "#12121c",       # Deep panel
+        "text": "#e8e8f0",          # Cool white
+        "border_dim": "#1a1a28",    # Subtle line
+        "glow": "#ff3e3e",          # Red glow
+    },
+    "dracula_pro": {
+        "primary": "#ff79c6",       # Dracula pink
+        "secondary": "#8be9fd",     # Dracula cyan
+        "accent": "#f1fa8c",        # Dracula yellow
+        "success": "#50fa7b",       # Dracula green
+        "error": "#ff5555",         # Dracula red
+        "warning": "#ffb86c",       # Dracula orange
+        "info": "#8be9fd",          # Cyan
+        "muted": "#6272a4",         # Dracula comment
+        "background": "#1a1125",    # Deep purple-black
+        "surface": "#221637",       # Purple-dark panel
+        "text": "#f8f8f2",          # Soft white
+        "border_dim": "#2d2043",    # Purple border
+        "glow": "#bd93f9",          # Purple glow
+    },
+    "monokai_pro": {
+        "primary": "#ffd866",       # Monokai gold
+        "secondary": "#a9dc76",     # Monokai green
+        "accent": "#ff6188",        # Monokai pink
+        "success": "#a9dc76",       # Green
+        "error": "#ff6188",         # Pink-red
+        "warning": "#fc9867",       # Monokai orange
+        "info": "#78dce8",          # Monokai cyan
+        "muted": "#5b5f6a",         # Monokai grey
+        "background": "#0d0e0f",    # Deep dark
+        "surface": "#1a1b1d",       # Panel
+        "text": "#fcfcfa",          # Near white
+        "border_dim": "#222324",
+        "glow": "#ffd866",          # Gold glow
+    },
 }
 
 # Backward compatibility — alias to default theme

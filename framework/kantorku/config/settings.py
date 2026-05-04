@@ -113,6 +113,15 @@ class KantorkuConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
     providers: dict[str, dict[str, str]] = field(default_factory=dict)
 
+    # Security gates
+    redteam_enabled: bool = True  # Gate for /godmode, /parseltongue, /classify, /stm commands
+
+    # Personality system
+    personality_enabled: bool = True  # Enable proactive worker speaking via consider_speaking()
+
+    # Notebook
+    notebook_enabled: bool = True  # Enable ProjectNotebook for shared persistent knowledge
+
     @classmethod
     def from_toml(cls, path: str | Path) -> KantorkuConfig:
         """Load configuration from a TOML file."""
@@ -159,6 +168,11 @@ class KantorkuConfig:
                 if isinstance(value, dict):
                     providers[provider_name] = value
 
+        # Parse security/personality flags
+        redteam_enabled = office.get("redteam_enabled", True)
+        personality_enabled = office.get("personality_enabled", True)
+        notebook_enabled = office.get("notebook_enabled", True)
+
         return cls(
             conductor_model=conductor_model,
             workers=workers,
@@ -166,6 +180,9 @@ class KantorkuConfig:
             memory=memory,
             server=server,
             providers=providers,
+            redteam_enabled=redteam_enabled,
+            personality_enabled=personality_enabled,
+            notebook_enabled=notebook_enabled,
         )
 
     def resolve_env_vars(self) -> None:

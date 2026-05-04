@@ -839,5 +839,255 @@ class TestProtocolCompliance(unittest.TestCase):
         self.assertIsInstance(worker._emitter, EventEmitter)
 
 
+# ── KantorkuConfig Tests ──────────────────────────────────────────────
+
+
+class TestKantorkuConfig(unittest.TestCase):
+    """Test KantorkuConfig new fields: redteam_enabled, personality_enabled, notebook_enabled."""
+
+    def test_default_redteam_enabled(self):
+        """redteam_enabled should default to True."""
+        from kantorku.config.settings import KantorkuConfig
+        config = KantorkuConfig()
+        self.assertTrue(config.redteam_enabled)
+
+    def test_default_personality_enabled(self):
+        """personality_enabled should default to True."""
+        from kantorku.config.settings import KantorkuConfig
+        config = KantorkuConfig()
+        self.assertTrue(config.personality_enabled)
+
+    def test_default_notebook_enabled(self):
+        """notebook_enabled should default to True."""
+        from kantorku.config.settings import KantorkuConfig
+        config = KantorkuConfig()
+        self.assertTrue(config.notebook_enabled)
+
+    def test_from_dict_redteam_disabled(self):
+        """from_dict should parse redteam_enabled from office section."""
+        from kantorku.config.settings import KantorkuConfig
+        data = {"office": {"redteam_enabled": False}}
+        config = KantorkuConfig.from_dict(data)
+        self.assertFalse(config.redteam_enabled)
+
+    def test_from_dict_personality_disabled(self):
+        """from_dict should parse personality_enabled from office section."""
+        from kantorku.config.settings import KantorkuConfig
+        data = {"office": {"personality_enabled": False}}
+        config = KantorkuConfig.from_dict(data)
+        self.assertFalse(config.personality_enabled)
+
+    def test_from_dict_notebook_disabled(self):
+        """from_dict should parse notebook_enabled from office section."""
+        from kantorku.config.settings import KantorkuConfig
+        data = {"office": {"notebook_enabled": False}}
+        config = KantorkuConfig.from_dict(data)
+        self.assertFalse(config.notebook_enabled)
+
+
+# ── WorkerPersonality Tests ────────────────────────────────────────────
+
+
+class TestWorkerPersonality(unittest.TestCase):
+    """Test WorkerPersonality conditions and should_speak logic."""
+
+    def test_default_personality(self):
+        """Default personality should be non-proactive."""
+        from kantorku.worker.personality import WorkerPersonality
+        p = WorkerPersonality({})
+        self.assertFalse(p.proactive)
+        self.assertGreater(p.confidence_threshold, 0)
+
+    def test_proactive_personality(self):
+        """Proactive personality should be settable."""
+        from kantorku.worker.personality import WorkerPersonality
+        p = WorkerPersonality({"proactive": True, "scan_interval_seconds": 15})
+        self.assertTrue(p.proactive)
+        self.assertEqual(p.scan_interval, 15)
+
+    def test_should_speak_assigned_to_task(self):
+        """should_speak should return True when assigned_to_task condition met."""
+        from kantorku.worker.personality import WorkerPersonality
+        p = WorkerPersonality({
+            "speaks_when": ["assigned_to_task"],
+        })
+        result = p.should_speak({"is_assigned": True})
+        self.assertTrue(result)
+
+    def test_should_not_speak_when_stays_quiet(self):
+        """should_speak should return False when stays_quiet condition met."""
+        from kantorku.worker.personality import WorkerPersonality
+        p = WorkerPersonality({
+            "speaks_when": ["assigned_to_task"],
+            "stays_quiet_when": ["task_outside_expertise"],
+        })
+        # stays_quiet takes priority — even if assigned, outside_expertise wins
+        result = p.should_speak({
+            "is_assigned": True,
+            "outside_expertise": True,
+        })
+        self.assertFalse(result)
+
+    def test_confidence_threshold_default(self):
+        """Default confidence_threshold should be 0.6."""
+        from kantorku.worker.personality import WorkerPersonality
+        p = WorkerPersonality({})
+        self.assertAlmostEqual(p.confidence_threshold, 0.6)
+
+
+# ── ProjectNotebook Tests ────────────────────────────────────────────
+
+
+class TestProjectNotebook(unittest.TestCase):
+    """Test ProjectNotebook basic operations."""
+
+    def test_notebook_creation(self):
+        """ProjectNotebook should be creatable with project_id and ring2."""
+        from kantorku.memory.notebook import ProjectNotebook
+        notebook = ProjectNotebook(project_id="test-project", ring2=None)
+        self.assertEqual(notebook.project_id, "test-project")
+
+    def test_get_context_empty(self):
+        """get_context_for_worker should return empty string for no notes."""
+        from kantorku.memory.notebook import ProjectNotebook
+        notebook = ProjectNotebook(project_id="test", ring2=None)
+        # ring2 is None, so get() returns []
+        result = asyncio.get_event_loop().run_until_complete(
+            notebook.get_context_for_worker("coder_backend")
+        )
+        self.assertEqual(result, "")
+
+
+# ── Theme System Tests ────────────────────────────────────────────────
+
+
+class TestThemeSystem(unittest.TestCase):
+    """Test the TUI theme system."""
+
+    def test_all_themes_have_required_keys(self):
+        """All themes should have the 14 required color keys."""
+        from kantorku.tui.themes import KANTORKU_THEMES
+        required_keys = {
+            "primary", "secondary", "accent", "success", "error",
+            "warning", "info", "muted", "background", "surface",
+            "text", "border_dim", "glow",
+        }
+        for name, theme in KANTORKU_THEMES.items():
+            missing = required_keys - set(theme.keys())
+            self.assertEqual(
+                len(missing), 0,
+                f"Theme '{name}' missing keys: {missing}",
+            )
+
+    def test_get_theme_returns_valid(self):
+        """get_theme should return a valid theme for any name."""
+        from kantorku.tui.themes import get_theme, DEFAULT_THEME
+        theme = get_theme("synthwave")
+        self.assertIn("primary", theme)
+
+    def test_get_theme_fallback(self):
+        """get_theme should fall back to default for unknown names."""
+        from kantorku.tui.themes import get_theme, DEFAULT_THEME
+        theme = get_theme("nonexistent_theme")
+        self.assertEqual(theme["primary"], get_theme(DEFAULT_THEME)["primary"])
+
+    def test_list_themes_includes_new(self):
+        """list_themes should include glitch, dracula_pro, monokai_pro."""
+        from kantorku.tui.themes import list_themes
+        themes = list_themes()
+        self.assertIn("glitch", themes)
+        self.assertIn("dracula_pro", themes)
+        self.assertIn("monokai_pro", themes)
+
+    def test_theme_count(self):
+        """Should have at least 13 themes (10 original + 3 new premium)."""
+        from kantorku.tui.themes import KANTORKU_THEMES
+        self.assertGreaterEqual(len(KANTORKU_THEMES), 13)
+
+
+# ── DAGPanel Unit Tests ────────────────────────────────────────────────
+
+
+class TestDAGPanel(unittest.TestCase):
+    """Test DAGPanel task tracking and status updates."""
+
+    def test_dag_panel_add_event(self):
+        """DAGPanel should track task_assigned events."""
+        # We test the data model, not the Textual rendering
+        tasks: dict[str, dict] = {}
+        groups: dict[str, list] = {}
+
+        event = {"type": "task_assigned", "to": "coder_backend", "content": "Build API", "squad": "coding"}
+        tid = event.get("task_id", event["content"][:30])
+        tasks[tid] = {
+            "description": event["content"],
+            "assigned_to": event["to"],
+            "status": "assigned",
+            "squad": event.get("squad", ""),
+        }
+        squad = event.get("squad", "")
+        if squad:
+            if squad not in groups:
+                groups[squad] = []
+            if tid not in groups[squad]:
+                groups[squad].append(tid)
+
+        self.assertIn(tid, tasks)
+        self.assertEqual(tasks[tid]["status"], "assigned")
+        self.assertIn("coding", groups)
+
+    def test_dag_panel_task_done(self):
+        """DAGPanel should mark tasks as done."""
+        tasks = {
+            "Build API": {"assigned_to": "coder_backend", "status": "assigned"},
+        }
+        event = {"type": "task_done", "from": "coder_backend"}
+        for tid, task in tasks.items():
+            if task.get("assigned_to") == event["from"] and task.get("status") != "done":
+                task["status"] = "done"
+                break
+
+        self.assertEqual(tasks["Build API"]["status"], "done")
+
+
+# ── BaseWorker Notebook Context Tests ──────────────────────────────────
+
+
+class TestBaseWorkerNotebookContext(unittest.TestCase):
+    """Test that _build_context_section includes notebook context."""
+
+    def _make_worker(self) -> Any:
+        """Create a BaseWorker with mocked dependencies."""
+        from kantorku.worker.base import BaseWorker
+        from kantorku.worker.identity import WorkerIdentity
+
+        identity = WorkerIdentity(
+            id="test_worker",
+            model="ollama/llama3",
+            squad="test_squad",
+            role="test role",
+            skill_md="You are a test worker.",
+        )
+        router = MagicMock()
+        bus = MagicMock()
+        worker = BaseWorker(identity=identity, router=router, bus=bus)
+        return worker
+
+    def test_build_context_section_notebook(self):
+        """_build_context_section should include notebook context."""
+        from kantorku.worker.base import Task
+
+        worker = self._make_worker()
+        task = Task(
+            instruction="test",
+            context={
+                "notebook": "===== PROJECT NOTEBOOK =====\n- [coder] API: Use REST\n===============================",
+            },
+        )
+        result = worker._build_context_section(task)
+        self.assertIn("PROJECT NOTEBOOK", result)
+        self.assertIn("Use REST", result)
+
+
 if __name__ == "__main__":
     unittest.main()

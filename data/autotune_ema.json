@@ -1,25 +1,25 @@
 {
   "positive_ema": {
     "code": {
-      "temperature": 0.58,
-      "top_p": 0.885,
+      "temperature": 0.4371999999999999,
+      "top_p": 0.86715,
       "top_k": 50.0,
-      "frequency_penalty": 0.16999999999999998,
-      "presence_penalty": 0.16999999999999998,
-      "repetition_penalty": 1.07
+      "frequency_penalty": 0.13429999999999997,
+      "presence_penalty": 0.13429999999999997,
+      "repetition_penalty": 1.0343
     }
   },
   "negative_ema": {
     "code": {
-      "temperature": 0.94,
-      "top_p": 0.9239999999999999,
+      "temperature": 1.2255999999999998,
+      "top_p": 0.9525599999999999,
       "top_k": 50.0,
-      "frequency_penalty": 0.16999999999999998,
-      "presence_penalty": 0.16999999999999998,
-      "repetition_penalty": 1.07
+      "frequency_penalty": 0.13429999999999997,
+      "presence_penalty": 0.13429999999999997,
+      "repetition_penalty": 1.0343
     }
   },
   "sample_counts": {
-    "code": 2
+    "code": 6
   }
 }

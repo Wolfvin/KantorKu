@@ -1343,7 +1343,7 @@ class DAGPanel(Static):
         self._render_dag()
 
     def _render_dag(self) -> None:
-        """Render the task dependency tree."""
+        """Render the task dependency tree with ASCII box-drawing characters."""
         if not self._tasks:
             self.update(Panel(
                 "[dim]Task dependency tree will appear here\n"
@@ -1359,31 +1359,42 @@ class DAGPanel(Static):
         if self._groups:
             for squad, task_ids in self._groups.items():
                 squad_color = SQUAD_COLORS.get(squad, "dim")
-                branch = tree.add(f"[{squad_color}]{squad}[/{squad_color}]")
-                for tid in task_ids:
+                branch = tree.add(f"[{squad_color} bold]\u2588 {squad}[/{squad_color} bold]")
+                for i, tid in enumerate(task_ids):
                     task = self._tasks.get(tid, {})
                     desc = task.get("description", tid)[:50]
                     status = task.get("status", "pending")
                     assigned = task.get("assigned_to", "?")
                     icon = STATUS_ICONS.get(status, "\u25cb")
                     color = STATUS_COLORS.get(status, "dim")
-                    branch.add(f"[{color}]{icon}[/{color}] {desc} [{assigned}]")
+                    # Use box-drawing chars for visual hierarchy
+                    is_last = (i == len(task_ids) - 1)
+                    prefix = "\u2514\u2500" if is_last else "\u251c\u2500"  # └─ or ├─
+                    branch.add(
+                        f"[dim]{prefix}[/dim] [{color}]{icon}[/{color}] "
+                        f"{desc} [dim][{assigned}][/dim]"
+                    )
         else:
-            # No groups — just list tasks flat
-            for tid, task in self._tasks.items():
+            # No groups — just list tasks flat with box-drawing
+            for i, (tid, task) in enumerate(self._tasks.items()):
                 desc = task.get("description", tid)[:50]
                 status = task.get("status", "pending")
                 assigned = task.get("assigned_to", "?")
                 icon = STATUS_ICONS.get(status, "\u25cb")
                 color = STATUS_COLORS.get(status, "dim")
-                tree.add(f"[{color}]{icon}[/{color}] {desc} [{assigned}]")
+                is_last = (i == len(self._tasks) - 1)
+                prefix = "\u2514\u2500" if is_last else "\u251c\u2500"
+                tree.add(
+                    f"[dim]{prefix}[/dim] [{color}]{icon}[/{color}] "
+                    f"{desc} [dim][{assigned}][/dim]"
+                )
 
         # Show critical path if available
         parts: list[Any] = [tree]
         if self._critical_path:
             cp_str = " \u2192 ".join(self._critical_path[:8])
             parts.append(Text.from_markup(
-                f"\n[bold red]Critical Path:[/bold red] {cp_str}"
+                f"\n[bold red]\u26a1 Critical Path:[/bold red] {cp_str}"
             ))
 
         # Summary
@@ -1636,6 +1647,11 @@ class KantorKuTUI(App):
 
     #multiline-input:focus {{
         border: tall {theme['primary']} 60%;
+    }}
+
+    #multiline-input.multiline-active {{
+        border: tall {theme['accent']} 80%;
+        background: {theme['accent']} 5%;
     }}
 
     #input-mode-indicator {{
@@ -2303,22 +2319,26 @@ class KantorKuTUI(App):
             ContractState.AWAITING_REVISION: 3,
             ContractState.TEAM_REVIEW: 3,
             ContractState.TODO_REVIEW: 3,
-            ContractState.CLIENT_FEEDBACK: 4,
+            ContractState.CLIENT_FEEDBACK: 3,  # Feedback during review phase
             ContractState.WORKING: 4,
             ContractState.ACCEPTED: 4,
             ContractState.VERIFYING: 5,
             ContractState.DONE: 6,
-            ContractState.FAILED: 4,
+            ContractState.FAILED: 6,  # Failed is also a terminal state → DONE phase
         }
 
         current_idx = state_to_phase.get(self.contract_state, 0)
+        is_failed = self.contract_state == ContractState.FAILED
 
         parts = []
         for i, (label, _state) in enumerate(phases):
             if i < current_idx:
                 parts.append(f"[green]\u2713 {label}[/green]")
             elif i == current_idx:
-                parts.append(f"[bold {KANTORKU_THEME['primary']}]\u25b6 {label}[/]")
+                if is_failed:
+                    parts.append(f"[bold red]\u2717 FAILED[/]")
+                else:
+                    parts.append(f"[bold {KANTORKU_THEME['primary']}]\u25b6 {label}[/]")
             else:
                 parts.append(f"[dim]{label}[/dim]")
 
@@ -2334,9 +2354,24 @@ class KantorKuTUI(App):
             return
 
         if self._multiline_mode:
-            indicator.update("[dim]Multi-line | Ctrl+Enter to send | Ctrl+M to toggle[/dim]")
+            indicator.update(
+                f"[bold {KANTORKU_THEME['accent']}][MULTI][/bold {KANTORKU_THEME['accent']}] "
+                f"Ctrl+Enter to send | Ctrl+M to toggle"
+            )
+            # Change input border to accent color for visual distinction
+            try:
+                multi_input = self.query_one("#multiline-input", TextArea)
+                multi_input.add_class("multiline-active")
+            except NoMatches:
+                pass
         else:
             indicator.update("[dim]Single-line | Ctrl+M to toggle[/dim]")
+            # Remove active styling
+            try:
+                multi_input = self.query_one("#multiline-input", TextArea)
+                multi_input.remove_class("multiline-active")
+            except NoMatches:
+                pass
 
     def action_toggle_multiline(self) -> None:
         """Ctrl+M — Toggle between single-line Input and multi-line TextArea."""
@@ -3243,10 +3278,16 @@ class EmbeddedKantorKuTUI(KantorKuTUI):
             await self._embedded_reconnect()
 
     async def _embedded_reconnect(self) -> None:
-        """Attempt to reinitialize the embedded Office on failure."""
-        max_attempts = 3
+        """Attempt to reinitialize the embedded Office on failure.
+
+        Uses exponential backoff: 2s, 4s, 8s, 16s, 32s (capped at 60s).
+        This prevents spam-reconnect when the Office crashes repeatedly.
+        """
+        max_attempts = 5
+        base_delay = 2.0
+        max_delay = 60.0
         for attempt in range(1, max_attempts + 1):
-            delay = 5.0 * attempt
+            delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
             self._add_manager_message(
                 f"[dim]Retrying embedded init ({attempt}/{max_attempts}) in {delay:.0f}s...[/dim]"
             )

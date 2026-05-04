@@ -96,8 +96,16 @@ def _office(tui: Any) -> Any:
 
 
 def _redteam_allowed(tui: Any) -> bool:
-    """Check if redteam commands are enabled."""
-    # Check config flag, default to True for solo dev
+    """Check if redteam commands are enabled.
+
+    Checks in order:
+    1. Office config redteam_enabled flag (from kantorku.toml)
+    2. KANTORKU_REDTEAM_ENABLED environment variable
+
+    Default is True for solo dev convenience, but teams should
+    set redteam_enabled = false in kantorku.toml to gate access.
+    """
+    # Check config flag from Office
     if hasattr(tui, '_office') and tui._office:
         config = getattr(tui._office, 'config', None)
         if config and hasattr(config, 'redteam_enabled'):

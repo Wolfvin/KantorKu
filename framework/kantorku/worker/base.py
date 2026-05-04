@@ -874,8 +874,13 @@ class BaseWorker:
             else:
                 parts.append(f"Contract: {contract}")
 
+        # Notebook context (shared persistent knowledge from ProjectNotebook)
+        notebook = task.context.get("notebook", "")
+        if notebook:
+            parts.append(str(notebook))
+
         # Other context keys not yet handled
-        handled_keys = {"session_context", "team_decisions", "results", "contract"}
+        handled_keys = {"session_context", "team_decisions", "results", "contract", "notebook"}
         other = {k: v for k, v in task.context.items() if k not in handled_keys}
         if other:
             for k, v in other.items():

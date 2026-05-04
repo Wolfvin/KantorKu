@@ -79,6 +79,12 @@ from kantorku.interface.health import HealthChecker
 # P4: Session transcripts (per-session context tracking)
 from kantorku.layers.session_transcript import SessionTranscript as _SessionTranscript
 
+# P4: ExecutionChannel for team communication
+from kantorku.layers.execution_channel import ExecutionChannel
+
+# P4: ProjectNotebook for shared persistent knowledge
+from kantorku.memory.notebook import ProjectNotebook
+
 logger = logging.getLogger("kantorku.office")
 
 
@@ -223,6 +229,12 @@ class Office:
         # P4: BriefingRoom settings
         self._briefing_max_rounds: int = 3
         self._briefing_round_timeout: float = 90.0
+
+        # P4: ProjectNotebook per session (shared persistent knowledge)
+        self._notebooks: dict[str, ProjectNotebook] = {}
+
+        # P4: Personality-driven speaking tasks (running per session)
+        self._personality_tasks: dict[str, asyncio.Task] = {}
 
         self._initialized = False
 
@@ -650,6 +662,16 @@ class Office:
             self._channels[session_id] = briefing_result.channel
             transcript.set_channel(briefing_result.channel)
 
+        # P4: Create ProjectNotebook for this session (shared knowledge)
+        # Notebook is injected with the channel so workers can propose()
+        if self.config.notebook_enabled and briefing_result.channel:
+            notebook = ProjectNotebook(
+                project_id=contract.title or session_id,
+                ring2=self.ring2,
+            )
+            await notebook.initialize()
+            self._notebooks[session_id] = notebook
+
         # Record briefing results in transcript
         transcript.add_entry(
             phase="team_briefing",
@@ -727,6 +749,15 @@ class Office:
         parallel_groups = final_plan.get("parallel_groups", [execution_order])
         results: dict[str, TaskResult] = {}
 
+        # P4: Start personality-driven proactive speaking loop
+        # Workers with proactive personality can speak up during execution
+        channel = self._channels.get(session_id)
+        if self.config.personality_enabled and channel:
+            personality_task = asyncio.create_task(
+                self._run_personality_loop(session_id, channel, contract)
+            )
+            self._personality_tasks[session_id] = personality_task
+
         for group in parallel_groups:
             group_tasks = []
             for todo_id in group:
@@ -742,6 +773,12 @@ class Office:
                     # so the worker has full awareness of what's been discussed
                     worker_context = transcript.get_context_for_worker(assigned_to)
 
+                    # P4: Include notebook context (shared persistent knowledge)
+                    notebook_context = ""
+                    notebook = self._notebooks.get(session_id)
+                    if notebook:
+                        notebook_context = await notebook.get_context_for_worker(assigned_to)
+
                     task = Task(
                         instruction=todo.description,
                         session_id=session_id,
@@ -751,6 +788,7 @@ class Office:
                             "assigned_to": assigned_to,
                             "session_context": worker_context,
                             "team_decisions": transcript.get_decisions(),
+                            "notebook": notebook_context,
                         },
                     )
 
@@ -883,6 +921,15 @@ class Office:
                 lesson=failed.error,
                 category="task_failure",
             )
+
+        # P4: Stop personality-driven speaking loop (execution complete)
+        ptask = self._personality_tasks.pop(session_id, None)
+        if ptask and not ptask.done():
+            ptask.cancel()
+            try:
+                await ptask
+            except asyncio.CancelledError:
+                pass
 
         return {
             "session_id": session_id,
@@ -1028,6 +1075,77 @@ class Office:
         if any(k in desc for k in ["api", "websocket", "integration", "mcp", "glue"]):
             return "coder_wiring"
         return "coder_backend"
+
+    async def _run_personality_loop(
+        self,
+        session_id: str,
+        channel: GroupChannel,
+        contract: Contract,
+    ) -> None:
+        """
+        Periodically check if workers want to speak up during execution.
+
+        This is the runtime wiring for BaseWorker.consider_speaking().
+        Workers with proactive personality will be asked if they have
+        something valuable to add to the ongoing discussion.
+
+        The loop runs every N seconds (based on personality scan_interval)
+        and cancels itself when the session completes.
+        """
+        try:
+            # Determine scan interval from workers' personality configs
+            intervals = []
+            for worker_id in self.registry.all_worker_ids:
+                try:
+                    worker = self.registry.hire(worker_id)
+                    if worker.personality.proactive:
+                        intervals.append(
+                            worker.personality.scan_interval or 30
+                        )
+                except Exception:
+                    pass
+
+            # Default to 30s if no proactive workers, otherwise use min interval
+            scan_interval = min(intervals) if intervals else 30
+
+            while True:
+                await asyncio.sleep(scan_interval)
+
+                # Gather context for consider_speaking
+                context = {
+                    "situation": f"Task execution in progress: {contract.title}",
+                    "contract_title": contract.title,
+                    "active_workers": [
+                        wid for wid in self.registry.all_worker_ids
+                        if self.registry.hire(wid).status.value in ("active", "thinking")
+                    ],
+                }
+
+                # Ask each proactive worker if they want to speak
+                for worker_id in list(self.registry.all_worker_ids):
+                    try:
+                        worker = self.registry.hire(worker_id)
+                        if worker.personality.proactive:
+                            # Use the channel from briefing room
+                            exec_channel = self._channels.get(session_id)
+                            if isinstance(exec_channel, ExecutionChannel):
+                                await worker.consider_speaking(
+                                    channel=exec_channel,
+                                    context=context,
+                                    session_id=session_id,
+                                )
+                    except Exception as e:
+                        logger.debug(f"Personality loop error for {worker_id}: {e}")
+
+        except asyncio.CancelledError:
+            # Normal shutdown — session completed
+            pass
+        except Exception as e:
+            logger.warning(f"Personality loop crashed for session {session_id}: {e}")
+
+    def get_notebook(self, session_id: str) -> ProjectNotebook | None:
+        """Get the ProjectNotebook for a session."""
+        return self._notebooks.get(session_id)
 
     def get_events(self, session_id: str, limit: int = 50) -> list[dict[str, Any]]:
         """Get recent events for a session."""
@@ -1185,9 +1303,13 @@ class Office:
         await self.conductor.cleanup_session(session_id)
         await self.bus.cleanup_session(session_id)
         await self.ring1.cleanup_session(session_id)
-        # P4: Clean up transcript and channel
+        # P4: Clean up transcript, channel, notebook, personality task
         self._transcripts.pop(session_id, None)
         self._channels.pop(session_id, None)
+        self._notebooks.pop(session_id, None)
+        ptask = self._personality_tasks.pop(session_id, None)
+        if ptask and not ptask.done():
+            ptask.cancel()
 
     async def shutdown(self) -> None:
         """Gracefully shut down the office."""
