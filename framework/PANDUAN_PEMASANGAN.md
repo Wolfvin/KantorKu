@@ -212,8 +212,13 @@ Kantorku dikonfigurasi melalui file `kantorku.toml`. File ini adalah pusat kenda
 ### 3.1 Buat File Konfigurasi
 
 ```bash
+# Opsi 1: Generate otomatis (direkomendasikan)
+kantorku init
+
+# Opsi 2: Copy dari example
 cp kantorku.toml.example kantorku.toml
-# atau buat manual (lihat template lengkap di bawah)
+
+# Opsi 3: Buat manual (lihat template lengkap di bawah)
 ```
 
 ### 3.2 Template kantorku.toml — Lengkap

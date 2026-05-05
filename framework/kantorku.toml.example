@@ -1,0 +1,171 @@
+# =====================================================
+# KANTORKU.TOML — EXAMPLE CONFIGURATION
+# Copy this file: cp kantorku.toml.example kantorku.toml
+# Then fill in your API keys and adjust models.
+#
+# Or run: kantorku init
+# =====================================================
+
+[office]
+conductor_model = "ollama/llama3"
+# CEO/Manager — Decision-making + orchestration only
+# Default: Ollama (free, local). For better results use:
+#   conductor_model = "anthropic/claude-opus-4-6"
+
+# ─────────────────────────────────────
+# TRANSLATION LAYER — cheap & fast
+# ─────────────────────────────────────
+
+[workers.intake]
+category = "translation"
+subcategory = "input"
+model = "ollama/llama3"
+# Parsing only — no frontier model needed
+
+[workers.narrator]
+category = "translation"
+subcategory = "output"
+model = "ollama/llama3"
+# Format output only — no frontier model needed
+
+# ─────────────────────────────────────
+# CODING — 3 SPECIALIZATIONS
+# ─────────────────────────────────────
+
+[workers.coder_frontend]
+category = "coding"
+subcategory = "frontend"
+model = "ollama/llama3"
+squad = "coding"
+role = "Frontend specialist"
+# For better results: "anthropic/claude-sonnet-4-6"
+
+[workers.coder_backend]
+category = "coding"
+subcategory = "backend"
+model = "ollama/llama3"
+squad = "coding"
+role = "Python/Rust/Systems specialist"
+# For better results: "minimax/minimax-m2-7"
+
+[workers.coder_wiring]
+category = "coding"
+subcategory = "integration"
+model = "ollama/llama3"
+squad = "coding"
+role = "API/Integration specialist"
+# For better results: "google/gemini-3-1-pro"
+
+# ─────────────────────────────────────
+# VERIFICATION — 2 SPECIALIZATIONS
+# ─────────────────────────────────────
+
+[workers.verifier_designer]
+category = "verification"
+subcategory = "visual"
+model = "ollama/llama3"
+squad = "verification"
+role = "Visual/UX judge"
+# For better results: "google/gemini-3-1-pro"
+
+[workers.verifier_engineer]
+category = "verification"
+subcategory = "engineering"
+model = "ollama/llama3"
+squad = "verification"
+role = "Logic/test/security reviewer"
+# For better results: "minimax/minimax-m2-5"
+
+# ─────────────────────────────────────
+# CONTEXT POOL
+# ─────────────────────────────────────
+
+[pool]
+model = "ollama/llama3"
+instances = 2
+queue_type = "fifo"
+# For better results: "deepseek/deepseek-v3-2"
+
+# ─────────────────────────────────────
+# SUPPORT — 6 SPECIALIZATIONS
+# ─────────────────────────────────────
+
+[workers.debugger]
+category = "support"
+subcategory = "debugging"
+model = "ollama/llama3"
+squad = "support"
+role = "Root cause analysis"
+
+[workers.scout]
+category = "support"
+subcategory = "research"
+model = "ollama/llama3"
+squad = "support"
+role = "Research, real-time search"
+
+[workers.auditor]
+category = "support"
+subcategory = "review"
+model = "ollama/llama3"
+squad = "support"
+role = "Code review, architecture"
+
+[workers.scribe]
+category = "support"
+subcategory = "documentation"
+model = "ollama/llama3"
+squad = "support"
+role = "Documentation"
+
+[workers.summarizer]
+category = "support"
+subcategory = "compression"
+model = "ollama/llama3"
+squad = "support"
+role = "Context compression"
+
+[workers.sentinel]
+category = "support"
+subcategory = "monitoring"
+model = "ollama/llama3"
+squad = "support"
+role = "Error logging"
+
+# ─────────────────────────────────────
+# PROVIDERS — fill in your API keys
+# ─────────────────────────────────────
+
+[providers.ollama]
+base_url = "http://localhost:11434/v1"
+
+# Uncomment and add your keys for cloud providers:
+# [providers.anthropic]
+# api_key = "${ANTHROPIC_API_KEY}"
+#
+# [providers.google]
+# api_key = "${GOOGLE_API_KEY}"
+#
+# [providers.minimax]
+# api_key = "${MINIMAX_API_KEY}"
+#
+# [providers.deepseek]
+# api_key = "${DEEPSEEK_API_KEY}"
+
+# ─────────────────────────────────────
+# MEMORY — Three-Ring System
+# ─────────────────────────────────────
+
+[memory]
+ring1_path = "data/ring1.duckdb"
+ring2_path = "data/ring2.db"
+ring3_enabled = false
+ring3_path = "data/ring3"
+
+# ─────────────────────────────────────
+# SERVER
+# ─────────────────────────────────────
+
+[server]
+host = "0.0.0.0"
+port = 8000

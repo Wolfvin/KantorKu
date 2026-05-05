@@ -279,7 +279,7 @@ story.append(body('Kantorku dikonfigurasi melalui file kantorku.toml yang mendef
 story.append(h2('3.1 Membuat File Konfigurasi'))
 story.append(body('Buat file kantorku.toml di root directory proyek Anda. Anda bisa menyalin template dari repository kantorku atau membuat dari nol. File ini menggunakan format TOML yang mudah dibaca manusia dan didukung luas oleh editor kode modern.'))
 
-story.append(code('cp kantorku.toml.example kantorku.toml\n# atau buat manual:'))
+story.append(code('# Opsi 1: Generate otomatis (direkomendasikan)\nkantorku init\n\n# Opsi 2: Copy dari example\ncp kantorku.toml.example kantorku.toml\n\n# Opsi 3: Buat manual'))
 
 story.append(h2('3.2 Struktur Konfigurasi Lengkap'))
 story.append(body('Berikut adalah struktur lengkap file kantorku.toml dengan penjelasan setiap section. Setiap section mengontrol aspek berbeda dari operasi kantorku, mulai dari model Conductor hingga pengaturan server.'))

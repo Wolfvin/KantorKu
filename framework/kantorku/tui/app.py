@@ -1886,7 +1886,7 @@ class KantorKuTUI(App):
     }}
 
     /* ── Focus ring ── */
-    :focus {{
+    Widget:focus {{
         border: tall {glow} 60%;
     }}
 
