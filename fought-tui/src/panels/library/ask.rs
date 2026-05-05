@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::library_state::{entry_type_icon, LibraryState};
+use crate::state::library_state::LibraryState;
 use crate::ui::components::spinner_char;
 use crate::ui::theme::Theme;
 

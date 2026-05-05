@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::kantor_state::KantorState;
+use crate::state::kantor_state::{ContractState, KantorState};
 use crate::ui::theme::Theme;
 
 /// Render the Manager Chat panel (right column in Kantor mode)
@@ -40,10 +40,11 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
 
     // Render messages — show most recent N that fit
     let visible_count = chunks[0].height as usize;
-    let start = state.manager_messages.len().saturating_sub(visible_count);
-    let messages = &state.manager_messages[start..];
+    let messages: Vec<_> = state.manager_messages.iter().collect();
+    let start = messages.len().saturating_sub(visible_count);
+    let visible = &messages[start..];
 
-    let items: Vec<ListItem> = messages.iter().map(|msg| {
+    let items: Vec<ListItem> = visible.iter().map(|msg| {
         let (role_style, role_label) = match msg.role.as_str() {
             "user" => (Style::default().fg(theme.accent), "You".to_string()),
             "manager" => (Style::default().fg(theme.primary), "Manager".to_string()),
@@ -58,7 +59,6 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
             msg.content.clone()
         };
 
-        // Wrap long messages into multiple visual lines
         let label = format!("{:<10} ", role_label);
         Line::from(vec![
             Span::styled(label, role_style.add_modifier(Modifier::BOLD)),
@@ -69,10 +69,10 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
     let list = List::new(items);
     f.render_widget(list, chunks[0]);
 
-    // Hints
-    let hints = match state.contract_state.as_str() {
-        "contract_presented" => "Ctrl+A: Accept  Ctrl+R: Revise  Ctrl+I: Disrupt",
-        "working" => "Ctrl+I: Disrupt  Ctrl+M: Multi-line",
+    // Hints — using ContractState enum
+    let hints = match state.contract_state {
+        ContractState::ContractPresented => "Ctrl+A: Accept  Ctrl+R: Revise  Ctrl+I: Disrupt",
+        ContractState::Working => "Ctrl+I: Disrupt  Ctrl+M: Multi-line",
         _ => "Enter: Send  Ctrl+M: Multi-line  Ctrl+L: Clear",
     };
     f.render_widget(

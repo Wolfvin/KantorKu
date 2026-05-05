@@ -130,17 +130,18 @@ pub fn task_state_icon(state: &str) -> &'static str {
     }
 }
 
-/// Phase label for WorkersLive (matching Python WORKERS_PHASE_STYLES)
+/// Phase label for WorkersLive — returns (label_text, label_color_name)
+/// Used for rendering phase indicators in the workers panel.
 pub fn phase_label(contract_state: &str) -> (&'static str, &'static str) {
     match contract_state {
-        "idle" => ("dim", "○ IDLE"),
-        "manager_thinking" | "clarifying" | "contract_presented" | "awaiting_revision" => ("yellow bold", "◐ NEGOTIATING"),
-        "team_review" | "todo_review" => ("magenta bold", "┼ BRIEFING"),
-        "working" | "accepted" => ("green bold", "⚡ EXECUTING"),
-        "verifying" => ("blue bold", "◇ VERIFYING"),
-        "done" => ("green", "✓ COMPLETE"),
-        "failed" => ("red bold", "✗ FAILED"),
-        _ => ("dim", "○ IDLE"),
+        "idle" => ("○ IDLE", "dim"),
+        "manager_thinking" | "clarifying" | "contract_presented" | "awaiting_revision" => ("◐ NEGOTIATING", "yellow"),
+        "team_review" | "todo_review" => ("┼ BRIEFING", "secondary"),
+        "working" | "accepted" => ("⚡ EXECUTING", "green"),
+        "verifying" => ("◇ VERIFYING", "blue"),
+        "done" => ("✓ COMPLETE", "green"),
+        "failed" => ("✗ FAILED", "red"),
+        _ => ("○ IDLE", "dim"),
     }
 }
 

@@ -6,15 +6,16 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::kantor_state::KantorState;
+use crate::state::kantor_state::{ContractState, KantorState};
 use crate::ui::components::{contract_state_color, render_progress};
 use crate::ui::theme::Theme;
 
 /// Render the Contract panel (left column in Kantor mode)
 pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
-    let state_color = contract_state_color(&state.contract_state, theme);
+    let state_str = state.contract_state.as_str();
+    let state_color = contract_state_color(state_str, theme);
     let block = Block::default()
-        .title(format!(" CONTRACT [{}] ", state.contract_state.to_uppercase()))
+        .title(format!(" CONTRACT [{}] ", state_str.to_uppercase()))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(state_color));
 
@@ -85,10 +86,10 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
     let list = List::new(items);
     f.render_widget(list, chunks[3]);
 
-    // Action hints
-    let hints = match state.contract_state.as_str() {
-        "contract_presented" => "Ctrl+A: Accept  Ctrl+R: Revise  Ctrl+I: Disrupt",
-        "working" => "Ctrl+I: Disrupt",
+    // Action hints — using ContractState enum
+    let hints = match state.contract_state {
+        ContractState::ContractPresented => "Ctrl+A: Accept  Ctrl+R: Revise  Ctrl+I: Disrupt",
+        ContractState::Working => "Ctrl+I: Disrupt",
         _ => "",
     };
     if !hints.is_empty() {

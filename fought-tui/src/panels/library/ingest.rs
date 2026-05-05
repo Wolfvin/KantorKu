@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::library_state::{IngestStep, LibraryState};
+use crate::state::library_state::{IngestField, IngestStep, LibraryState};
 use crate::ui::components::spinner_char;
 use crate::ui::theme::Theme;
 
@@ -33,7 +33,7 @@ fn render_input_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Th
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2),   // Instructions
-            Constraint::Length(2),   // Title
+            Constraint::Length(2),   // Title field
             Constraint::Length(1),   // Separator
             Constraint::Min(0),      // Content preview
             Constraint::Length(2),   // Status + hints
@@ -47,11 +47,15 @@ fn render_input_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Th
         chunks[0],
     );
 
-    // Title field
+    // Title field — show cursor indicator if active
+    let title_active = state.ingest_field_active == IngestField::Title;
+    let title_cursor = if title_active && state.ingest_title.is_empty() { "█" } else { "" };
     let title_display = if state.ingest_title.is_empty() {
-        Paragraph::new("Title: (type to set)").style(Style::default().fg(theme.dim))
+        Paragraph::new(format!("Title: {}(type to set)", title_cursor))
+            .style(if title_active { Style::default().fg(theme.accent) } else { Style::default().fg(theme.dim) })
     } else {
-        Paragraph::new(format!("Title: {}", state.ingest_title))
+        let cursor = if title_active { "█" } else { "" };
+        Paragraph::new(format!("Title: {}{}", state.ingest_title, cursor))
             .style(Style::default().fg(theme.accent).add_modifier(Modifier::BOLD))
     };
     f.render_widget(title_display, chunks[1]);
@@ -63,12 +67,15 @@ fn render_input_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Th
         chunks[2],
     );
 
-    // Content preview
+    // Content preview — show cursor indicator if active
+    let content_active = state.ingest_field_active == IngestField::Content;
     let content_display = if state.ingest_content.is_empty() {
-        Paragraph::new("Content: Start typing below...")
-            .style(Style::default().fg(theme.dim))
+        let cursor = if content_active { "█" } else { "" };
+        Paragraph::new(format!("Content: {}Start typing below...", cursor))
+            .style(if content_active { Style::default().fg(theme.fg) } else { Style::default().fg(theme.dim) })
     } else {
-        Paragraph::new(format!("Content (Markdown):\n{}", state.ingest_content))
+        let cursor = if content_active { "█" } else { "" };
+        Paragraph::new(format!("Content (Markdown):\n{}{}", state.ingest_content, cursor))
             .style(Style::default().fg(theme.fg))
             .wrap(Wrap { trim: false })
     };
@@ -77,9 +84,12 @@ fn render_input_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Th
     // Hints
     let char_count = state.ingest_content.len();
     let can_submit = !state.ingest_title.is_empty() && !state.ingest_content.is_empty();
-    let submit_hint = if can_submit { "Enter: Submit" } else { "Fill title and content first" };
+    let field_hint = match state.ingest_field_active {
+        IngestField::Title => "Tab: Switch to Content",
+        IngestField::Content => if can_submit { "Tab: Switch to Title  Enter: Submit" } else { "Tab: Switch to Title" },
+    };
     f.render_widget(
-        Paragraph::new(format!("{} chars | {} | Esc: Cancel", char_count, submit_hint))
+        Paragraph::new(format!("{} chars | {} | Esc: Cancel", char_count, field_hint))
             .style(Style::default().fg(theme.dim)),
         chunks[4],
     );

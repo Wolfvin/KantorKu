@@ -1,7 +1,5 @@
 //! Keyboard shortcuts reference and NL action parsing
 
-use crossterm::event::KeyCode;
-
 /// Destructive commands requiring confirmation (matching Python)
 pub const DESTRUCTIVE_COMMANDS: &[&str] = &["fire", "reset", "queue-purge"];
 
@@ -21,10 +19,10 @@ pub const REVISE_WORDS: &[&str] = &[
     "please update", "but",
 ];
 
-/// Interrupt patterns for NL action parsing
+/// Interrupt patterns for NL action parsing — use word-boundary matching to avoid false positives
 pub const INTERRUPT_WORDS: &[&str] = &[
     "stop", "halt", "pause", "wait", "hold on", "hold up", "interrupt",
-    "disrupt", "break", "cancel",
+    "disrupt", "cancel",
 ];
 
 /// Parse natural language input to determine user intent.
@@ -33,21 +31,25 @@ pub fn parse_nl_action(input: &str) -> Option<&'static str> {
     let lower = input.to_lowercase();
     let trimmed = lower.trim();
 
-    // Check interrupt first (highest priority)
+    // Check interrupt first (highest priority) — exact word or starts/ends with word + space
     for word in INTERRUPT_WORDS {
-        if trimmed.contains(word) {
+        if trimmed == *word
+            || trimmed.starts_with(&format!("{word} "))
+            || trimmed.ends_with(&format!(" {word}"))
+            || trimmed.contains(&format!(" {word} "))
+        {
             return Some("interrupt");
         }
     }
 
-    // Check accept
+    // Check accept — precise matching to avoid false positives (e.g., "look" matching "ok")
     for word in ACCEPT_WORDS {
         if trimmed == *word || trimmed.starts_with(&format!("{word} ")) || trimmed.ends_with(&format!(" {word}")) {
             return Some("accept");
         }
     }
 
-    // Check revise
+    // Check revise — broader matching since revise intent is the fallback
     for word in REVISE_WORDS {
         if trimmed.contains(word) {
             return Some("revise");
@@ -83,5 +85,42 @@ pub mod filter_categories {
             _ => return true,
         };
         list.contains(&event_type)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_accept_words() {
+        assert_eq!(parse_nl_action("ok"), Some("accept"));
+        assert_eq!(parse_nl_action("yes"), Some("accept"));
+        assert_eq!(parse_nl_action("accept"), Some("accept"));
+        assert_eq!(parse_nl_action("sounds good"), Some("accept"));
+        assert_eq!(parse_nl_action("go ahead"), Some("accept"));
+    }
+
+    #[test]
+    fn test_revise_words() {
+        assert_eq!(parse_nl_action("no"), Some("revise"));
+        assert_eq!(parse_nl_action("revise it"), Some("revise"));
+        assert_eq!(parse_nl_action("change the plan"), Some("revise"));
+    }
+
+    #[test]
+    fn test_interrupt_words() {
+        assert_eq!(parse_nl_action("stop"), Some("interrupt"));
+        assert_eq!(parse_nl_action("halt"), Some("interrupt"));
+        assert_eq!(parse_nl_action("please stop"), Some("interrupt"));
+        assert_eq!(parse_nl_action("wait"), Some("interrupt"));
+    }
+
+    #[test]
+    fn test_no_false_positives() {
+        // "look" should NOT match "ok" anymore
+        assert_eq!(parse_nl_action("look at this"), None);
+        // "broke" should not match interrupt
+        assert_eq!(parse_nl_action("broke"), None);
     }
 }

@@ -1,5 +1,5 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs},
@@ -15,7 +15,7 @@ pub fn render(f: &mut Frame, state: &AppState, theme: &Theme, current_theme_inde
     f.render_widget(Clear, area);
 
     let block = Block::default()
-        .title(" ⚙ Fought Settings ")
+        .title(" Fought Settings ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.accent))
         .style(Style::default().bg(theme.bg));
@@ -25,7 +25,7 @@ pub fn render(f: &mut Frame, state: &AppState, theme: &Theme, current_theme_inde
 
     // Tab bar
     let tabs = SettingsTab::all();
-    let tab_labels: Vec<Line> = tabs.iter().enumerate().map(|(_i, tab)| {
+    let tab_labels: Vec<Line> = tabs.iter().map(|tab| {
         let style = if *tab == state.settings_tab {
             Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
         } else {
@@ -48,7 +48,7 @@ pub fn render(f: &mut Frame, state: &AppState, theme: &Theme, current_theme_inde
     match state.settings_tab {
         SettingsTab::Workers => render_workers_tab(f, content_area, state, theme),
         SettingsTab::Theme => render_theme_tab(f, content_area, state, theme, current_theme_index),
-        SettingsTab::Keybindings => render_keybindings_tab(f, content_area, state, theme),
+        SettingsTab::Keybindings => render_keybindings_tab(f, content_area, theme),
     }
 
     // Bottom hint
@@ -79,16 +79,17 @@ fn render_workers_tab(f: &mut Frame, area: Rect, state: &AppState, theme: &Theme
         ListItem::new(format!("  {}   [{}]", worker_id, squad)).style(style)
     }).collect();
 
+    let count = state.kantor_state.workers_list.len();
     let list = List::new(items)
-        .block(Block::default().title("Workers (13)").borders(Borders::NONE));
+        .block(Block::default().title(format!("Workers ({count})")).borders(Borders::NONE));
     f.render_widget(list, area);
 }
 
-fn render_theme_tab(f: &mut Frame, area: Rect, _state: &AppState, theme: &Theme, current_theme_index: usize) {
+fn render_theme_tab(f: &mut Frame, area: Rect, state: &AppState, theme: &Theme, current_theme_index: usize) {
     let themes = Theme::all();
     let items: Vec<ListItem> = themes.iter().enumerate().map(|(i, t)| {
         let is_current = i == current_theme_index;
-        let is_selected = i == _state.settings_selection;
+        let is_selected = i == state.settings_selection;
         let marker = if is_current { " ● " } else { "   " };
         let style = if is_selected {
             Style::default().fg(theme.bg).bg(theme.accent)
@@ -105,7 +106,7 @@ fn render_theme_tab(f: &mut Frame, area: Rect, _state: &AppState, theme: &Theme,
     f.render_widget(list, area);
 }
 
-fn render_keybindings_tab(f: &mut Frame, area: Rect, _state: &AppState, theme: &Theme) {
+fn render_keybindings_tab(f: &mut Frame, area: Rect, theme: &Theme) {
     let bindings = vec![
         ("Tab", "Switch mode (Kantor ↔ Library)"),
         ("Ctrl+K", "Switch to Kantor"),

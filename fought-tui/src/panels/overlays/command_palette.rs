@@ -25,7 +25,7 @@ pub fn render(f: &mut Frame, state: &AppState, theme: &Theme) {
 
     // Search query at top
     let query_area = Rect { height: 1, y: inner.y, ..inner };
-    let query_line = Line::from(format!("> {}", state.command_palette_query));
+    let query_line = Line::from(format!("> {}█", state.command_palette_query));
     f.render_widget(
         Paragraph::new(query_line).style(Style::default().fg(theme.fg)),
         query_area,

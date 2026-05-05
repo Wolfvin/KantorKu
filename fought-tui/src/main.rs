@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports)]
-
 mod app;
 mod modes;
 mod panels;
@@ -19,7 +17,47 @@ use tokio::sync::mpsc;
 
 use app::{App, AppEvent};
 
+/// Guard that restores the terminal on drop — even if the app panics.
+struct RawModeGuard;
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let mut stdout = io::stdout();
+        let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
+        let _ = Terminal::new(CrosstermBackend::new(stdout)).map(|mut t| t.show_cursor());
+    }
+}
+
+/// CLI arguments
+#[derive(clap::Parser, Debug)]
+#[command(name = "fought-tui", version, about = "Fought — Agentic Engineering Platform TUI")]
+struct Args {
+    /// HTTP base URL for the Python backend
+    #[arg(long, default_value = "http://localhost:8765", env = "FOUGHT_HTTP_URL")]
+    http_url: String,
+
+    /// WebSocket URL for the event stream
+    #[arg(long, default_value = "ws://localhost:8765/ws/office", env = "FOUGHT_WS_URL")]
+    ws_url: String,
+
+    /// Theme name to use
+    #[arg(long, default_value = "synthwave")]
+    theme: String,
+
+    /// Disable mouse support
+    #[arg(long)]
+    no_mouse: bool,
+
+    /// Target FPS
+    #[arg(long, default_value_t = 60)]
+    fps: u64,
+}
+
 fn main() -> anyhow::Result<()> {
+    // Parse CLI args
+    let args = <Args as clap::Parser>::parse();
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_target(false)
@@ -27,15 +65,35 @@ fn main() -> anyhow::Result<()> {
         .with_writer(std::io::stderr) // Don't pollute stdout (used by TUI)
         .init();
 
-    // Load config
-    let config = state::config::AppConfig::load_or_default();
+    // Load config (CLI args override config file)
+    let mut config = state::config::AppConfig::load_or_default();
+    if args.http_url != "http://localhost:8765" || std::env::var("FOUGHT_HTTP_URL").is_ok() {
+        config.backend.http_url = args.http_url;
+    }
+    if args.ws_url != "ws://localhost:8765/ws/office" || std::env::var("FOUGHT_WS_URL").is_ok() {
+        config.backend.ws_url = args.ws_url;
+    }
+    if args.theme != "synthwave" {
+        config.ui.default_theme = args.theme;
+    }
+    if args.no_mouse {
+        config.ui.mouse_enabled = false;
+    }
+    config.ui.fps = args.fps;
 
-    // Setup terminal
+    // Setup terminal — with panic guard
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    if config.ui.mouse_enabled {
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    } else {
+        execute!(stdout, EnterAlternateScreen)?;
+    }
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+
+    // Install the panic guard AFTER terminal setup
+    let _guard = RawModeGuard;
 
     // Create channels
     let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -63,20 +121,20 @@ fn main() -> anyhow::Result<()> {
     });
 
     // Create app
-    let backend_client = transport::http::BackendClient::new(&config.backend.http_url);
-    let mut app = App::new(config, backend_client, event_rx, action_rx, action_tx.clone());
+    let backend_client = transport::http::BackendClient::new(
+        &config.backend.http_url,
+        config.backend.http_timeout_secs,
+    );
+    let mut app = App::new(config, backend_client, event_rx, action_rx, action_tx.clone(), event_tx);
 
     // Run app
     let result = app.run(&mut terminal);
 
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+    // Save config on quit
+    if let Err(e) = app.config.save() {
+        tracing::warn!("Failed to save config on quit: {e}");
+    }
 
+    // Guard will restore terminal on drop, but we also do it explicitly for the Ok path
     result
 }

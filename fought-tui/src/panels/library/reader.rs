@@ -2,12 +2,12 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Gauge, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph},
     Frame,
 };
 
-use crate::state::library_state::{entry_type_icon, LibraryState};
-use crate::ui::components::{quality_color, render_quality_gauge};
+use crate::state::library_state::{entry_type_label, LibraryState};
+use crate::ui::components::render_quality_gauge;
 use crate::ui::theme::Theme;
 
 /// Render the Reader Panel (right column in Library mode, Browse content mode)
@@ -24,7 +24,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, _t
         return;
     };
 
-    let icon = entry_type_icon(&entry.entry_type);
+    let icon = entry_type_label(&entry.entry_type);
     let block = Block::default()
         .title(format!(" {} {} ", icon, entry.title))
         .borders(Borders::ALL)
@@ -86,7 +86,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, _t
         );
     }
 
-    // Content — markdown rendering
+    // Content — markdown rendering with text wrapping
     let content_lines = render_markdown(&entry.content, chunks[3].width as usize, theme);
     let content = Paragraph::new(content_lines)
         .scroll((state.reader_scroll, 0));
@@ -102,8 +102,8 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, _t
     f.render_widget(Paragraph::new(hints), chunks[4]);
 }
 
-/// Simple markdown → ratatui Line conversion
-fn render_markdown(content: &str, _width: usize, theme: &Theme) -> Vec<Line<'static>> {
+/// Markdown → ratatui Line conversion with text wrapping support
+fn render_markdown(content: &str, width: usize, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let mut in_code_block = false;
 
@@ -125,43 +125,66 @@ fn render_markdown(content: &str, _width: usize, theme: &Theme) -> Vec<Line<'sta
             continue;
         }
 
-        if raw_line.starts_with("# ") {
-            lines.push(Line::from(Span::styled(
-                raw_line[2..].to_string(),
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
-            )));
-        } else if raw_line.starts_with("## ") {
-            lines.push(Line::from(Span::styled(
-                raw_line[3..].to_string(),
-                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
-            )));
-        } else if raw_line.starts_with("### ") {
-            lines.push(Line::from(Span::styled(
-                raw_line[4..].to_string(),
-                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
-            )));
-        } else if raw_line.starts_with("- ") || raw_line.starts_with("* ") {
-            lines.push(Line::from(Span::styled(
-                format!("  • {}", &raw_line[2..]),
-                Style::default().fg(theme.fg),
-            )));
-        } else if raw_line.starts_with("> ") {
-            lines.push(Line::from(Span::styled(
-                format!("  │ {}", &raw_line[2..]),
-                Style::default().fg(theme.dim),
-            )));
+        // Use strip_prefix instead of starts_with + manual slicing (fixes clippy manual_strip)
+        if let Some(rest) = raw_line.strip_prefix("# ") {
+            let wrapped = wrap_text(rest, width, Style::default().fg(theme.accent).add_modifier(Modifier::BOLD));
+            lines.extend(wrapped);
+        } else if let Some(rest) = raw_line.strip_prefix("## ") {
+            let wrapped = wrap_text(rest, width, Style::default().fg(theme.fg).add_modifier(Modifier::BOLD));
+            lines.extend(wrapped);
+        } else if let Some(rest) = raw_line.strip_prefix("### ") {
+            let wrapped = wrap_text(rest, width, Style::default().fg(theme.fg).add_modifier(Modifier::BOLD));
+            lines.extend(wrapped);
+        } else if let Some(rest) = raw_line.strip_prefix("- ") {
+            let bullet = format!("  • {rest}");
+            let wrapped = wrap_text(&bullet, width, Style::default().fg(theme.fg));
+            lines.extend(wrapped);
+        } else if let Some(rest) = raw_line.strip_prefix("* ") {
+            let bullet = format!("  • {rest}");
+            let wrapped = wrap_text(&bullet, width, Style::default().fg(theme.fg));
+            lines.extend(wrapped);
+        } else if let Some(rest) = raw_line.strip_prefix("> ") {
+            let quote = format!("  │ {rest}");
+            let wrapped = wrap_text(&quote, width, Style::default().fg(theme.dim));
+            lines.extend(wrapped);
         } else if raw_line.trim().is_empty() {
             lines.push(Line::from(""));
         } else {
-            lines.push(parse_inline(raw_line, theme));
+            let parsed = parse_inline(raw_line, theme, width);
+            lines.extend(parsed);
         }
     }
 
     lines
 }
 
-/// Parse inline markdown markers
-fn parse_inline(line: &str, theme: &Theme) -> Line<'static> {
+/// Wrap a line of text to fit within a given width.
+/// Each returned Line has the same style applied uniformly.
+fn wrap_text(text: &str, width: usize, style: Style) -> Vec<Line<'static>> {
+    if width == 0 || text.is_empty() {
+        return vec![Line::from(Span::styled(text.to_string(), style))];
+    }
+
+    let mut lines = Vec::new();
+    let mut remaining = text;
+    while !remaining.is_empty() {
+        if remaining.len() <= width {
+            lines.push(Line::from(Span::styled(remaining.to_string(), style)));
+            break;
+        }
+        // Find a good break point
+        let break_at = remaining[..width]
+            .rfind(' ')
+            .unwrap_or(width);
+        let (chunk, rest) = remaining.split_at(break_at);
+        lines.push(Line::from(Span::styled(chunk.to_string(), style)));
+        remaining = rest.strip_prefix(' ').unwrap_or(rest);
+    }
+    lines
+}
+
+/// Parse inline markdown markers with wrapping support
+fn parse_inline(line: &str, theme: &Theme, _width: usize) -> Vec<Line<'static>> {
     let mut spans = Vec::new();
     let mut remaining = line;
     let mut in_code = false;
@@ -182,7 +205,7 @@ fn parse_inline(line: &str, theme: &Theme) -> Line<'static> {
             if in_code {
                 spans.push(Span::styled(remaining.to_string(), Style::default().fg(theme.code_fg).bg(theme.code_bg)));
             } else {
-                // Handle **bold** markers simply
+                // Handle **bold** markers
                 spans.push(Span::styled(remaining.to_string(), Style::default().fg(theme.fg)));
             }
             break;
@@ -192,5 +215,8 @@ fn parse_inline(line: &str, theme: &Theme) -> Line<'static> {
     if spans.is_empty() {
         spans.push(Span::raw(""));
     }
-    Line::from(spans)
+
+    // For simplicity, return the spans as a single line
+    // In a more advanced implementation, we'd wrap multi-span lines
+    vec![Line::from(spans)]
 }

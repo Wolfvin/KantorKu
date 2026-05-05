@@ -24,6 +24,7 @@ pub enum Action {
     OpenEntry { entry_id: String },
     MarkHelpful { entry_id: String },
     MarkUnhelpful { entry_id: String },
+    LibrarySearch { query: String },
     // App actions
     CycleTheme,
     SaveConfig,
@@ -31,10 +32,11 @@ pub enum Action {
 }
 
 /// Events coming into the app from various sources.
+/// Box<BackendEvent> to avoid large enum variant penalty (648B vs 24B).
 #[derive(Debug)]
 pub enum AppEvent {
     Crossterm(CrosstermEvent),
-    Backend(BackendEvent),
+    Backend(Box<BackendEvent>),
 }
 
 pub struct App {
@@ -46,6 +48,7 @@ pub struct App {
     pub event_rx: mpsc::UnboundedReceiver<AppEvent>,
     pub action_rx: mpsc::UnboundedReceiver<Action>,
     pub action_tx: mpsc::UnboundedSender<Action>,
+    pub event_tx: mpsc::UnboundedSender<AppEvent>,
     pub backend: BackendClient,
     pub tick: u64,
     pub config: AppConfig,
@@ -58,6 +61,7 @@ impl App {
         event_rx: mpsc::UnboundedReceiver<AppEvent>,
         action_rx: mpsc::UnboundedReceiver<Action>,
         action_tx: mpsc::UnboundedSender<Action>,
+        event_tx: mpsc::UnboundedSender<AppEvent>,
     ) -> Self {
         let theme_index = config.ui.default_theme_index();
         let theme = Theme::all()[theme_index].clone();
@@ -70,6 +74,7 @@ impl App {
             event_rx,
             action_rx,
             action_tx,
+            event_tx,
             backend,
             tick: 0,
             config,
@@ -77,30 +82,27 @@ impl App {
     }
 
     pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> anyhow::Result<()> {
+        let frame_duration = std::time::Duration::from_millis(1000 / self.config.ui.fps.max(1));
+
         while !self.should_quit {
             // Drain events
             while let Ok(event) = self.event_rx.try_recv() {
                 match event {
                     AppEvent::Crossterm(ev) => self.handle_crossterm_event(ev),
-                    AppEvent::Backend(ev) => self.state.handle_backend_event(ev),
+                    AppEvent::Backend(ev) => self.state.handle_backend_event(*ev),
                 }
             }
 
-            // Drain actions
+            // Drain actions — execute synchronously so results update state immediately
             while let Ok(action) = self.action_rx.try_recv() {
-                // Actions are fire-and-forget; we spawn them to not block the render loop
-                let backend = self.backend.clone();
-                let atx = self.action_tx.clone();
-                tokio::spawn(async move {
-                    Self::execute_action(action, &backend, &atx).await;
-                });
+                self.execute_action(action);
             }
 
             // Render
             terminal.draw(|f| self.render(f))?;
 
-            // ~60 fps target
-            std::thread::sleep(std::time::Duration::from_millis(16));
+            // Tick at target FPS
+            std::thread::sleep(frame_duration);
             self.tick = self.tick.wrapping_add(1);
         }
 
@@ -137,7 +139,7 @@ impl App {
                 self.state.library_state.input_focused = true;
                 return;
             }
-            KeyCode::Tab => {
+            KeyCode::Tab if !self.state.settings_open && !self.state.command_palette_open => {
                 self.mode = match self.mode {
                     Mode::Kantor => Mode::Library,
                     Mode::Library => Mode::Kantor,
@@ -149,7 +151,7 @@ impl App {
                 return;
             }
             KeyCode::Char('T') if key.modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT) => {
-                let _ = self.action_tx.send(Action::CycleTheme);
+                self.cycle_theme();
                 return;
             }
             KeyCode::Char(',') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -159,6 +161,8 @@ impl App {
             KeyCode::Esc => {
                 if self.state.command_palette_open {
                     self.state.command_palette_open = false;
+                    self.state.command_palette_query.clear();
+                    self.state.command_palette_selection = 0;
                     return;
                 }
                 if self.state.settings_open {
@@ -202,8 +206,20 @@ impl App {
                     Mode::Library => self.state.library_state.scroll_down(),
                 }
             }
+            MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                // Click handling — toggle focus based on column position
+                let _ = mouse; // Could be used for column hit-testing in the future
+            }
             _ => {}
         }
+    }
+
+    /// Cycle to the next theme — updates both theme and theme_index
+    fn cycle_theme(&mut self) {
+        let themes = Theme::all();
+        self.theme_index = (self.theme_index + 1) % themes.len();
+        self.theme = themes[self.theme_index].clone();
+        self.config.ui.default_theme = self.theme.name.to_string();
     }
 
     fn handle_command_palette_key(&mut self, key: KeyEvent) {
@@ -254,6 +270,7 @@ impl App {
             }
             KeyCode::Tab => {
                 self.state.settings_tab = self.state.settings_tab.next();
+                self.state.settings_selection = 0;
             }
             KeyCode::Up => {
                 if self.state.settings_selection > 0 {
@@ -276,6 +293,7 @@ impl App {
                     if self.state.settings_selection < themes.len() {
                         self.theme = themes[self.state.settings_selection].clone();
                         self.theme_index = self.state.settings_selection;
+                        self.config.ui.default_theme = self.theme.name.to_string();
                     }
                 }
             }
@@ -287,9 +305,7 @@ impl App {
         match action.as_str() {
             "switch_kantor" => self.mode = Mode::Kantor,
             "switch_library" => self.mode = Mode::Library,
-            "toggle_theme" => {
-                let _ = self.action_tx.send(Action::CycleTheme);
-            }
+            "toggle_theme" => self.cycle_theme(),
             "open_settings" => self.state.settings_open = true,
             "clear_chat" => self.state.kantor_state.manager_messages.clear(),
             "focus_mode" => self.state.kantor_state.focus_mode = !self.state.kantor_state.focus_mode,
@@ -301,64 +317,128 @@ impl App {
         }
     }
 
-    async fn execute_action(action: Action, backend: &BackendClient, _atx: &mpsc::UnboundedSender<Action>) {
+    /// Execute an action synchronously — backend calls are spawned but results
+    /// feed back through the event_tx channel so the main loop can apply them to state.
+    fn execute_action(&mut self, action: Action) {
         match action {
             Action::SendMessage { session_id, content } => {
-                if let Err(e) = backend.send_message(&session_id, &content).await {
-                    tracing::error!("Failed to send message: {e}");
-                }
+                let backend = self.backend.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = backend.send_message(&session_id, &content).await {
+                        tracing::error!("Failed to send message: {e}");
+                    }
+                });
             }
             Action::AcceptContract { session_id } => {
-                if let Err(e) = backend.accept_contract(&session_id).await {
-                    tracing::error!("Failed to accept contract: {e}");
-                }
+                let backend = self.backend.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = backend.accept_contract(&session_id).await {
+                        tracing::error!("Failed to accept contract: {e}");
+                    }
+                });
             }
             Action::ReviseContract { session_id, feedback } => {
-                if let Err(e) = backend.revise_contract(&session_id, &feedback).await {
-                    tracing::error!("Failed to revise contract: {e}");
-                }
+                let backend = self.backend.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = backend.revise_contract(&session_id, &feedback).await {
+                        tracing::error!("Failed to revise contract: {e}");
+                    }
+                });
             }
             Action::Interrupt { session_id, reason } => {
-                let msg = format!("[INTERRUPT] {reason}");
-                if let Err(e) = backend.send_message(&session_id, &msg).await {
-                    tracing::error!("Failed to interrupt: {e}");
-                }
+                let backend = self.backend.clone();
+                tokio::spawn(async move {
+                    let msg = format!("[INTERRUPT] {reason}");
+                    if let Err(e) = backend.send_message(&session_id, &msg).await {
+                        tracing::error!("Failed to interrupt: {e}");
+                    }
+                });
             }
             Action::LibraryQuery { query } => {
-                if let Err(e) = backend.ask_archivist(&query).await {
-                    tracing::error!("Failed to query archivist: {e}");
-                }
+                let backend = self.backend.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = backend.ask_archivist(&query).await {
+                        tracing::error!("Failed to query archivist: {e}");
+                    }
+                });
             }
             Action::LibraryIngest { title, content } => {
-                if let Err(e) = backend.ingest_entry(&title, &content).await {
-                    tracing::error!("Failed to ingest entry: {e}");
-                }
+                let backend = self.backend.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = backend.ingest_entry(&title, &content).await {
+                        tracing::error!("Failed to ingest entry: {e}");
+                    }
+                });
             }
             Action::NavigateShelf { path } => {
-                if let Ok(entries) = backend.get_entries(&path).await {
-                    tracing::info!("Loaded {} entries for shelf", entries.len());
-                    let _ = entries; // State updates via BackendEvent
-                }
+                let backend = self.backend.clone();
+                let event_tx = self.event_tx.clone();
+                tokio::spawn(async move {
+                    match backend.get_entries(&path).await {
+                        Ok(entries) => {
+                            tracing::info!("Loaded {} entries for shelf", entries.len());
+                            // Send result back through event channel so main loop updates state
+                            let _ = event_tx.send(AppEvent::Backend(
+                                Box::new(BackendEvent::ShelfEntriesLoaded { path, entries })
+                            ));
+                        }
+                        Err(e) => tracing::error!("Failed to navigate shelf: {e}"),
+                    }
+                });
             }
             Action::OpenEntry { entry_id } => {
-                if let Ok(entry) = backend.get_entry(&entry_id).await {
-                    tracing::info!("Loaded entry: {}", entry.title);
-                    let _ = entry; // State updates via BackendEvent
-                }
+                let backend = self.backend.clone();
+                let event_tx = self.event_tx.clone();
+                tokio::spawn(async move {
+                    match backend.get_entry(&entry_id).await {
+                        Ok(entry) => {
+                            tracing::info!("Loaded entry: {}", entry.title);
+                            let _ = event_tx.send(AppEvent::Backend(
+                                Box::new(BackendEvent::EntryLoaded { entry: Box::new(entry) })
+                            ));
+                        }
+                        Err(e) => tracing::error!("Failed to open entry: {e}"),
+                    }
+                });
             }
             Action::MarkHelpful { entry_id } => {
-                let _ = backend.mark_helpful(&entry_id).await;
+                let backend = self.backend.clone();
+                tokio::spawn(async move {
+                    let _ = backend.mark_helpful(&entry_id).await;
+                });
             }
             Action::MarkUnhelpful { entry_id } => {
-                let _ = backend.mark_unhelpful(&entry_id).await;
+                let backend = self.backend.clone();
+                tokio::spawn(async move {
+                    let _ = backend.mark_unhelpful(&entry_id).await;
+                });
+            }
+            Action::LibrarySearch { query } => {
+                let backend = self.backend.clone();
+                let event_tx = self.event_tx.clone();
+                tokio::spawn(async move {
+                    match backend.search_entries(&query).await {
+                        Ok(results) => {
+                            tracing::info!("Search returned {} results for '{}'", results.len(), query);
+                            let _ = event_tx.send(AppEvent::Backend(
+                                Box::new(BackendEvent::SearchResultsLoaded { query, results })
+                            ));
+                        }
+                        Err(e) => tracing::error!("Search failed: {e}"),
+                    }
+                });
             }
             Action::CycleTheme => {
-                // Handled synchronously in the main loop
+                self.cycle_theme();
             }
             Action::SaveConfig => {
-                // Config is saved on quit
+                if let Err(e) = self.config.save() {
+                    tracing::warn!("Failed to save config: {e}");
+                }
             }
-            Action::Quit => {}
+            Action::Quit => {
+                self.should_quit = true;
+            }
         }
     }
 
@@ -367,6 +447,14 @@ impl App {
         match self.mode {
             Mode::Kantor => crate::modes::kantor::render(f, area, &self.state, &self.theme, self.tick),
             Mode::Library => crate::modes::library::render(f, area, &self.state, &self.theme, self.tick),
+        }
+
+        // Overlay: Notification toast
+        if let Some(notif) = &self.state.last_notification {
+            let age = self.tick.saturating_sub(notif.tick);
+            if age < 180 { // Show for ~3 seconds at 60fps
+                crate::panels::overlays::notification::render(f, &notif.message, notif.severity, &self.theme);
+            }
         }
 
         // Overlay: Command palette

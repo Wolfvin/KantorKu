@@ -1,12 +1,10 @@
-use std::collections::VecDeque;
-
-use serde::{Deserialize, Serialize};
-
+use crate::state::kantor_state::ContractState;
 use crate::state::SettingsTab;
 use crate::transport::types::BackendEvent;
 
 /// Global application state
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // State fields accessed by render methods
 pub struct AppState {
     pub kantor_state: crate::state::kantor_state::KantorState,
     pub library_state: crate::state::library_state::LibraryState,
@@ -79,6 +77,7 @@ impl AppState {
             CommandEntry { label: "Ingest Entry".into(), description: "Add new entry to Library".into(), action: "ingest".into(), mode: CommandMode::Library },
             CommandEntry { label: "Ask Archivist".into(), description: "Query the Library".into(), action: "ask".into(), mode: CommandMode::Library },
             CommandEntry { label: "Browse Library".into(), description: "Browse shelves and entries".into(), action: "browse".into(), mode: CommandMode::Library },
+            CommandEntry { label: "Save Config".into(), description: "Save current settings to disk".into(), action: "save_config".into(), mode: CommandMode::Global },
             CommandEntry { label: "Quit".into(), description: "Exit Fought TUI".into(), action: "quit".into(), mode: CommandMode::Global },
         ]
     }
@@ -132,26 +131,26 @@ impl AppState {
             // === Contract lifecycle ===
             BackendEvent::ContractReady { contract, session_id } => {
                 self.kantor_state.pending_contract = Some(contract.clone());
-                self.kantor_state.contract_state = "contract_presented".to_string();
+                self.kantor_state.contract_state = ContractState::ContractPresented;
                 self.session_id = Some(session_id.clone());
             }
             BackendEvent::ContractStateChange { state, session_id } => {
-                self.kantor_state.contract_state = state.clone();
+                self.kantor_state.contract_state = ContractState::from_str_lossy(state);
                 if self.session_id.is_none() {
                     self.session_id = Some(session_id.clone());
                 }
             }
             BackendEvent::ContractAccepted { session_id: _ } => {
-                self.kantor_state.contract_state = "accepted".to_string();
+                self.kantor_state.contract_state = ContractState::Accepted;
             }
             BackendEvent::WorkStarted { session_id } => {
-                self.kantor_state.contract_state = "working".to_string();
+                self.kantor_state.contract_state = ContractState::Working;
                 if self.session_id.is_none() {
                     self.session_id = Some(session_id.clone());
                 }
             }
             BackendEvent::WorkDone { result: _, session_id: _ } => {
-                self.kantor_state.contract_state = "done".to_string();
+                self.kantor_state.contract_state = ContractState::Done;
             }
 
             // === Manager messages ===
@@ -163,7 +162,7 @@ impl AppState {
                 self.kantor_state.push_manager_message("thinking", content);
             }
             BackendEvent::RevisionRequested { feedback, session_id: _ } => {
-                self.kantor_state.contract_state = "awaiting_revision".to_string();
+                self.kantor_state.contract_state = ContractState::AwaitingRevision;
                 self.kantor_state.push_manager_message("manager", &format!("Revision requested: {feedback}"));
             }
 
@@ -258,7 +257,9 @@ impl AppState {
             BackendEvent::WorkerHired { worker_id } => {
                 self.kantor_state.workers_list.push(worker_id.clone());
             }
-            BackendEvent::WorkerFired { worker_id: _ } => {}
+            BackendEvent::WorkerFired { worker_id } => {
+                self.kantor_state.workers_list.retain(|w| w != worker_id);
+            }
             BackendEvent::CheckpointSaved { session_id: _ } => {}
             BackendEvent::CrashRecovered { session_id: _ } => {}
             BackendEvent::SkillUpdated { worker_id, skill: _ } => {
@@ -291,7 +292,7 @@ impl AppState {
                 self.library_state.ingest_step = crate::state::library_state::IngestStep::Analyzing;
             }
             BackendEvent::LibraryIngestDone { entry } => {
-                self.library_state.current_entry = Some(entry.clone());
+                self.library_state.current_entry = Some((**entry).clone());
                 self.library_state.ingest_step = crate::state::library_state::IngestStep::Done;
                 self.library_state.entry_count += 1;
             }
@@ -318,6 +319,18 @@ impl AppState {
                 });
                 self.library_state.archivist_sources = sources.clone();
                 self.library_state.archivist_streaming.clear();
+            }
+
+            // === TUI-specific feedback events (from async actions) ===
+            BackendEvent::ShelfEntriesLoaded { path: _, entries } => {
+                self.library_state.current_entries = entries.clone();
+            }
+            BackendEvent::EntryLoaded { entry } => {
+                self.library_state.current_entry = Some((**entry).clone());
+            }
+            BackendEvent::SearchResultsLoaded { query: _, results } => {
+                self.library_state.search_results = results.clone();
+                self.library_state.search_mode = true;
             }
         }
     }

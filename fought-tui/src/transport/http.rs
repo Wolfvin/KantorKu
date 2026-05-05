@@ -4,12 +4,14 @@ use serde::Deserialize;
 use crate::state::library_state::{LibraryEntry, LibraryEntryBrief, Shelf};
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)] // Fields used for serde deserialization
 pub struct ArchivistResponse {
     pub answer: String,
     pub sources: Vec<crate::state::library_state::SourceRef>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)] // Fields used for serde deserialization
 pub struct SessionBrief {
     pub session_id: String,
     pub state: String,
@@ -18,18 +20,22 @@ pub struct SessionBrief {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // API client methods used at runtime
 pub struct BackendClient {
     client: reqwest::Client,
     base_url: String,
 }
 
 impl BackendClient {
-    pub fn new(base_url: &str) -> Self {
+    pub fn new(base_url: &str, timeout_secs: u64) -> Self {
         Self {
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(timeout_secs))
                 .build()
-                .unwrap_or_default(),
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to build HTTP client with TLS: {e}, using default");
+                    reqwest::Client::new()
+                }),
             base_url: base_url.to_string(),
         }
     }
@@ -128,7 +134,11 @@ impl BackendClient {
     }
 
     pub async fn get_entries(&self, shelf_path: &[String]) -> Result<Vec<LibraryEntryBrief>> {
-        let path = shelf_path.join("/");
+        // URL-encode each segment of the shelf path to handle special characters
+        let path: String = shelf_path.iter()
+            .map(|s| percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string())
+            .collect::<Vec<_>>()
+            .join("/");
         Ok(self.client
             .get(format!("{}/library/shelves/{}/entries", self.base_url, path))
             .send()

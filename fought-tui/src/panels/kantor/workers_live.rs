@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::kantor_state::{KantorState, WorkersTab};
+use crate::state::kantor_state::{ContractState, KantorState, WorkersTab};
 use crate::ui::components::{squad_color, spinner_char};
 use crate::ui::theme::Theme;
 
@@ -24,24 +24,17 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme, tic
         .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Min(0)])
         .split(inner);
 
-    // Phase indicator
-    let phase_text = match state.contract_state.as_str() {
-        "idle" => "○ IDLE",
-        "manager_thinking" | "clarifying" | "contract_presented" | "awaiting_revision" => "◐ NEGOTIATING",
-        "team_review" | "todo_review" => "┼ BRIEFING",
-        "working" | "accepted" => "⚡ EXECUTING",
-        "verifying" => "◇ VERIFYING",
-        "done" => "✓ COMPLETE",
-        "failed" => "✗ FAILED",
-        _ => "○ IDLE",
-    };
-    let phase_color = match state.contract_state.as_str() {
-        "working" | "accepted" => theme.success,
-        "done" => theme.green,
-        "failed" => theme.error,
-        "team_review" | "todo_review" => theme.secondary,
-        "verifying" => theme.info,
-        _ => theme.dim,
+    // Phase indicator — using ContractState enum
+    let (phase_text, phase_color) = match state.contract_state {
+        ContractState::Idle => ("○ IDLE", theme.dim),
+        ContractState::ManagerThinking | ContractState::Clarifying
+        | ContractState::ContractPresented | ContractState::AwaitingRevision => ("◐ NEGOTIATING", theme.yellow),
+        ContractState::TeamReview | ContractState::TodoReview => ("┼ BRIEFING", theme.secondary),
+        ContractState::Working | ContractState::Accepted => ("⚡ EXECUTING", theme.success),
+        ContractState::Verifying => ("◇ VERIFYING", theme.info),
+        ContractState::Done => ("✓ COMPLETE", theme.green),
+        ContractState::Failed => ("✗ FAILED", theme.error),
+        ContractState::ClientFeedback => ("◐ FEEDBACK", theme.info),
     };
     f.render_widget(
         Paragraph::new(format!("  {phase_text}")).style(Style::default().fg(phase_color)),
@@ -80,7 +73,6 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme, tic
 }
 
 fn render_workers_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme, tick: u64) {
-    // Show recent worker events (last N that fit)
     let visible_count = area.height as usize;
     let events: Vec<&crate::state::kantor_state::WorkerEvent> = state
         .worker_events
@@ -98,7 +90,7 @@ fn render_workers_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &Th
             "llm_start" => ("▶", theme.cyan),
             "llm_done" => ("■", theme.dim),
             "llm_chunk" => ("─", theme.dim),
-            "speak_up" => ("💬", theme.fg),
+            "speak_up" => ("◆", theme.fg),
             "circuit_open" => ("⚡", theme.red),
             "circuit_closed" => ("✓", theme.green),
             "rate_limit" => ("⏳", theme.yellow),
@@ -146,7 +138,7 @@ fn render_briefing_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &T
         let (speaker_style, icon) = if msg.speaker == "system" {
             (Style::default().fg(theme.secondary), "┼")
         } else {
-            (Style::default().fg(squad_color(&msg.speaker, theme)), "💬")
+            (Style::default().fg(squad_color(&msg.speaker, theme)), "◆")
         };
 
         let content_preview = if msg.content.len() > 120 {
@@ -173,7 +165,7 @@ fn render_dag_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme)
         return;
     }
 
-    let lines = render_dag_tree(&state.dag_nodes, 0);
+    let lines = render_dag_tree(&state.dag_nodes, 0, theme);
     let items: Vec<ListItem> = lines.into_iter().map(ListItem::new).collect();
     f.render_widget(List::new(items), area);
 }
@@ -196,9 +188,8 @@ fn render_events_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &The
 
     let items: Vec<ListItem> = events.iter().map(|ev| {
         let color = crate::ui::components::severity_color(&ev.severity, theme);
-        let time_str = &ev.timestamp;
         Line::from(vec![
-            Span::styled(format!("{} ", time_str), Style::default().fg(theme.dim)),
+            Span::styled(format!("{} ", ev.timestamp), Style::default().fg(theme.dim)),
             Span::styled(format!("{:<22}", ev.event_type), Style::default().fg(color)),
             Span::styled(&ev.content, Style::default().fg(theme.fg)),
         ])
@@ -207,8 +198,8 @@ fn render_events_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &The
     f.render_widget(List::new(items), area);
 }
 
-/// Render DAG as ASCII tree — proper implementation that Python TUI lacked
-fn render_dag_tree(nodes: &[crate::state::kantor_state::DagNode], depth: usize) -> Vec<Line<'static>> {
+/// Render DAG as ASCII tree with proper ratatui styling (no dead ANSI code)
+fn render_dag_tree(nodes: &[crate::state::kantor_state::DagNode], depth: usize, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     for (i, node) in nodes.iter().enumerate() {
         let is_last = i == nodes.len() - 1;
@@ -220,12 +211,12 @@ fn render_dag_tree(nodes: &[crate::state::kantor_state::DagNode], depth: usize) 
             format!("{indent}{connector}")
         };
 
-        let (icon, color) = match node.status.as_str() {
-            "done" | "completed" => ("✓", "\u{1b}[32m"),  // green
-            "working" | "in_progress" => ("●", "\u{1b}[33m"), // yellow
-            "failed" | "error" => ("✗", "\u{1b}[31m"),  // red
-            "pending" => ("○", "\u{1b}[90m"),           // dim
-            _ => ("·", "\u{1b}[90m"),
+        let (icon, icon_color) = match node.status.as_str() {
+            "done" | "completed" => ("✓", theme.green),
+            "working" | "in_progress" => ("●", theme.yellow),
+            "failed" | "error" => ("✗", theme.red),
+            "pending" => ("○", theme.dim),
+            _ => ("·", theme.dim),
         };
 
         let title = if let Some(task_id) = &node.task_id {
@@ -234,12 +225,14 @@ fn render_dag_tree(nodes: &[crate::state::kantor_state::DagNode], depth: usize) 
             format!("{} ({})", node.title, node.worker_id)
         };
 
-        // Use plain text since we can't embed ANSI in ratatui
-        let _ = color; // suppress unused
-        lines.push(Line::from(format!("{}{} {}", prefix, icon, title)));
+        lines.push(Line::from(vec![
+            Span::styled(prefix, Style::default().fg(theme.dim)),
+            Span::styled(icon.to_string(), Style::default().fg(icon_color)),
+            Span::styled(format!(" {title}"), Style::default().fg(theme.fg)),
+        ]));
 
         if !node.children.is_empty() {
-            let child_lines = render_dag_tree(&node.children, depth + 1);
+            let child_lines = render_dag_tree(&node.children, depth + 1, theme);
             lines.extend(child_lines);
         }
     }

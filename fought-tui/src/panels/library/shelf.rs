@@ -1,15 +1,11 @@
-use std::collections::HashSet;
-
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
-    text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
 
-use crate::state::library_state::{entry_type_icon, LibraryState, ShelfItem};
-use crate::ui::components::spinner_char;
+use crate::state::library_state::{entry_type_label, LibraryState};
 use crate::ui::theme::Theme;
 
 /// Render the Shelf Panel (left column in Library mode) — the "never-ending rak"
@@ -49,8 +45,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, ti
         .iter()
         .skip(state.shelf_scroll)
         .take(visible_count)
-        .enumerate()
-        .map(|(_render_idx, (global_idx, item))| {
+        .map(|(global_idx, item)| {
             let is_selected = *global_idx == state.shelf_selection;
             render_shelf_item(item, is_selected, theme, tick)
         })
@@ -59,7 +54,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, ti
     f.render_widget(List::new(items), list_area);
 }
 
-fn build_visible_items(state: &LibraryState) -> Vec<(usize, ShelfItem)> {
+fn build_visible_items(state: &LibraryState) -> Vec<(usize, crate::state::library_state::ShelfItem)> {
     let mut result = Vec::new();
     let items = build_shelf_items_recursive(&state.shelves, &state.shelf_expanded, 0);
     for (i, item) in items.into_iter().enumerate() {
@@ -68,7 +63,7 @@ fn build_visible_items(state: &LibraryState) -> Vec<(usize, ShelfItem)> {
     // Add current entries after shelf items
     for entry in &state.current_entries {
         let idx = result.len();
-        result.push((idx, ShelfItem::Entry {
+        result.push((idx, crate::state::library_state::ShelfItem::Entry {
             depth: state.shelf_breadcrumb.len(),
             entry: entry.clone(),
         }));
@@ -78,14 +73,14 @@ fn build_visible_items(state: &LibraryState) -> Vec<(usize, ShelfItem)> {
 
 fn build_shelf_items_recursive(
     shelves: &[crate::state::library_state::Shelf],
-    expanded: &HashSet<String>,
+    expanded: &std::collections::HashSet<String>,
     depth: usize,
-) -> Vec<ShelfItem> {
+) -> Vec<crate::state::library_state::ShelfItem> {
     let mut items = Vec::new();
     for shelf in shelves {
         let path_key = shelf.path.join("/");
         let is_expanded = expanded.contains(&path_key);
-        items.push(ShelfItem::Shelf {
+        items.push(crate::state::library_state::ShelfItem::Shelf {
             depth,
             name: shelf.name.clone(),
             full_path: shelf.path.clone(),
@@ -100,15 +95,15 @@ fn build_shelf_items_recursive(
     items
 }
 
-fn render_shelf_item(item: &ShelfItem, is_selected: bool, theme: &Theme, _tick: u64) -> ListItem<'static> {
+fn render_shelf_item(item: &crate::state::library_state::ShelfItem, is_selected: bool, theme: &Theme, _tick: u64) -> ListItem<'static> {
     let indent = "  ";
 
     let (text, base_style) = match item {
-        ShelfItem::Shelf { depth, name, entry_count, is_expanded, .. } => {
+        crate::state::library_state::ShelfItem::Shelf { depth, name, entry_count, is_expanded, .. } => {
             let prefix = indent.repeat(*depth);
             let arrow = if *is_expanded { "▼" } else { "▶" };
-            let folder = if *is_expanded { "📂" } else { "📁" };
-            let text = format!("{}{} {} {}  [{}]", prefix, arrow, folder, name, entry_count);
+            let label = entry_type_label("knowledge"); // fallback for folders
+            let text = format!("{}{} {} {}  [{}]", prefix, arrow, label, name, entry_count);
             let style = if is_selected {
                 Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
             } else {
@@ -116,9 +111,9 @@ fn render_shelf_item(item: &ShelfItem, is_selected: bool, theme: &Theme, _tick: 
             };
             (text, style)
         }
-        ShelfItem::Entry { depth, entry, .. } => {
+        crate::state::library_state::ShelfItem::Entry { depth, entry, .. } => {
             let prefix = indent.repeat(*depth);
-            let icon = entry_type_icon(&entry.entry_type);
+            let icon = entry_type_label(&entry.entry_type);
             let verified = if entry.verified { "✓" } else { "○" };
             let quality = format!("{:.0}%", entry.quality_score * 100.0);
             let text = format!(

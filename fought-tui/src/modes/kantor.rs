@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 use crate::app::Action;
 use crate::panels::kantor;
 use crate::state::AppState;
-use crate::state::kantor_state::WorkersTab;
-use crate::ui::components::{connection_icon, contract_state_color, render_progress, render_status_bar};
+use crate::state::kantor_state::{ContractState, WorkersTab};
+use crate::ui::components::{connection_icon, render_status_bar};
 use crate::ui::theme::Theme;
 
 /// Handle key events in Kantor mode
@@ -23,8 +23,8 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
         // Enter — send message
         KeyCode::Enter => {
             if state.kantor_state.multiline_mode {
-                // In multiline mode, Enter adds newline (Shift+Enter to send)
-                // For simplicity, Ctrl+Enter sends in multiline mode
+                // In multiline mode, Ctrl+Enter sends (handled below), plain Enter adds newline
+                state.kantor_state.input_text.push('\n');
                 return;
             }
             let input = state.kantor_state.input_text.clone();
@@ -40,7 +40,7 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
             }
 
             // NL action parsing when contract is presented
-            if state.kantor_state.contract_state == "contract_presented" {
+            if state.kantor_state.contract_state == ContractState::ContractPresented {
                 if let Some(action) = crate::ui::keybindings::parse_nl_action(&input) {
                     let session_id = state.session_id.clone().unwrap_or_default();
                     match action {
@@ -49,8 +49,8 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
                         "interrupt" => { let _ = action_tx.send(Action::Interrupt { session_id, reason: input.clone() }); }
                         _ => {}
                     }
-                    state.kantor_state.input_text.clear();
                     state.kantor_state.push_manager_message("user", &input);
+                    state.kantor_state.input_text.clear();
                     return;
                 }
             }
@@ -103,7 +103,7 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
         KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.kantor_state.focus_mode = !state.kantor_state.focus_mode;
         }
-        // Ctrl+Tab — switch middle panel tab
+        // Ctrl+Tab — switch middle panel tab (reverse)
         KeyCode::BackTab => {
             state.kantor_state.active_tab = match state.kantor_state.active_tab {
                 WorkersTab::Workers => WorkersTab::Events,
@@ -133,7 +133,7 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
         KeyCode::Backspace => {
             state.kantor_state.input_text.pop();
         }
-        // History
+        // History — allow navigation even when input is not empty
         KeyCode::Up if state.kantor_state.input_text.is_empty() => {
             if state.kantor_state.input_history_pos > 0 {
                 state.kantor_state.input_history_pos -= 1;
@@ -166,7 +166,7 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
 fn handle_slash_command(input: &str, state: &mut AppState, action_tx: &mpsc::UnboundedSender<Action>) {
     let parts: Vec<&str> = input[1..].splitn(2, ' ').collect();
     let cmd = parts[0];
-    let _args = parts.get(1).unwrap_or(&"");
+    let args = parts.get(1).copied().unwrap_or("");
 
     match cmd {
         "accept" => {
@@ -178,7 +178,7 @@ fn handle_slash_command(input: &str, state: &mut AppState, action_tx: &mpsc::Unb
             if let Some(session_id) = &state.session_id {
                 let _ = action_tx.send(Action::ReviseContract {
                     session_id: session_id.clone(),
-                    feedback: _args.to_string(),
+                    feedback: args.to_string(),
                 });
             }
         }
@@ -186,7 +186,7 @@ fn handle_slash_command(input: &str, state: &mut AppState, action_tx: &mpsc::Unb
             if let Some(session_id) = &state.session_id {
                 let _ = action_tx.send(Action::Interrupt {
                     session_id: session_id.clone(),
-                    reason: _args.to_string(),
+                    reason: args.to_string(),
                 });
             }
         }
@@ -202,8 +202,11 @@ fn handle_slash_command(input: &str, state: &mut AppState, action_tx: &mpsc::Unb
         "theme" => {
             let _ = action_tx.send(Action::CycleTheme);
         }
+        "save" => {
+            let _ = action_tx.send(Action::SaveConfig);
+        }
         "help" => {
-            state.kantor_state.push_manager_message("system", "Commands: /accept, /revise, /disrupt, /clear, /focus, /settings, /theme, /help");
+            state.kantor_state.push_manager_message("system", "Commands: /accept, /revise, /disrupt, /clear, /focus, /settings, /theme, /save, /help");
         }
         _ => {
             state.kantor_state.push_manager_message("system", &format!("Unknown command: /{cmd}"));
@@ -237,7 +240,7 @@ pub fn render(f: &mut Frame, size: Rect, state: &AppState, theme: &Theme, tick: 
         chunks[0],
         "KANTOR",
         theme.accent,
-        &format!(" ⚡ Fought [KANTOR]  {session_info}"),
+        &format!(" Fought [KANTOR]  {session_info}"),
         " Tab: Library  Ctrl+P: Commands ",
         theme,
     );
@@ -271,7 +274,7 @@ pub fn render(f: &mut Frame, size: Rect, state: &AppState, theme: &Theme, tick: 
 
     // Input bar
     let multiline_hint = if state.kantor_state.multiline_mode { "Ctrl+M: Single-line" } else { "Ctrl+M: Multi-line" };
-    let contract_hint = if state.kantor_state.contract_state == "contract_presented" {
+    let contract_hint = if state.kantor_state.contract_state == ContractState::ContractPresented {
         "Ctrl+A: Accept  Ctrl+R: Revise"
     } else {
         multiline_hint

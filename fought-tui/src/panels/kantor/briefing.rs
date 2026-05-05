@@ -2,7 +2,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{List, ListItem, Paragraph},
     Frame,
 };
 
@@ -41,7 +41,7 @@ fn render_messages(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme
         let (speaker_style, icon) = if msg.speaker == "system" {
             (Style::default().fg(theme.secondary), "┼")
         } else {
-            (Style::default().fg(squad_color(&msg.speaker, theme)), "💬")
+            (Style::default().fg(squad_color(&msg.speaker, theme)), "◆")
         };
 
         let content_preview = if msg.content.len() > 150 {

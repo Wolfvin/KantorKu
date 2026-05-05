@@ -29,7 +29,7 @@ pub async fn connect_event_stream(url: &str, tx: mpsc::UnboundedSender<AppEvent>
                             let text = msg.to_text().unwrap_or("");
                             match serde_json::from_str::<crate::transport::types::BackendEvent>(text) {
                                 Ok(event) => {
-                                    if tx.send(AppEvent::Backend(event)).is_err() {
+                                    if tx.send(AppEvent::Backend(Box::new(event))).is_err() {
                                         tracing::warn!("Event channel closed, exiting WebSocket loop");
                                         return;
                                     }

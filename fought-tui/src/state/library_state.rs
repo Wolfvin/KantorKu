@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Library mode state
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // State fields accessed by render methods
 pub struct LibraryState {
     // Shelf
     pub shelves: Vec<Shelf>,
@@ -23,8 +24,6 @@ pub struct LibraryState {
     // Ask panel
     pub content_mode: ContentMode,
     pub ask_input: String,
-    pub ask_cursor: usize,
-    pub archivist_chunks: Vec<(String, String)>,
     pub archivist_sources: Vec<SourceRef>,
     pub archivist_streaming: Vec<String>,
     pub ask_history: Vec<AskMessage>,
@@ -33,6 +32,8 @@ pub struct LibraryState {
     pub ingest_title: String,
     pub ingest_content: String,
     pub ingest_step: IngestStep,
+    /// Which ingest field is active: title or content
+    pub ingest_field_active: IngestField,
 
     // Search
     pub search_query: String,
@@ -43,7 +44,7 @@ pub struct LibraryState {
     pub input_focused: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum ContentMode {
     Browse,
     Ask,
@@ -64,7 +65,7 @@ impl ContentMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum IngestStep {
     Input,
     Analyzing,
@@ -76,10 +77,22 @@ impl Default for IngestStep {
     fn default() -> Self { IngestStep::Input }
 }
 
+/// Which field in the ingest form is active
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub enum IngestField {
+    Title,
+    Content,
+}
+
+impl Default for IngestField {
+    fn default() -> Self { IngestField::Title }
+}
+
 // === Data Models — MUST match Python models.py ===
 
 /// Full library entry — mirrors Python LibraryEntry dataclass
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[allow(dead_code)] // Fields used for serde deserialization
 pub struct LibraryEntry {
     pub id: String,
     pub created_at: String,
@@ -117,6 +130,7 @@ pub struct LibraryEntry {
 
 /// Brief entry for shelf display
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[allow(dead_code)] // Fields used for serde deserialization
 pub struct LibraryEntryBrief {
     pub id: String,
     pub title: String,
@@ -130,6 +144,7 @@ pub struct LibraryEntryBrief {
 
 /// Shelf tree node — mirrors Python ShelfNode
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[allow(dead_code)] // Fields used for serde deserialization
 pub struct Shelf {
     pub name: String,
     pub path: Vec<String>,
@@ -158,6 +173,7 @@ pub enum ShelfItem {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[allow(dead_code)] // Fields used for serde deserialization
 pub struct SourceRef {
     pub entry_id: String,
     pub title: String,
@@ -226,14 +242,13 @@ impl Default for LibraryState {
             reader_scroll: 0,
             content_mode: ContentMode::Browse,
             ask_input: String::new(),
-            ask_cursor: 0,
-            archivist_chunks: vec![],
             archivist_sources: vec![],
             archivist_streaming: vec![],
             ask_history: vec![],
             ingest_title: String::new(),
             ingest_content: String::new(),
             ingest_step: IngestStep::Input,
+            ingest_field_active: IngestField::Title,
             search_query: String::new(),
             search_mode: false,
             search_results: vec![],

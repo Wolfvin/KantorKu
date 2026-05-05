@@ -5,8 +5,6 @@ pub mod library_state;
 
 pub use app_state::AppState;
 
-use crate::transport::types::BackendEvent;
-
 /// Settings tabs
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SettingsTab {

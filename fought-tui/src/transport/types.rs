@@ -1,12 +1,14 @@
 use serde::Deserialize;
 
-use crate::state::kantor_state::{Contract, DagNode};
-use crate::state::library_state::{LibraryEntry, LibraryEntryBrief, Shelf, SourceRef};
+use crate::state::kantor_state::Contract;
+use crate::state::library_state::{LibraryEntry, LibraryEntryBrief, SourceRef};
 
 /// All events from Python backend via WebSocket.
 /// Field names MUST match Python EventBus payloads.
+/// New TUI-specific events are added for async action feedback.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(dead_code)] // Fields used for serde deserialization
 pub enum BackendEvent {
     // === KANTOR EVENTS ===
     ManagerQuestion { content: String, session_id: String },
@@ -55,10 +57,21 @@ pub enum BackendEvent {
 
     // === LIBRARY EVENTS ===
     LibraryIngestStarted { entry_id: String },
-    LibraryIngestDone { entry: LibraryEntry },
+    LibraryIngestDone { entry: Box<LibraryEntry> },
     LibraryIngestFailed { error: String },
     LibraryShelfCreated { shelf_path: Vec<String> },
     LibraryQueryStarted { query_id: String },
     LibraryQueryChunk { query_id: String, chunk: String },
     LibraryQueryDone { query_id: String, sources: Vec<SourceRef> },
+
+    // === TUI-SPECIFIC FEEDBACK EVENTS (not from Python, from async actions) ===
+    /// Internal event: shelf entries loaded from HTTP GET
+    #[serde(skip)]
+    ShelfEntriesLoaded { path: Vec<String>, entries: Vec<LibraryEntryBrief> },
+    /// Internal event: single entry loaded from HTTP GET
+    #[serde(skip)]
+    EntryLoaded { entry: Box<LibraryEntry> },
+    /// Internal event: search results loaded
+    #[serde(skip)]
+    SearchResultsLoaded { query: String, results: Vec<LibraryEntryBrief> },
 }

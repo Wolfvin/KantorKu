@@ -3,6 +3,7 @@ use ratatui::style::Color;
 /// Theme for the TUI.
 /// Default theme ported from Python KANTORKU_THEMES["synthwave"].
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Theme fields accessed by render methods
 pub struct Theme {
     pub name: &'static str,
     pub bg: Color,

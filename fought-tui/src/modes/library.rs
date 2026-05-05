@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     Frame,
@@ -7,9 +7,9 @@ use tokio::sync::mpsc;
 
 use crate::app::Action;
 use crate::panels::library;
-use crate::state::library_state::{ContentMode, IngestStep};
+use crate::state::library_state::{ContentMode, IngestField, IngestStep};
 use crate::state::AppState;
-use crate::ui::components::{render_input_bar, render_status_bar};
+use crate::ui::components::render_status_bar;
 use crate::ui::theme::Theme;
 
 /// Handle key events in Library mode
@@ -26,6 +26,12 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
 }
 
 fn handle_browse_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::UnboundedSender<Action>) {
+    // If search mode is active, handle search input
+    if state.library_state.search_mode {
+        handle_search_key(state, key, action_tx);
+        return;
+    }
+
     match key.code {
         KeyCode::Up => {
             if state.library_state.shelf_selection > 0 {
@@ -50,6 +56,8 @@ fn handle_browse_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbo
                         } else {
                             state.library_state.shelf_expanded.insert(path_key);
                         }
+                        // Also request entries from backend
+                        let _ = action_tx.send(Action::NavigateShelf { path: full_path });
                         // Rebuild visible items
                         rebuild_visible_items(&mut state.library_state);
                     }
@@ -79,6 +87,7 @@ fn handle_browse_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbo
         }
         KeyCode::Char('i') => {
             state.library_state.content_mode = ContentMode::Ingest;
+            state.library_state.ingest_field_active = IngestField::Title;
         }
         KeyCode::Char('a') => {
             state.library_state.content_mode = ContentMode::Ask;
@@ -94,8 +103,34 @@ fn handle_browse_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbo
             }
         }
         KeyCode::Esc => {
+            // Nothing to cancel in normal browse mode
+        }
+        _ => {}
+    }
+}
+
+/// Handle search mode input — activated by pressing `/` in browse mode
+fn handle_search_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::UnboundedSender<Action>) {
+    match key.code {
+        KeyCode::Enter => {
+            let query = state.library_state.search_query.clone();
+            if !query.is_empty() {
+                let _ = action_tx.send(Action::LibrarySearch { query });
+            }
+        }
+        KeyCode::Esc => {
             state.library_state.search_mode = false;
             state.library_state.search_query.clear();
+        }
+        KeyCode::Backspace => {
+            state.library_state.search_query.pop();
+            // If query is empty, exit search mode
+            if state.library_state.search_query.is_empty() {
+                state.library_state.search_mode = false;
+            }
+        }
+        KeyCode::Char(c) => {
+            state.library_state.search_query.push(c);
         }
         _ => {}
     }
@@ -119,23 +154,15 @@ fn handle_ask_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
         KeyCode::Backspace => {
             state.library_state.ask_input.pop();
         }
-        KeyCode::Char('b') if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-            // Only switch to browse if not typing
-            if state.library_state.ask_input.is_empty() {
-                state.library_state.content_mode = ContentMode::Browse;
-            } else {
-                state.library_state.ask_input.push('b');
-            }
-        }
-        KeyCode::Char(c) => {
-            state.library_state.ask_input.push(c);
-        }
         KeyCode::Esc => {
             if state.library_state.ask_input.is_empty() {
                 state.library_state.content_mode = ContentMode::Browse;
             } else {
                 state.library_state.ask_input.clear();
             }
+        }
+        KeyCode::Char(c) => {
+            state.library_state.ask_input.push(c);
         }
         _ => {}
     }
@@ -146,27 +173,43 @@ fn handle_ingest_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbo
         IngestStep::Input => {
             match key.code {
                 KeyCode::Tab => {
-                    // Toggle between title and content input
-                    // For simplicity, we use a single content field
+                    // Toggle between title and content input fields
+                    state.library_state.ingest_field_active = match state.library_state.ingest_field_active {
+                        IngestField::Title => IngestField::Content,
+                        IngestField::Content => IngestField::Title,
+                    };
                 }
                 KeyCode::Enter => {
-                    if !state.library_state.ingest_title.is_empty() && !state.library_state.ingest_content.is_empty() {
-                        state.library_state.ingest_step = IngestStep::Confirm;
+                    // In content field, Enter submits. In title field, Tab moves to content.
+                    match state.library_state.ingest_field_active {
+                        IngestField::Title => {
+                            // Move to content field
+                            state.library_state.ingest_field_active = IngestField::Content;
+                        }
+                        IngestField::Content => {
+                            if !state.library_state.ingest_title.is_empty() && !state.library_state.ingest_content.is_empty() {
+                                state.library_state.ingest_step = IngestStep::Confirm;
+                            }
+                        }
                     }
                 }
                 KeyCode::Backspace => {
-                    state.library_state.ingest_content.pop();
-                }
-                KeyCode::Char('b') if state.library_state.ingest_content.is_empty() => {
-                    state.library_state.content_mode = ContentMode::Browse;
-                }
-                KeyCode::Char(c) => {
-                    state.library_state.ingest_content.push(c);
+                    match state.library_state.ingest_field_active {
+                        IngestField::Title => { state.library_state.ingest_title.pop(); }
+                        IngestField::Content => { state.library_state.ingest_content.pop(); }
+                    }
                 }
                 KeyCode::Esc => {
                     state.library_state.content_mode = ContentMode::Browse;
                     state.library_state.ingest_title.clear();
                     state.library_state.ingest_content.clear();
+                    state.library_state.ingest_field_active = IngestField::Title;
+                }
+                KeyCode::Char(c) => {
+                    match state.library_state.ingest_field_active {
+                        IngestField::Title => { state.library_state.ingest_title.push(c); }
+                        IngestField::Content => { state.library_state.ingest_content.push(c); }
+                    }
                 }
                 _ => {}
             }
@@ -191,13 +234,17 @@ fn handle_ingest_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbo
                     state.library_state.ingest_step = IngestStep::Input;
                     state.library_state.ingest_title.clear();
                     state.library_state.ingest_content.clear();
+                    state.library_state.ingest_field_active = IngestField::Title;
                     state.library_state.content_mode = ContentMode::Browse;
                 }
                 _ => {}
             }
         }
         IngestStep::Analyzing => {
-            // Wait for backend event
+            // Wait for backend event — but Esc cancels
+            if key.code == KeyCode::Esc {
+                state.library_state.ingest_step = IngestStep::Input;
+            }
         }
     }
 }
@@ -232,8 +279,9 @@ fn build_visible_items_from_shelves(
 }
 
 /// Render Library mode layout
-pub fn render(f: &mut Frame, size: Rect, state: &AppState, _theme: &Theme, tick: u64) {
-    let lib_theme = &Theme::library();
+pub fn render(f: &mut Frame, size: Rect, state: &AppState, theme: &Theme, tick: u64) {
+    // Use the provided theme instead of hardcoded Theme::library()
+    let lib_theme = theme;
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -245,8 +293,14 @@ pub fn render(f: &mut Frame, size: Rect, state: &AppState, _theme: &Theme, tick:
         .split(size);
 
     // Status bar
+    let search_indicator = if state.library_state.search_mode {
+        format!(" SEARCH: {} |", state.library_state.search_query)
+    } else {
+        String::new()
+    };
     let session_info = format!(
-        " {} shelves | {} entries | mode: {}",
+        " {}{} shelves | {} entries | mode: {}",
+        search_indicator,
         state.library_state.shelf_count,
         state.library_state.entry_count,
         state.library_state.content_mode.label(),
@@ -256,8 +310,8 @@ pub fn render(f: &mut Frame, size: Rect, state: &AppState, _theme: &Theme, tick:
         chunks[0],
         "LIBRARY",
         lib_theme.accent,
-        &format!(" 📚 Fought [LIBRARY]  {session_info}"),
-        " Tab: Kantor  Ctrl+F: Search  i: Ingest  a: Ask ",
+        &format!(" Fought [LIBRARY]  {session_info}"),
+        " Tab: Kantor  /: Search  i: Ingest  a: Ask ",
         lib_theme,
     );
 
@@ -281,14 +335,22 @@ pub fn render(f: &mut Frame, size: Rect, state: &AppState, _theme: &Theme, tick:
     // Bottom bar — different content per mode
     match state.library_state.content_mode {
         ContentMode::Browse => {
-            let hint = "a: Ask  i: Ingest  /: Search  g/G: Top/Bottom";
-            crate::ui::components::render_input_bar(f, chunks[2], "", hint, lib_theme);
+            if state.library_state.search_mode {
+                crate::ui::components::render_input_bar(f, chunks[2], &state.library_state.search_query, "Enter: Search  Esc: Cancel", lib_theme);
+            } else {
+                let hint = "a: Ask  i: Ingest  /: Search  g/G: Top/Bottom";
+                crate::ui::components::render_input_bar(f, chunks[2], "", hint, lib_theme);
+            }
         }
         ContentMode::Ask => {
             crate::ui::components::render_input_bar(f, chunks[2], &state.library_state.ask_input, "Enter: Send  Esc: Back", lib_theme);
         }
         ContentMode::Ingest => {
-            crate::ui::components::render_input_bar(f, chunks[2], &state.library_state.ingest_content, "Enter: Submit  Esc: Cancel", lib_theme);
+            let field_hint = match state.library_state.ingest_field_active {
+                IngestField::Title => "Tab: Switch to Content",
+                IngestField::Content => "Tab: Switch to Title  Enter: Submit",
+            };
+            crate::ui::components::render_input_bar(f, chunks[2], &state.library_state.ingest_content, field_hint, lib_theme);
         }
     }
 }
