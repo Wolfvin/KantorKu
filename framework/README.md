@@ -46,46 +46,39 @@ KantorKu is not another agent wrapper. It is an **office metaphor** brought to l
 
 ### Install
 
-#### From PyPI (recommended)
+KantorKu is installed directly from GitHub (not yet on PyPI). All install methods below pull from the same source.
+
+> **Why a venv?** Modern Linux distros (Arch, Ubuntu 23.04+, Fedora 38+) enforce [PEP 668](https://peps.python.org/pep-0668/) which prevents installing packages system-wide. A virtual environment is the cleanest solution and works everywhere.
+
+#### Arch Linux / Manjaro (PEP 668)
+
+Arch-based distros enforce [PEP 668](https://peps.python.org/pep-0668/) — you **must** use a virtual environment or `pipx`.
+
+**Option A: pipx (recommended — global CLI, no venv hassle)**
 
 ```bash
-# Core only (use Ollama — free, local)
-pip install kantorku
+# Install pipx (if not already)
+sudo pacman -S python-pipx
 
-# With specific providers
-pip install kantorku[anthropic,google]
+# Install kantorku from GitHub
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
 
-# Everything (all providers + TUI)
-pip install kantorku[all]
+# Now kantorku command is available globally
+kantorku --help
 ```
 
-#### Arch Linux / Manjaro
-
-Arch-based distros enforce [PEP 668](https://peps.python.org/pep-0668/) — you **must** use a virtual environment:
+**Option B: venv**
 
 ```bash
 # Create and activate a venv
 python -m venv ~/.venv/kantorku
 source ~/.venv/kantorku/bin/activate
 
-# Install
-pip install kantorku[all]
+# Install from GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
 
-# Add to your shell for easy access
+# (Optional) Auto-activate when you open a terminal
 echo 'source ~/.venv/kantorku/bin/activate' >> ~/.bashrc
-```
-
-Or use `pipx` for a global CLI without venv hassle:
-
-```bash
-# Install pipx (if not already)
-sudo pacman -S python-pipx
-
-# Install kantorku
-pipx install kantorku[all]
-
-# Now kantorku command is available globally
-kantorku --help
 ```
 
 #### Ubuntu / Debian
@@ -98,8 +91,16 @@ sudo apt install python3-venv python3-pip
 python3 -m venv ~/.venv/kantorku
 source ~/.venv/kantorku/bin/activate
 
-# Install
-pip install kantorku[all]
+# Install from GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+```
+
+Or with `pipx`:
+
+```bash
+sudo apt install pipx
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+kantorku --help
 ```
 
 #### Fedora
@@ -109,8 +110,16 @@ pip install kantorku[all]
 python3 -m venv ~/.venv/kantorku
 source ~/.venv/kantorku/bin/activate
 
-# Install
-pip install kantorku[all]
+# Install from GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+```
+
+Or with `pipx`:
+
+```bash
+sudo dnf install pipx
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+kantorku --help
 ```
 
 #### macOS
@@ -123,8 +132,16 @@ brew install python
 python3 -m venv ~/.venv/kantorku
 source ~/.venv/kantorku/bin/activate
 
-# Install
-pip install kantorku[all]
+# Install from GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+```
+
+Or with `pipx`:
+
+```bash
+brew install pipx
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+kantorku --help
 ```
 
 #### Windows
@@ -134,11 +151,22 @@ pip install kantorku[all]
 python -m venv .venv\kantorku
 .venv\kantorku\Scripts\activate
 
-# Install
-pip install kantorku[all]
+# Install from GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
 ```
 
-#### From Source (any OS)
+Or with `pipx`:
+
+```powershell
+# Install pipx
+pip install pipx
+
+# Install kantorku from GitHub
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+kantorku --help
+```
+
+#### From Source (any OS — for development)
 
 ```bash
 git clone https://github.com/Wolfvin/KantorKu.git
@@ -157,7 +185,20 @@ kantorku version
 python -m pytest tests/ -v
 ```
 
-> **Why a venv?** Modern Linux distros (Arch, Ubuntu 23.04+, Fedora 38+) enforce [PEP 668](https://peps.python.org/pep-0668/) which prevents installing packages system-wide. A virtual environment is the cleanest solution and works everywhere.
+#### Install specific extras only
+
+If you don't need everything, install only what you use:
+
+```bash
+# Core only (Ollama — free, local, no API key needed)
+pip install "kantorku @ git+https://github.com/Wolfvin/KantorKu.git"
+
+# With specific providers
+pip install "kantorku[anthropic,google] @ git+https://github.com/Wolfvin/KantorKu.git"
+
+# With TUI only (no paid providers)
+pip install "kantorku[tui] @ git+https://github.com/Wolfvin/KantorKu.git"
+```
 
 ### Run
 
@@ -177,7 +218,7 @@ asyncio.run(main())
 ### Or use the TUI
 
 ```bash
-pip install kantorku[tui]
+pip install "kantorku[tui] @ git+https://github.com/Wolfvin/KantorKu.git"
 kantorku
 ```
 

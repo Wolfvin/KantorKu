@@ -36,11 +36,11 @@
 
 | Provider | Env Variable | Install Command | Harga |
 |----------|-------------|-----------------|-------|
-| **Ollama** | — | `pip install kantorku[ollama]` | **Gratis (lokal)** |
-| Anthropic | `ANTHROPIC_API_KEY` | `pip install kantorku[anthropic]` | $3-15/1M token |
-| Google | `GOOGLE_API_KEY` | `pip install kantorku[google]` | $1.25-10/1M token |
-| MiniMax | `MINIMAX_API_KEY` | `pip install kantorku[minimax]` | $0.12-0.30/1M token |
-| DeepSeek | `DEEPSEEK_API_KEY` | `pip install kantorku[deepseek]` | $0.27-0.28/1M token |
+| **Ollama** | — | `pip install "kantorku[ollama] @ git+https://github.com/Wolfvin/KantorKu.git"` | **Gratis (lokal)** |
+| Anthropic | `ANTHROPIC_API_KEY` | `pip install "kantorku[anthropic] @ git+https://github.com/Wolfvin/KantorKu.git"` | $3-15/1M token |
+| Google | `GOOGLE_API_KEY` | `pip install "kantorku[google] @ git+https://github.com/Wolfvin/KantorKu.git"` | $1.25-10/1M token |
+| MiniMax | `MINIMAX_API_KEY` | `pip install "kantorku[minimax] @ git+https://github.com/Wolfvin/KantorKu.git"` | $0.12-0.30/1M token |
+| DeepSeek | `DEEPSEEK_API_KEY` | `pip install "kantorku[deepseek] @ git+https://github.com/Wolfvin/KantorKu.git"` | $0.27-0.28/1M token |
 
 > **Untuk memulai tanpa biaya**, cukup gunakan Ollama. Semua worker bisa diarahkan ke model lokal — tidak ada yang mewajibkan API key berbayar.
 
@@ -52,6 +52,8 @@
 
 ### 2.1 Metode A: Virtual Environment (Direkomendasikan — Semua OS)
 
+> **PENTING:** KantorKu belum dipublikasikan di PyPI. Semua perintah install di bawah mengambil langsung dari repository GitHub.
+
 #### Arch Linux / Manjaro
 
 ```bash
@@ -59,8 +61,8 @@
 python -m venv ~/.venv/kantorku
 source ~/.venv/kantorku/bin/activate
 
-# Install
-pip install kantorku[all]
+# Install dari GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
 
 # (Opsional) Auto-activate saat login
 echo 'source ~/.venv/kantorku/bin/activate' >> ~/.bashrc
@@ -70,7 +72,7 @@ Atau gunakan `pipx` untuk CLI global tanpa venv manual:
 
 ```bash
 sudo pacman -S python-pipx
-pipx install kantorku[all]
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
 kantorku --help
 ```
 
@@ -84,8 +86,16 @@ sudo apt install python3-venv python3-pip
 python3 -m venv ~/.venv/kantorku
 source ~/.venv/kantorku/bin/activate
 
-# Install
-pip install kantorku[all]
+# Install dari GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+```
+
+Atau dengan `pipx`:
+
+```bash
+sudo apt install pipx
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+kantorku --help
 ```
 
 #### Fedora
@@ -95,8 +105,16 @@ pip install kantorku[all]
 python3 -m venv ~/.venv/kantorku
 source ~/.venv/kantorku/bin/activate
 
-# Install
-pip install kantorku[all]
+# Install dari GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+```
+
+Atau dengan `pipx`:
+
+```bash
+sudo dnf install pipx
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+kantorku --help
 ```
 
 #### macOS
@@ -109,8 +127,16 @@ brew install python
 python3 -m venv ~/.venv/kantorku
 source ~/.venv/kantorku/bin/activate
 
-# Install
-pip install kantorku[all]
+# Install dari GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+```
+
+Atau dengan `pipx`:
+
+```bash
+brew install pipx
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+kantorku --help
 ```
 
 #### Windows
@@ -120,27 +146,35 @@ pip install kantorku[all]
 python -m venv .venv\kantorku
 .venv\kantorku\Scripts\activate
 
-# Install
-pip install kantorku[all]
+# Install dari GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
 ```
 
-### 2.2 Metode B: Instal dari PyPI (Jika venv sudah aktif)
+Atau dengan `pipx`:
+
+```powershell
+pip install pipx
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+kantorku --help
+```
+
+### 2.2 Metode B: Install dengan Extras Tertentu
 
 ```bash
-# Instal dengan semua provider + TUI
-pip install kantorku[all]
-
 # Instal hanya provider tertentu
-pip install kantorku[anthropic,deepseek]
+pip install "kantorku[anthropic,deepseek] @ git+https://github.com/Wolfvin/KantorKu.git"
 
 # Instal minimal (core saja, tanpa provider cloud)
-pip install kantorku
+pip install "kantorku @ git+https://github.com/Wolfvin/KantorKu.git"
 
 # Instal dengan Ollama (gratis, lokal)
-pip install kantorku[ollama]
+pip install "kantorku[ollama] @ git+https://github.com/Wolfvin/KantorKu.git"
+
+# Instal dengan TUI saja (tanpa provider berbayar)
+pip install "kantorku[tui] @ git+https://github.com/Wolfvin/KantorKu.git"
 ```
 
-### 2.3 Metode C: Instal dari Source
+### 2.3 Metode C: Instal dari Source (untuk Development)
 
 ```bash
 git clone https://github.com/Wolfvin/KantorKu.git
@@ -889,11 +923,26 @@ Distro Linux modern (Arch, Ubuntu 23.04+, Fedora 38+) melarang `pip install` ke 
 # Solusi: gunakan virtual environment
 python3 -m venv ~/.venv/kantorku
 source ~/.venv/kantorku/bin/activate
-pip install kantorku[all]
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
 
 # Atau gunakan pipx (Arch Linux)
 sudo pacman -S python-pipx
-pipx install kantorku[all]
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+```
+
+### 10.0a `ERROR: No matching distribution found for kantorku`
+
+KantorKu belum dipublikasikan di PyPI. Jangan gunakan `pip install kantorku` — gunakan perintah install dari GitHub.
+
+```bash
+# SALAH — akan gagal
+pip install kantorku[all]
+
+# BENAR — install dari GitHub
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
+
+# Atau pipx
+pipx install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"
 ```
 
 ### 10.1 `ModuleNotFoundError: No module named 'anthropic'`
@@ -902,12 +951,12 @@ Provider-specific package belum diinstal. Kantorku menggunakan optional dependen
 
 ```bash
 # Solusi: instal provider yang dibutuhkan
-pip install kantorku[anthropic]    # untuk Anthropic
-pip install kantorku[google]       # untuk Google
-pip install kantorku[minimax]      # untuk MiniMax
-pip install kantorku[deepseek]     # untuk DeepSeek
-pip install kantorku[ollama]       # untuk Ollama
-pip install kantorku[all]          # semua sekaligus
+pip install "kantorku[anthropic] @ git+https://github.com/Wolfvin/KantorKu.git"    # untuk Anthropic
+pip install "kantorku[google] @ git+https://github.com/Wolfvin/KantorKu.git"       # untuk Google
+pip install "kantorku[minimax] @ git+https://github.com/Wolfvin/KantorKu.git"      # untuk MiniMax
+pip install "kantorku[deepseek] @ git+https://github.com/Wolfvin/KantorKu.git"     # untuk DeepSeek
+pip install "kantorku[ollama] @ git+https://github.com/Wolfvin/KantorKu.git"       # untuk Ollama
+pip install "kantorku[all] @ git+https://github.com/Wolfvin/KantorKu.git"          # semua sekaligus
 ```
 
 ### 10.2 `Provider 'anthropic' not configured`
