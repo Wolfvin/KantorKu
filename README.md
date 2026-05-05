@@ -54,7 +54,7 @@ KantorKu adalah framework orchestrasi multi-agent LLM yang memodelkan kantor dig
 ┌─────────────────────────────────────────────────────────┐
 │                      KantorKu                           │
 ├────────────────┬────────────────────────────────────────┤
-│   interface/   │   framework/                           │
+│   web-ui/      │   framework/                           │
 │   (Next.js)    │   (Python)                             │
 │                │                                        │
 │  🖥️ Web UI     │  🐍 Backend engine                     │
@@ -158,8 +158,8 @@ KantorKu adalah framework orchestrasi multi-agent LLM yang memodelkan kantor dig
 ### Prerequisites
 
 - **Python 3.11+** (untuk framework)
-- **Node.js 18+** (untuk interface & CLI)
-- **Bun** (recommended, untuk interface)
+- **Node.js 18+** (untuk web-ui & CLI)
+- **Bun** (recommended, untuk web-ui)
 
 ### 1. Clone Repository
 ```bash
@@ -188,7 +188,7 @@ export XAI_API_KEY="xai-..."
 
 ### 3a. Run Interface (Standalone Mode)
 ```bash
-cd interface
+cd web-ui
 npm install
 npm run dev
 # Open http://localhost:3000
@@ -201,8 +201,8 @@ cd framework
 pip install -e ".[all]"
 kantorku serve --config kantorku.toml
 
-# Terminal 2: Next.js interface
-cd interface
+# Terminal 2: Next.js web-ui
+cd web-ui
 npm install
 npm run dev
 ```
@@ -231,7 +231,7 @@ KantorKu mendukung 8 LLM providers. Anda tidak perlu semua — cukup yang Anda g
 | OpenAI | `OPENAI_API_KEY` | coder_wiring (Codex) | Optional |
 | xAI | `XAI_API_KEY` | debugger (Grok) | Optional |
 | Ollama | (local) | intake, narrator, sentinel | Optional (free, local) |
-| Z-AI SDK | (built-in) | Standalone mode | ✅ For interface |
+| Z-AI SDK | (built-in) | Standalone mode | ✅ For web-ui |
 
 ### Minimal Setup (Cheapest)
 
@@ -251,7 +251,7 @@ kantorku setup        # Interactive API key wizard
 kantorku tui          # Terminal UI (Textual)
 kantorku chat         # Chat with Conductor
 kantorku serve        # Start Python backend
-kantorku dev          # Start Next.js interface
+kantorku dev          # Start Next.js web-ui
 kantorku worker list  # List all workers
 kantorku worker show  # Show worker details
 kantorku status       # System health check
@@ -319,7 +319,7 @@ KantorKu/
 │   ├── kantorku.toml       # Configuration
 │   └── pyproject.toml      # Python package
 │
-├── interface/              # Next.js frontend (Web UI)
+├── web-ui/                 # Next.js frontend (Web UI)
 │   ├── src/
 │   │   ├── app/            # Next.js App Router + API routes
 │   │   ├── components/     # UI components (kantorku/ + shadcn/ui)
@@ -344,7 +344,7 @@ KantorKu/
 
 ## Tech Stack
 
-### Frontend (Interface)
+### Frontend (Web UI)
 | Technology | Purpose |
 |------------|---------|
 | Next.js 16 | React framework with App Router |

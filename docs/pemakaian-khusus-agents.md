@@ -19,7 +19,7 @@ kantorku adalah framework orchestrasi AI worker yang memodelkan kantor digital s
 ┌─────────────────────────────────────────────────────┐
 │                    kantorku                          │
 ├──────────────┬──────────────────┬───────────────────┤
-│  interface/  │   framework/     │     cli/          │
+│  web-ui/     │   framework/     │     cli/          │
 │  (Next.js)   │   (Python)       │   (Node.js)       │
 │              │                  │                   │
 │  Web UI      │  Backend engine  │  Terminal tool    │
@@ -71,17 +71,17 @@ Buka kantorku UI → klik Settings (gear icon) → masukkan API keys per provide
 
 #### Mode A: Standalone (Tanpa Python Backend)
 ```bash
-cd interface && npm install && npm run dev
+cd web-ui && npm install && npm run dev
 ```
-Cukup gunakan Next.js interface. LLM calls langsung via z-ai-web-dev-sdk. Tidak perlu Python.
+Cukup gunakan Next.js web-ui. LLM calls langsung via z-ai-web-dev-sdk. Tidak perlu Python.
 
-#### Mode B: Full Stack (Python Backend + Next.js Interface)
+#### Mode B: Full Stack (Python Backend + Next.js Web UI)
 ```bash
 # Terminal 1: Start Python backend
 cd framework && pip install -e . && kantorku serve
 
-# Terminal 2: Start Next.js interface
-cd interface && npm install && npm run dev
+# Terminal 2: Start Next.js web-ui
+cd web-ui && npm install && npm run dev
 ```
 
 #### Mode C: CLI Only

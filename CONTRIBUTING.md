@@ -54,7 +54,7 @@ source .venv/bin/activate  # Linux/macOS
 pip install -e ".[dev,all]"
 
 # 3. Set up the Next.js frontend
-cd ../interface
+cd ../web-ui
 npm install
 
 # 4. Set up the CLI tool
@@ -70,7 +70,7 @@ cp .env.example .env
 cd framework && kantorku serve
 
 # Terminal 2: Frontend
-cd interface && npm run dev
+cd web-ui && npm run dev
 ```
 
 ### Docker Setup / Persiapan Docker
@@ -79,9 +79,9 @@ cd interface && npm run dev
 docker compose up
 ```
 
-This starts KantorKu backend on `:8000`, Ollama on `:11434`, and the Interface on `:3000`.
+This starts KantorKu backend on `:8000`, Ollama on `:11434`, and the Web UI on `:3000`.
 
-Ini akan menjalankan backend KantorKu di `:8000`, Ollama di `:11434`, dan Interface di `:3000`.
+Ini akan menjalankan backend KantorKu di `:8000`, Ollama di `:11434`, dan Web UI di `:3000`.
 
 ---
 
@@ -108,7 +108,7 @@ ruff format .
 - Docstrings in Google style
 - Imports sorted with `isort` (via Ruff)
 
-### TypeScript (Frontend / interface/ & CLI / cli/)
+### TypeScript (Frontend / web-ui/ & CLI / cli/)
 
 Kami menggunakan ESLint dan Prettier.
 
@@ -116,7 +116,7 @@ We use ESLint and Prettier.
 
 ```bash
 # Lint
-cd interface && npm run lint
+cd web-ui && npm run lint
 
 # Format
 npm run format
@@ -153,7 +153,7 @@ pytest -v
 ### TypeScript Tests / Pengujian TypeScript
 
 ```bash
-cd interface
+cd web-ui
 
 # Run tests
 npm test
@@ -243,7 +243,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/).
 - `office` — Office/conductor changes
 - `memory` — Memory/context pool changes
 - `server` — API server changes
-- `interface` — Frontend changes
+- `web-ui` — Frontend changes
 - `cli` — CLI tool changes
 - `docs` — Documentation only
 

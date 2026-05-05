@@ -27,9 +27,9 @@ services:
       - ollama-data:/root/.ollama
     restart: unless-stopped
 
-  # ── KantorKu Interface ──
-  interface:
-    build: ./interface
+  # ── KantorKu Web UI ──
+  web-ui:
+    build: ./web-ui
     ports:
       - "3000:3000"
     environment:

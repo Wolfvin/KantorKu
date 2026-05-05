@@ -37,7 +37,7 @@ Harap sertakan informasi berikut dalam laporan Anda:
 
 1. **Description** — A clear description of the vulnerability
 2. **Impact** — What an attacker could achieve (e.g., data exposure, code execution, privilege escalation)
-3. **Affected components** — Which part of KantorKu is affected (framework, interface, CLI)
+3. **Affected components** — Which part of KantorKu is affected (framework, web-ui, CLI)
 4. **Reproduction steps** — Step-by-step instructions to reproduce the issue
 5. **Proof of concept** — Code or commands demonstrating the vulnerability (if applicable)
 6. **Suggested fix** — If you have ideas on how to fix it
@@ -67,7 +67,7 @@ Harap sertakan informasi berikut dalam laporan Anda:
 
 **In scope / Dalam ruang lingkup:**
 - KantorKu framework (Python backend)
-- KantorKu Interface (Next.js frontend)
+- KantorKu Web UI (Next.js frontend)
 - KantorKu CLI (Node.js CLI tool)
 - Authentication and authorization mechanisms
 - API key handling and storage
