@@ -658,8 +658,12 @@ def main() -> None:
     elif args.command == "version":
         cmd_version(args)
     else:
-        # Default: start server
-        cmd_serve(args)
+        # Default: launch TUI in embedded mode (no server needed)
+        # kantorku → TUI langsung terbuka
+        setattr(args, "embedded", True)
+        setattr(args, "url", "http://localhost:8000")
+        setattr(args, "config", getattr(args, "config", None))
+        cmd_tui(args)
 
 
 if __name__ == "__main__":
