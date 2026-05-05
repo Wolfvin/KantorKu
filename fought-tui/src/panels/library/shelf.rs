@@ -8,21 +8,21 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::library_state::{LibraryEntryBrief, LibraryState, ShelfItem};
+use crate::state::library_state::{entry_type_icon, LibraryState, ShelfItem};
+use crate::ui::components::spinner_char;
 use crate::ui::theme::Theme;
 
-/// Render the Shelf Panel (left column in Library mode)
-/// The "never-ending rak" — tree view of all shelves and entries
-pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme) {
+/// Render the Shelf Panel (left column in Library mode) — the "never-ending rak"
+pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, tick: u64) {
     let block = Block::default()
-        .title("RAK BUKU")
+        .title(" RAK BUKU ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.border));
 
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Breadcrumb header if navigated
+    // Breadcrumb header
     let (breadcrumb_area, list_area) = if !state.shelf_breadcrumb.is_empty() {
         let v = Layout::default()
             .direction(Direction::Vertical)
@@ -35,132 +35,110 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme) {
 
     if let Some(bc_area) = breadcrumb_area {
         let breadcrumb = format!("← {}", state.shelf_breadcrumb.join(" → "));
-        let bc_widget = Paragraph::new(breadcrumb)
-            .style(Style::default().fg(theme.dim));
-        f.render_widget(bc_widget, bc_area);
+        f.render_widget(
+            Paragraph::new(breadcrumb).style(Style::default().fg(theme.dim)),
+            bc_area,
+        );
     }
 
-    // Build visible items from shelves and entries
+    // Build visible items from shelves + entries
     let visible_items = build_visible_items(state);
     let visible_count = list_area.height as usize;
 
     let items: Vec<ListItem> = visible_items
         .iter()
-        .enumerate()
         .skip(state.shelf_scroll)
         .take(visible_count)
-        .map(|(idx, item)| {
-            let is_selected = idx == state.shelf_selection;
-            render_shelf_item(item, is_selected, theme)
+        .enumerate()
+        .map(|(_render_idx, (global_idx, item))| {
+            let is_selected = *global_idx == state.shelf_selection;
+            render_shelf_item(item, is_selected, theme, tick)
         })
         .collect();
 
-    let list = List::new(items);
-    f.render_widget(list, list_area);
+    f.render_widget(List::new(items), list_area);
 }
 
-fn build_visible_items(state: &LibraryState) -> Vec<ShelfItem> {
-    let mut items = Vec::new();
-
-    // Add shelves as items
-    for shelf in &state.shelves {
-        let path_key = shelf.path.join("/");
-        let is_expanded = state.shelf_expanded.contains(&path_key);
-        let is_selected = false; // Selection tracked by index
-
-        items.push(ShelfItem::Shelf {
-            depth: 0,
-            name: shelf.name.clone(),
-            full_path: shelf.path.clone(),
-            entry_count: shelf.entry_count as usize,
-            is_expanded,
-            is_selected,
-        });
-
-        // If expanded, add children
-        if is_expanded {
-            build_shelf_items_recursive(&shelf.children, 1, &state.shelf_expanded, &mut items);
-        }
+fn build_visible_items(state: &LibraryState) -> Vec<(usize, ShelfItem)> {
+    let mut result = Vec::new();
+    let items = build_shelf_items_recursive(&state.shelves, &state.shelf_expanded, 0);
+    for (i, item) in items.into_iter().enumerate() {
+        result.push((i, item));
     }
-
-    // Add current entries
+    // Add current entries after shelf items
     for entry in &state.current_entries {
-        items.push(ShelfItem::Entry {
+        let idx = result.len();
+        result.push((idx, ShelfItem::Entry {
             depth: state.shelf_breadcrumb.len(),
             entry: entry.clone(),
-            is_selected: false,
-        });
+        }));
     }
-
-    items
+    result
 }
 
 fn build_shelf_items_recursive(
     shelves: &[crate::state::library_state::Shelf],
-    depth: usize,
     expanded: &HashSet<String>,
-    items: &mut Vec<ShelfItem>,
-) {
+    depth: usize,
+) -> Vec<ShelfItem> {
+    let mut items = Vec::new();
     for shelf in shelves {
         let path_key = shelf.path.join("/");
         let is_expanded = expanded.contains(&path_key);
-
         items.push(ShelfItem::Shelf {
             depth,
             name: shelf.name.clone(),
             full_path: shelf.path.clone(),
             entry_count: shelf.entry_count as usize,
             is_expanded,
-            is_selected: false,
         });
-
         if is_expanded {
-            build_shelf_items_recursive(&shelf.children, depth + 1, expanded, items);
+            let children = build_shelf_items_recursive(&shelf.children, expanded, depth + 1);
+            items.extend(children);
         }
     }
+    items
 }
 
-fn render_shelf_item(item: &ShelfItem, is_selected: bool, theme: &Theme) -> ListItem<'static> {
+fn render_shelf_item(item: &ShelfItem, is_selected: bool, theme: &Theme, _tick: u64) -> ListItem<'static> {
     let indent = "  ";
 
-    match item {
+    let (text, base_style) = match item {
         ShelfItem::Shelf { depth, name, entry_count, is_expanded, .. } => {
             let prefix = indent.repeat(*depth);
             let arrow = if *is_expanded { "▼" } else { "▶" };
-            let folder_icon = if *is_expanded { "📂" } else { "📁" };
-            let text = format!("{}{} {} {}  [{}]", prefix, arrow, folder_icon, name, entry_count);
+            let folder = if *is_expanded { "📂" } else { "📁" };
+            let text = format!("{}{} {} {}  [{}]", prefix, arrow, folder, name, entry_count);
             let style = if is_selected {
                 Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.fg)
             };
-            ListItem::new(text).style(style)
+            (text, style)
         }
         ShelfItem::Entry { depth, entry, .. } => {
             let prefix = indent.repeat(*depth);
-            let icon = crate::state::library_state::entry_type_icon(&entry.entry_type);
+            let icon = entry_type_icon(&entry.entry_type);
             let verified = if entry.verified { "✓" } else { "○" };
-            let quality = format!("{:.2}", entry.quality_score);
+            let quality = format!("{:.0}%", entry.quality_score * 100.0);
             let text = format!(
-                "{}{} {}  {} {} | {}x",
+                "{}{} {} {} {} | {}x",
                 prefix, icon, entry.title, verified, quality, entry.usage_count
             );
             let style = if is_selected {
                 Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
             } else {
-                entry_type_style(&entry.entry_type, theme)
+                match entry.entry_type.as_str() {
+                    "knowledge" => Style::default().fg(theme.fg),
+                    "solution" => Style::default().fg(theme.yellow),
+                    "qa_pair" => Style::default().fg(theme.cyan),
+                    "procedure" => Style::default().fg(theme.green),
+                    _ => Style::default().fg(theme.dim),
+                }
             };
-            ListItem::new(text).style(style)
+            (text, style)
         }
-    }
-}
+    };
 
-fn entry_type_style(entry_type: &str, theme: &Theme) -> Style {
-    match entry_type {
-        "knowledge" => Style::default().fg(theme.fg),
-        "solution" => Style::default().fg(theme.yellow),
-        "qa_pair" => Style::default().fg(theme.cyan),
-        "procedure" => Style::default().fg(theme.green),
-        _ => Style::default().fg(theme.dim),
-    }
+    ListItem::new(text).style(base_style)
 }

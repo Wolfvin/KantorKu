@@ -11,10 +11,9 @@ use crate::ui::components::spinner_char;
 use crate::ui::theme::Theme;
 
 /// Render the Ingest Panel (right column in Library mode, Ingest content mode)
-/// Interface for adding new entries to the Library
-pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, tick: u64) {
     let block = Block::default()
-        .title("INGEST — Add to Library")
+        .title(" INGEST — Add to Library ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.border));
 
@@ -23,9 +22,9 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme) {
 
     match state.ingest_step {
         IngestStep::Input => render_input_step(f, inner, state, theme),
-        IngestStep::Analyzing => render_analyzing_step(f, inner, state, theme),
+        IngestStep::Analyzing => render_analyzing_step(f, inner, theme, tick),
         IngestStep::Confirm => render_confirm_step(f, inner, state, theme),
-        IngestStep::Done => render_done_step(f, inner, state, theme),
+        IngestStep::Done => render_done_step(f, inner, theme),
     }
 }
 
@@ -33,55 +32,78 @@ fn render_input_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Th
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2),   // Title input
+            Constraint::Length(2),   // Instructions
+            Constraint::Length(2),   // Title
             Constraint::Length(1),   // Separator
-            Constraint::Min(0),      // Content input
-            Constraint::Length(1),   // Hints
+            Constraint::Min(0),      // Content preview
+            Constraint::Length(2),   // Status + hints
         ])
         .split(area);
 
-    // Title
-    let title_label = Paragraph::new("Title:")
-        .style(Style::default().fg(theme.accent).add_modifier(Modifier::BOLD));
-    f.render_widget(title_label, chunks[0]);
+    // Instructions
+    f.render_widget(
+        Paragraph::new("Add a new entry to the Library.\nThe Librarian will categorize and assign it to a shelf.")
+            .style(Style::default().fg(theme.dim)),
+        chunks[0],
+    );
 
-    let title_value = if state.ingest_title.is_empty() {
-        Paragraph::new("(type title here)")
-            .style(Style::default().fg(theme.dim))
+    // Title field
+    let title_display = if state.ingest_title.is_empty() {
+        Paragraph::new("Title: (type to set)").style(Style::default().fg(theme.dim))
     } else {
-        Paragraph::new(state.ingest_title.as_str())
-            .style(Style::default().fg(theme.fg))
+        Paragraph::new(format!("Title: {}", state.ingest_title))
+            .style(Style::default().fg(theme.accent).add_modifier(Modifier::BOLD))
     };
-    f.render_widget(title_value, chunks[0]); // Overwrite for simplicity
+    f.render_widget(title_display, chunks[1]);
 
     // Separator
-    let sep = Paragraph::new("─".repeat(area.width as usize))
-        .style(Style::default().fg(theme.border));
-    f.render_widget(sep, chunks[1]);
+    f.render_widget(
+        Paragraph::new("─".repeat(area.width as usize))
+            .style(Style::default().fg(theme.border)),
+        chunks[2],
+    );
 
-    // Content
-    let content_label = Paragraph::new("Content (Markdown):")
-        .style(Style::default().fg(theme.accent).add_modifier(Modifier::BOLD));
-    f.render_widget(content_label, chunks[2]);
+    // Content preview
+    let content_display = if state.ingest_content.is_empty() {
+        Paragraph::new("Content: Start typing below...")
+            .style(Style::default().fg(theme.dim))
+    } else {
+        Paragraph::new(format!("Content (Markdown):\n{}", state.ingest_content))
+            .style(Style::default().fg(theme.fg))
+            .wrap(Wrap { trim: false })
+    };
+    f.render_widget(content_display, chunks[3]);
 
     // Hints
-    let hints = Paragraph::new("Enter: Submit  Esc: Cancel")
-        .style(Style::default().fg(theme.dim));
-    f.render_widget(hints, chunks[3]);
+    let char_count = state.ingest_content.len();
+    let can_submit = !state.ingest_title.is_empty() && !state.ingest_content.is_empty();
+    let submit_hint = if can_submit { "Enter: Submit" } else { "Fill title and content first" };
+    f.render_widget(
+        Paragraph::new(format!("{} chars | {} | Esc: Cancel", char_count, submit_hint))
+            .style(Style::default().fg(theme.dim)),
+        chunks[4],
+    );
 }
 
-fn render_analyzing_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme) {
-    let spinner = spinner_char(0); // Will be dynamic in real impl with tick
+fn render_analyzing_step(f: &mut Frame, area: Rect, theme: &Theme, tick: u64) {
+    let spinner = spinner_char(tick);
 
-    let analyzing = Paragraph::new(format!(
+    let content = format!(
         "{} Analyzing entry...\n\n\
-         The Librarian is categorizing your entry,\n\
-         generating metadata, and assigning to a shelf.",
+         The Librarian is:\n\
+         • Reading and summarizing your content\n\
+         • Generating keywords and metadata\n\
+         • Determining the best shelf location\n\
+         • Calculating quality score\n\n\
+         This usually takes a few seconds...",
         spinner
-    ))
-    .style(Style::default().fg(theme.yellow))
-    .wrap(Wrap { trim: true });
-    f.render_widget(analyzing, area);
+    );
+    f.render_widget(
+        Paragraph::new(content)
+            .style(Style::default().fg(theme.yellow))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_confirm_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme) {
@@ -94,35 +116,59 @@ fn render_confirm_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &
         .split(area);
 
     // Preview
-    let preview = Paragraph::new(format!(
-        "Title: {}\n\n{}\n\n\
-         ─────────────────────────────\n\
-         The Librarian suggests the following:",
-        state.ingest_title,
-        if state.ingest_content.len() > 200 {
-            format!("{}...", &state.ingest_content[..197])
-        } else {
-            state.ingest_content.clone()
-        }
-    ))
-    .style(Style::default().fg(theme.fg))
+    let content_preview = if state.ingest_content.len() > 400 {
+        format!("{}...", &state.ingest_content[..397])
+    } else {
+        state.ingest_content.clone()
+    };
+
+    let preview = Paragraph::new(vec![
+        Line::from(Span::styled(
+            format!("Title: {}", state.ingest_title),
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(content_preview, Style::default().fg(theme.fg))),
+        Line::from(""),
+        Line::from(Span::styled(
+            "─────────────────────────────",
+            Style::default().fg(theme.border),
+        )),
+        Line::from(Span::styled(
+            "The Librarian suggests the following classification:",
+            Style::default().fg(theme.dim),
+        )),
+    ])
     .wrap(Wrap { trim: true });
     f.render_widget(preview, chunks[0]);
 
     // Confirm prompt
-    let prompt = Paragraph::new("Confirm ingest? [y/n]")
-        .style(Style::default().fg(theme.accent).add_modifier(Modifier::BOLD));
-    f.render_widget(prompt, chunks[1]);
+    f.render_widget(
+        Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "Confirm ingest?  [y] Yes  [n] No",
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            )),
+        ]),
+        chunks[1],
+    );
 }
 
-fn render_done_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme) {
-    let done = Paragraph::new(
+fn render_done_step(f: &mut Frame, area: Rect, theme: &Theme) {
+    let content = format!(
         "✓ Entry ingested successfully!\n\n\
          The entry has been categorized and added to the Library.\n\
          You can find it on the shelf or search for it.\n\n\
+         The Knowledge Flywheel is now stronger:\n\
+         Workers can find this solution next time they\n\
+         encounter a similar problem.\n\n\
          Press Enter to return to browsing."
-    )
-    .style(Style::default().fg(theme.green))
-    .wrap(Wrap { trim: true });
-    f.render_widget(done, area);
+    );
+    f.render_widget(
+        Paragraph::new(content)
+            .style(Style::default().fg(theme.green))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }

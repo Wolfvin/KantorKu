@@ -1,10 +1,10 @@
 use serde::Deserialize;
 
-use crate::state::kantor_state::{Contract, TodoItem};
+use crate::state::kantor_state::{Contract, DagNode};
 use crate::state::library_state::{LibraryEntry, LibraryEntryBrief, Shelf, SourceRef};
 
-/// All events that can come from the Python backend via WebSocket.
-/// Field names MUST match the Python EventBus event payloads.
+/// All events from Python backend via WebSocket.
+/// Field names MUST match Python EventBus payloads.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BackendEvent {
@@ -14,57 +14,28 @@ pub enum BackendEvent {
     ContractReady { contract: Contract, session_id: String },
     RevisionRequested { feedback: String, session_id: String },
     BriefingOpened { workers: Vec<String>, session_id: String },
-    WorkerSpeakUp {
-        worker_id: String,
-        content: String,
-        msg_type: String,
-    },
+    WorkerSpeakUp { worker_id: String, content: String, msg_type: String },
     PlanDrafted { plan: String, session_id: String },
     PlanRevised { plan: String, round: u32, session_id: String },
-    TaskAssigned {
-        worker_id: String,
-        task: String,
-        session_id: String,
-    },
+    TaskAssigned { worker_id: String, task: String, session_id: String },
     TaskStarted { worker_id: String, task_id: String },
-    TaskDone {
-        worker_id: String,
-        task_id: String,
-        output: String,
-    },
-    TaskFailed {
-        worker_id: String,
-        task_id: String,
-        error: String,
-    },
+    TaskDone { worker_id: String, task_id: String, output: String },
+    TaskFailed { worker_id: String, task_id: String, error: String },
+    TaskRecovered { worker_id: String, task_id: String },
+    TaskTimeout { worker_id: String, task_id: String },
     LlmStreamStart { worker_id: String, task_id: String },
     LlmStreamChunk { worker_id: String, task_id: String, chunk: String },
     LlmStreamDone { worker_id: String, task_id: String },
-    WorkerDm {
-        from_id: String,
-        to_id: String,
-        message: String,
-    },
+    WorkerDm { from_id: String, to_id: String, message: String },
     WorkerBroadcast { from_id: String, message: String },
-    DelegationRequest {
-        from: String,
-        to: String,
-        instruction: String,
-    },
-    DelegationResult {
-        from: String,
-        to: String,
-        status: String,
-        output: String,
-    },
+    DelegationRequest { from: String, to: String, instruction: String },
+    DelegationResult { from: String, to: String, status: String, output: String },
     ContractStateChange { state: String, session_id: String },
     ManagerMessage { content: String, session_id: String },
     ContractAccepted { session_id: String },
     WorkStarted { session_id: String },
     WorkDone { result: serde_json::Value, session_id: String },
     Error { message: String },
-    TaskRecovered { worker_id: String, task_id: String },
-    TaskTimeout { worker_id: String, task_id: String },
     ContextFetchStart { worker_id: String },
     ContextFetchDone { worker_id: String },
     VerifyDesignStart { worker_id: String },

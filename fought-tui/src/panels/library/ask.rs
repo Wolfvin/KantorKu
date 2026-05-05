@@ -7,24 +7,26 @@ use ratatui::{
 };
 
 use crate::state::library_state::{entry_type_icon, LibraryState};
+use crate::ui::components::spinner_char;
 use crate::ui::theme::Theme;
 
 /// Render the Ask Panel (right column in Library mode, Ask content mode)
-/// Chat interface with the Archivist AI
-pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme) {
+pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, tick: u64) {
     let block = Block::default()
-        .title("ARCHIVIST — Ask the Library")
+        .title(" ARCHIVIST — Ask the Library ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.border));
+        .border_style(Style::default().fg(theme.primary));
 
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    if state.ask_history.is_empty() {
+    if state.ask_history.is_empty() && state.archivist_streaming.is_empty() {
         let placeholder = Paragraph::new(
-            "Ask the Archivist anything.\n\
-             Answers come exclusively from Library content with source attribution.\n\n\
-             Type your question in the input bar below and press Enter."
+            "Ask the Archivist anything.\n\n\
+             Answers come exclusively from Library content\n\
+             with source attribution for every claim.\n\n\
+             Type your question in the input bar below\n\
+             and press Enter to send."
         )
         .style(Style::default().fg(theme.dim))
         .wrap(Wrap { trim: true });
@@ -32,54 +34,75 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme) {
         return;
     }
 
-    // Layout: chat messages + sources
+    // Layout: chat + streaming + sources
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(0),      // Chat messages
-            Constraint::Length(4),   // Sources
+            Constraint::Min(0),      // Chat history
+            Constraint::Length(3),   // Streaming indicator + sources
         ])
         .split(inner);
 
-    // Render chat messages
-    let items: Vec<ListItem> = state.ask_history.iter().map(|msg| {
+    // Chat messages
+    let visible_count = chunks[0].height as usize;
+    let start = state.ask_history.len().saturating_sub(visible_count);
+    let messages = &state.ask_history[start..];
+
+    let items: Vec<ListItem> = messages.iter().map(|msg| {
         let (role_style, role_label) = match msg.role.as_str() {
-            "user" => (Style::default().fg(theme.accent), "> You".to_string()),
-            "archivist" => (Style::default().fg(theme.primary), "📚 Archivist".to_string()),
+            "user" => (Style::default().fg(theme.accent), "You".to_string()),
+            "archivist" => (Style::default().fg(theme.primary), "Archivist".to_string()),
             _ => (Style::default().fg(theme.dim), msg.role.clone()),
         };
 
-        let content = if msg.content.len() > 150 {
-            format!("{}...", &msg.content[..147])
+        let content = if msg.content.len() > 300 {
+            format!("{}...", &msg.content[..297])
         } else {
             msg.content.clone()
         };
 
-        Line::from(vec![
-            Span::styled(format!("{:<15} ", role_label), role_style.add_modifier(Modifier::BOLD)),
+        let mut spans = vec![
+            Span::styled(format!("{:<12} ", role_label), role_style.add_modifier(Modifier::BOLD)),
             Span::styled(content, Style::default().fg(theme.fg)),
-        ])
+        ];
+
+        // Source count for archivist messages
+        if msg.role == "archivist" && !msg.sources.is_empty() {
+            spans.push(Span::styled(
+                format!(" [{} sources]", msg.sources.len()),
+                Style::default().fg(theme.dim),
+            ));
+        }
+
+        Line::from(spans)
     }).map(ListItem::new).collect();
 
-    let list = List::new(items);
-    f.render_widget(list, chunks[0]);
+    f.render_widget(List::new(items), chunks[0]);
 
-    // Render sources
-    if !state.archivist_sources.is_empty() {
-        let source_items: Vec<ListItem> = state.archivist_sources.iter().map(|src| {
-            let icon = entry_type_icon(""); // Generic
-            Line::from(vec![
-                Span::styled(format!("{} ", icon), Style::default().fg(theme.dim)),
-                Span::styled(&src.title, Style::default().fg(theme.cyan)),
-                Span::styled(format!(" ({:.0}%)", src.relevance * 100.0), Style::default().fg(theme.dim)),
-            ])
-        }).map(ListItem::new).collect();
-
-        let source_list = List::new(source_items)
-            .block(Block::default()
-                .title("Sources")
-                .borders(Borders::TOP)
-                .border_style(Style::default().fg(theme.border)));
-        f.render_widget(source_list, chunks[1]);
+    // Streaming indicator + sources
+    if !state.archivist_streaming.is_empty() {
+        let spinner = spinner_char(tick);
+        let streaming_text: String = state.archivist_streaming.iter().take(5).cloned().collect();
+        let preview = if streaming_text.len() > 100 {
+            format!("{}...", &streaming_text[..97])
+        } else {
+            streaming_text
+        };
+        f.render_widget(
+            Paragraph::new(format!("{} Archivist is thinking...\n{}", spinner, preview))
+                .style(Style::default().fg(theme.yellow)),
+            chunks[1],
+        );
+    } else if !state.archivist_sources.is_empty() {
+        let source_items: Vec<Span> = state.archivist_sources.iter().take(3).map(|src| {
+            Span::styled(
+                format!("{} ({:.0}%)  ", src.title, src.relevance * 100.0),
+                Style::default().fg(theme.cyan),
+            )
+        }).collect();
+        f.render_widget(
+            Paragraph::new(Line::from(source_items)),
+            chunks[1],
+        );
     }
 }

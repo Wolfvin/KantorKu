@@ -1,9 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
     Frame,
 };
 use tokio::sync::mpsc;
@@ -11,64 +8,66 @@ use tokio::sync::mpsc;
 use crate::app::Action;
 use crate::panels::kantor;
 use crate::state::AppState;
+use crate::state::kantor_state::WorkersTab;
+use crate::ui::components::{connection_icon, contract_state_color, render_progress, render_status_bar};
 use crate::ui::theme::Theme;
 
 /// Handle key events in Kantor mode
 pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::UnboundedSender<Action>) {
-    use crossterm::event::KeyCode;
+    // If settings or command palette are open, don't process kantor keys
+    if state.settings_open || state.command_palette_open {
+        return;
+    }
 
     match key.code {
         // Enter — send message
         KeyCode::Enter => {
+            if state.kantor_state.multiline_mode {
+                // In multiline mode, Enter adds newline (Shift+Enter to send)
+                // For simplicity, Ctrl+Enter sends in multiline mode
+                return;
+            }
             let input = state.kantor_state.input_text.clone();
-            if !input.is_empty() {
-                // Check for NL action parsing when contract is presented
-                if state.kantor_state.contract_state == "contract_presented" {
-                    if let Some(action) = crate::ui::keybindings::parse_nl_action(&input) {
-                        let session_id = state.session_id.clone().unwrap_or_default();
-                        match action {
-                            "accept" => {
-                                let _ = action_tx.send(Action::AcceptContract { session_id });
-                            }
-                            "revise" => {
-                                let _ = action_tx.send(Action::ReviseContract {
-                                    session_id,
-                                    feedback: input,
-                                });
-                            }
-                            "interrupt" => {
-                                let _ = action_tx.send(Action::Interrupt {
-                                    session_id,
-                                    reason: input,
-                                });
-                            }
-                            _ => {}
-                        }
-                        state.kantor_state.input_text.clear();
-                        return;
-                    }
-                }
+            if input.is_empty() {
+                return;
+            }
 
-                // Normal message send
-                if let Some(session_id) = &state.session_id {
-                    let _ = action_tx.send(Action::SendMessage {
-                        session_id: session_id.clone(),
-                        content: input.clone(),
-                    });
-                }
-                state.kantor_state.input_history.push(input.clone());
-                state.kantor_state.input_history_pos = state.kantor_state.input_history.len();
+            // Check for slash commands
+            if input.starts_with('/') {
+                handle_slash_command(&input, state, action_tx);
                 state.kantor_state.input_text.clear();
+                return;
+            }
 
-                // Add to local chat display
-                state.kantor_state.manager_messages.push(crate::state::kantor_state::ChatMessage {
-                    role: "user".to_string(),
-                    content: input,
-                    timestamp: chrono::Local::now().to_rfc3339(),
+            // NL action parsing when contract is presented
+            if state.kantor_state.contract_state == "contract_presented" {
+                if let Some(action) = crate::ui::keybindings::parse_nl_action(&input) {
+                    let session_id = state.session_id.clone().unwrap_or_default();
+                    match action {
+                        "accept" => { let _ = action_tx.send(Action::AcceptContract { session_id }); }
+                        "revise" => { let _ = action_tx.send(Action::ReviseContract { session_id, feedback: input.clone() }); }
+                        "interrupt" => { let _ = action_tx.send(Action::Interrupt { session_id, reason: input.clone() }); }
+                        _ => {}
+                    }
+                    state.kantor_state.input_text.clear();
+                    state.kantor_state.push_manager_message("user", &input);
+                    return;
+                }
+            }
+
+            // Normal message send
+            if let Some(session_id) = &state.session_id {
+                let _ = action_tx.send(Action::SendMessage {
+                    session_id: session_id.clone(),
+                    content: input.clone(),
                 });
             }
+            state.kantor_state.input_history.push(input.clone());
+            state.kantor_state.input_history_pos = state.kantor_state.input_history.len();
+            state.kantor_state.push_manager_message("user", &input);
+            state.kantor_state.input_text.clear();
         }
-        // Ctrl+M — toggle multiline mode
+        // Ctrl+M — toggle multiline
         KeyCode::Char('m') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.kantor_state.multiline_mode = !state.kantor_state.multiline_mode;
         }
@@ -79,9 +78,7 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
         // Ctrl+A — accept contract
         KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             if let Some(session_id) = &state.session_id {
-                let _ = action_tx.send(Action::AcceptContract {
-                    session_id: session_id.clone(),
-                });
+                let _ = action_tx.send(Action::AcceptContract { session_id: session_id.clone() });
             }
         }
         // Ctrl+R — revise contract
@@ -93,7 +90,7 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
                 });
             }
         }
-        // Ctrl+I — disrupt/interrupt
+        // Ctrl+I — disrupt
         KeyCode::Char('i') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             if let Some(session_id) = &state.session_id {
                 let _ = action_tx.send(Action::Interrupt {
@@ -102,20 +99,42 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
                 });
             }
         }
-        // Ctrl+F — toggle focus mode
+        // Ctrl+F — focus mode
         KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             state.kantor_state.focus_mode = !state.kantor_state.focus_mode;
         }
+        // Ctrl+Tab — switch middle panel tab
+        KeyCode::BackTab => {
+            state.kantor_state.active_tab = match state.kantor_state.active_tab {
+                WorkersTab::Workers => WorkersTab::Events,
+                WorkersTab::Briefing => WorkersTab::Workers,
+                WorkersTab::Dag => WorkersTab::Briefing,
+                WorkersTab::Events => WorkersTab::Dag,
+            };
+        }
+        KeyCode::Char('\t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            state.kantor_state.active_tab = match state.kantor_state.active_tab {
+                WorkersTab::Workers => WorkersTab::Briefing,
+                WorkersTab::Briefing => WorkersTab::Dag,
+                WorkersTab::Dag => WorkersTab::Events,
+                WorkersTab::Events => WorkersTab::Workers,
+            };
+        }
+        // Number keys 1-4 for tab switching
+        KeyCode::Char('1') if key.modifiers.contains(KeyModifiers::ALT) => { state.kantor_state.active_tab = WorkersTab::Workers; }
+        KeyCode::Char('2') if key.modifiers.contains(KeyModifiers::ALT) => { state.kantor_state.active_tab = WorkersTab::Briefing; }
+        KeyCode::Char('3') if key.modifiers.contains(KeyModifiers::ALT) => { state.kantor_state.active_tab = WorkersTab::Dag; }
+        KeyCode::Char('4') if key.modifiers.contains(KeyModifiers::ALT) => { state.kantor_state.active_tab = WorkersTab::Events; }
         // Escape — cancel
         KeyCode::Esc => {
             state.kantor_state.input_text.clear();
         }
-        // Backspace — delete character
+        // Backspace
         KeyCode::Backspace => {
             state.kantor_state.input_text.pop();
         }
-        // Up — history up
-        KeyCode::Up => {
+        // History
+        KeyCode::Up if state.kantor_state.input_text.is_empty() => {
             if state.kantor_state.input_history_pos > 0 {
                 state.kantor_state.input_history_pos -= 1;
                 if let Some(prev) = state.kantor_state.input_history.get(state.kantor_state.input_history_pos) {
@@ -123,8 +142,7 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
                 }
             }
         }
-        // Down — history down
-        KeyCode::Down => {
+        KeyCode::Down if state.kantor_state.input_text.is_empty() => {
             if state.kantor_state.input_history_pos < state.kantor_state.input_history.len() {
                 state.kantor_state.input_history_pos += 1;
                 if state.kantor_state.input_history_pos < state.kantor_state.input_history.len() {
@@ -136,15 +154,6 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
                 }
             }
         }
-        // Ctrl+Tab — switch middle panel tab
-        KeyCode::Tab if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            state.kantor_state.active_tab = match state.kantor_state.active_tab {
-                crate::state::kantor_state::WorkersTab::Workers => crate::state::kantor_state::WorkersTab::Briefing,
-                crate::state::kantor_state::WorkersTab::Briefing => crate::state::kantor_state::WorkersTab::Dag,
-                crate::state::kantor_state::WorkersTab::Dag => crate::state::kantor_state::WorkersTab::Events,
-                crate::state::kantor_state::WorkersTab::Events => crate::state::kantor_state::WorkersTab::Workers,
-            };
-        }
         // Character input
         KeyCode::Char(c) => {
             state.kantor_state.input_text.push(c);
@@ -153,8 +162,57 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
     }
 }
 
+/// Handle slash commands in kantor mode
+fn handle_slash_command(input: &str, state: &mut AppState, action_tx: &mpsc::UnboundedSender<Action>) {
+    let parts: Vec<&str> = input[1..].splitn(2, ' ').collect();
+    let cmd = parts[0];
+    let _args = parts.get(1).unwrap_or(&"");
+
+    match cmd {
+        "accept" => {
+            if let Some(session_id) = &state.session_id {
+                let _ = action_tx.send(Action::AcceptContract { session_id: session_id.clone() });
+            }
+        }
+        "revise" => {
+            if let Some(session_id) = &state.session_id {
+                let _ = action_tx.send(Action::ReviseContract {
+                    session_id: session_id.clone(),
+                    feedback: _args.to_string(),
+                });
+            }
+        }
+        "disrupt" | "interrupt" => {
+            if let Some(session_id) = &state.session_id {
+                let _ = action_tx.send(Action::Interrupt {
+                    session_id: session_id.clone(),
+                    reason: _args.to_string(),
+                });
+            }
+        }
+        "clear" => {
+            state.kantor_state.manager_messages.clear();
+        }
+        "focus" => {
+            state.kantor_state.focus_mode = !state.kantor_state.focus_mode;
+        }
+        "settings" => {
+            state.settings_open = true;
+        }
+        "theme" => {
+            let _ = action_tx.send(Action::CycleTheme);
+        }
+        "help" => {
+            state.kantor_state.push_manager_message("system", "Commands: /accept, /revise, /disrupt, /clear, /focus, /settings, /theme, /help");
+        }
+        _ => {
+            state.kantor_state.push_manager_message("system", &format!("Unknown command: /{cmd}"));
+        }
+    }
+}
+
 /// Render Kantor mode layout
-pub fn render(f: &mut Frame, size: Rect, state: &AppState, theme: &Theme) {
+pub fn render(f: &mut Frame, size: Rect, state: &AppState, theme: &Theme, tick: u64) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -165,45 +223,64 @@ pub fn render(f: &mut Frame, size: Rect, state: &AppState, theme: &Theme) {
         .split(size);
 
     // Status bar
+    let (conn_icon, _conn_color, conn_label) = connection_icon(&state.connection_state);
     let session_info = format!(
-        "{} | {} workers | ${:.3}",
+        " {} {} | {} | {} workers | ${:.3}",
+        conn_icon,
+        conn_label,
         state.session_id.as_deref().unwrap_or("no session"),
         state.active_workers,
-        state.cost_usd
+        state.cost_usd,
     );
-    let right = " Tab: Library  Ctrl+P: Commands ";
-    crate::ui::components::render_status_bar(
+    render_status_bar(
         f,
         chunks[0],
         "KANTOR",
         theme.accent,
-        &session_info,
-        right,
+        &format!(" ⚡ Fought [KANTOR]  {session_info}"),
+        " Tab: Library  Ctrl+P: Commands ",
         theme,
     );
 
-    // Main area: 3 columns
-    let main_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(25),   // Left: Contract
-            Constraint::Percentage(45),   // Middle: Workers Live (tabbed)
-            Constraint::Percentage(30),   // Right: Manager Chat
-        ])
-        .split(chunks[1]);
+    // Main area layout depends on focus mode
+    let main_chunks = if state.kantor_state.focus_mode {
+        // Focus mode: just manager chat (full width)
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(100)])
+            .split(chunks[1])
+    } else {
+        // Normal: 3 columns
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(25),   // Contract
+                Constraint::Percentage(45),   // Workers Live
+                Constraint::Percentage(30),   // Manager Chat
+            ])
+            .split(chunks[1])
+    };
 
-    kantor::contract::render(f, main_chunks[0], &state.kantor_state, theme);
-    kantor::workers_live::render(f, main_chunks[1], &state.kantor_state, theme);
-    kantor::manager_chat::render(f, main_chunks[2], &state.kantor_state, theme);
+    if state.kantor_state.focus_mode {
+        kantor::manager_chat::render(f, main_chunks[0], &state.kantor_state, theme);
+    } else {
+        kantor::contract::render(f, main_chunks[0], &state.kantor_state, theme);
+        kantor::workers_live::render(f, main_chunks[1], &state.kantor_state, theme, tick);
+        kantor::manager_chat::render(f, main_chunks[2], &state.kantor_state, theme);
+    }
 
     // Input bar
     let multiline_hint = if state.kantor_state.multiline_mode { "Ctrl+M: Single-line" } else { "Ctrl+M: Multi-line" };
+    let contract_hint = if state.kantor_state.contract_state == "contract_presented" {
+        "Ctrl+A: Accept  Ctrl+R: Revise"
+    } else {
+        multiline_hint
+    };
     crate::ui::components::render_input_bar(
         f,
         chunks[2],
         &state.kantor_state.input_text,
-        state.kantor_state.input_text.len(),
-        multiline_hint,
+        contract_hint,
         theme,
     );
 }

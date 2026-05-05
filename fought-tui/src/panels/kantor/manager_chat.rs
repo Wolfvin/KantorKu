@@ -12,16 +12,19 @@ use crate::ui::theme::Theme;
 /// Render the Manager Chat panel (right column in Kantor mode)
 pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
     let block = Block::default()
-        .title("MANAGER")
+        .title(" MANAGER ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.border));
+        .border_style(Style::default().fg(theme.primary));
 
     let inner = block.inner(area);
     f.render_widget(block, area);
 
     if state.manager_messages.is_empty() {
-        let placeholder = Paragraph::new("Waiting for Manager...")
-            .style(Style::default().fg(theme.dim));
+        let placeholder = Paragraph::new(
+            "Waiting for Manager...\n\nSend a message to start a session."
+        )
+        .style(Style::default().fg(theme.dim))
+        .wrap(Wrap { trim: true });
         f.render_widget(placeholder, inner);
         return;
     }
@@ -35,24 +38,30 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
         ])
         .split(inner);
 
-    // Render messages
-    let items: Vec<ListItem> = state.manager_messages.iter().map(|msg| {
+    // Render messages — show most recent N that fit
+    let visible_count = chunks[0].height as usize;
+    let start = state.manager_messages.len().saturating_sub(visible_count);
+    let messages = &state.manager_messages[start..];
+
+    let items: Vec<ListItem> = messages.iter().map(|msg| {
         let (role_style, role_label) = match msg.role.as_str() {
-            "user" => (Style::default().fg(theme.accent), "> You".to_string()),
+            "user" => (Style::default().fg(theme.accent), "You".to_string()),
             "manager" => (Style::default().fg(theme.primary), "Manager".to_string()),
-            "manager_brainstorm" => (Style::default().fg(theme.secondary), "Thinking".to_string()),
+            "thinking" => (Style::default().fg(theme.secondary), "Thinking".to_string()),
+            "system" => (Style::default().fg(theme.info), "System".to_string()),
             _ => (Style::default().fg(theme.dim), msg.role.clone()),
         };
 
-        // Truncate content for display
-        let content = if msg.content.len() > 200 {
-            format!("{}...", &msg.content[..197])
+        let content = if msg.content.len() > 300 {
+            format!("{}...", &msg.content[..297])
         } else {
             msg.content.clone()
         };
 
+        // Wrap long messages into multiple visual lines
+        let label = format!("{:<10} ", role_label);
         Line::from(vec![
-            Span::styled(format!("{:<10} ", role_label), role_style.add_modifier(Modifier::BOLD)),
+            Span::styled(label, role_style.add_modifier(Modifier::BOLD)),
             Span::styled(content, Style::default().fg(theme.fg)),
         ])
     }).map(ListItem::new).collect();
@@ -61,12 +70,13 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
     f.render_widget(list, chunks[0]);
 
     // Hints
-    let hints = if state.contract_state == "contract_presented" {
-        "Ctrl+A: Accept  Ctrl+R: Revise  Ctrl+I: Disrupt"
-    } else {
-        "Enter: Send  Ctrl+M: Multi-line  Ctrl+L: Clear"
+    let hints = match state.contract_state.as_str() {
+        "contract_presented" => "Ctrl+A: Accept  Ctrl+R: Revise  Ctrl+I: Disrupt",
+        "working" => "Ctrl+I: Disrupt  Ctrl+M: Multi-line",
+        _ => "Enter: Send  Ctrl+M: Multi-line  Ctrl+L: Clear",
     };
-    let hint_line = Paragraph::new(hints)
-        .style(Style::default().fg(theme.dim));
-    f.render_widget(hint_line, chunks[1]);
+    f.render_widget(
+        Paragraph::new(hints).style(Style::default().fg(theme.dim)),
+        chunks[1],
+    );
 }
