@@ -1,7 +1,7 @@
 """
 Slash Commands — Complete command system for the KantorKu TUI.
 
-45+ commands covering ALL framework features:
+50+ commands covering ALL framework features:
 
 System:         /serve /init /version
 Chat & Contracts: /accept /ask /code /revise /run /interrupt
@@ -14,6 +14,7 @@ Provider: /provider /circuit-reset /rate-limit
 Persistence: /checkpoint /recover /snapshot /snapshots
 Session: /reset /export /delegate /theme /transcript /settings
 Redteam: /redteam /stm /autotune /classify /godmode /score /parseltongue
+Library: /library /kantor /ingest /lib-search /lib-stats /lib-ask
 """
 
 from __future__ import annotations
@@ -58,6 +59,7 @@ def get_help_text() -> str:
         "Persistence": ["checkpoint", "recover", "snapshot", "snapshots"],
         "Redteam": ["redteam", "stm", "autotune", "classify", "godmode", "score", "parseltongue"],
         "Session": ["reset", "export", "delegate", "theme", "transcript", "settings"],
+        "Library": ["library", "kantor", "ingest", "lib-search", "lib-stats", "lib-ask"],
     }
     lines = ["[bold cyan]KantorKu Slash Commands:[/bold cyan]", ""]
     for cat, cmd_names in categories.items():
@@ -69,7 +71,7 @@ def get_help_text() -> str:
                 if cmd.usage and cmd.usage != f"/{name}":
                     lines.append(f"  {'':>{max_name + 2}}  [dim]{cmd.usage}[/dim]")
     lines.append("")
-    lines.append("[dim]↑/↓ = history  Tab = switch panels  Enter = send[/dim]")
+    lines.append("[dim]↑/↓ = history  Tab = Kantor/Library  Enter = send[/dim]")
     return "\n".join(lines)
 
 
@@ -1610,3 +1612,165 @@ async def cmd_version(tui: Any, args: str) -> str:
         pass
 
     return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Library
+# ═══════════════════════════════════════════════════════════════════
+
+@command("library", "Switch to Library mode (or Ctrl+B)", "/library")
+async def cmd_library(tui: Any, args: str) -> str:
+    """Switch to Library (Perpustakaan) mode."""
+    if hasattr(tui, 'action_switch_to_library'):
+        tui.action_switch_to_library()
+        return "[green]Switched to Library mode. Press Tab or Ctrl+K to return to Kantor.[/green]"
+    return "[yellow]Library mode not available[/yellow]"
+
+@command("kantor", "Switch to Kantor (Office) mode (or Ctrl+K)", "/kantor")
+async def cmd_kantor(tui: Any, args: str) -> str:
+    """Switch back to Kantor (Office) mode."""
+    if hasattr(tui, 'action_switch_to_kantor'):
+        tui.action_switch_to_kantor()
+        return "[green]Switched to Kantor mode. Press Tab or Ctrl+B to go to Library.[/green]"
+    return "[yellow]Kantor mode not available[/yellow]"
+
+@command("ingest", "Ingest content into Library", "/ingest <content>")
+async def cmd_ingest(tui: Any, args: str) -> str:
+    """Ingest text content into the Library."""
+    if not args.strip():
+        return "[yellow]Usage: /ingest <content>[/yellow]\n[dim]Switch to Library mode and use the Ingest panel for richer input.[/dim]"
+    try:
+        from kantorku.library.storage.archive import Archive
+        from kantorku.library.core.librarian import Librarian
+        archive = Archive()
+        await archive.initialize()
+        librarian = Librarian(archive, None)
+        entry = await librarian.ingest(
+            content=args.strip(),
+            source="manual",
+        )
+        return f"[green]Ingested: {entry.title}[/green]\n[dim]Type: {entry.entry_type.value} | Shelf: {entry.shelf_str} | Quality: {entry.quality_score:.2f}[/dim]"
+    except Exception as e:
+        return f"[red]Ingest failed: {e}[/red]"
+
+@command("lib-search", "Search Library entries", "/lib-search <query>")
+async def cmd_lib_search(tui: Any, args: str) -> str:
+    """Search the Library for entries matching a query."""
+    if not args.strip():
+        return "[yellow]Usage: /lib-search <query>[/yellow]"
+    try:
+        from kantorku.library.storage.archive import Archive
+        from kantorku.library.core.models import ENTRY_TYPE_ICONS
+        archive = Archive()
+        await archive.initialize()
+        results = await archive.search(args.strip(), limit=10)
+        if not results:
+            return "[dim]No entries found[/dim]"
+        lines = [f"[bold cyan]Library Search: '{args.strip()}'[/bold cyan]", ""]
+        for entry in results:
+            icon = ENTRY_TYPE_ICONS.get(entry.entry_type, "\U0001f4d6")
+            verified = "\u2713" if entry.verified else "\u25cb"
+            lines.append(
+                f"  {icon} [bold]{entry.title}[/bold] "
+                f"[{verified}] \u2605{entry.quality_score:.2f} "
+                f"({entry.usage_count}x)"
+            )
+            lines.append(f"    [dim]{entry.shelf_str}[/dim]")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"[red]Search failed: {e}[/red]"
+
+@command("lib-stats", "Show Library statistics", "/lib-stats")
+async def cmd_lib_stats(tui: Any, args: str) -> str:
+    """Show Library statistics."""
+    try:
+        from kantorku.library.storage.archive import Archive
+        archive = Archive()
+        await archive.initialize()
+        stats = await archive.get_stats()
+        lines = ["[bold cyan]Library Statistics[/bold cyan]", ""]
+        lines.append(f"  Total entries:    {stats.get('total_entries', 0)}")
+        lines.append(f"  Verified:         {stats.get('verified_entries', 0)}")
+        lines.append(f"  Avg quality:      {stats.get('avg_quality', 0):.2f}")
+        lines.append(f"  Shelves:          {stats.get('shelves_count', 0)}")
+        by_type = stats.get('entries_by_type', {})
+        if by_type:
+            lines.append("")
+            lines.append("  By type:")
+            for etype, count in by_type.items():
+                lines.append(f"    {etype}: {count}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"[red]Stats failed: {e}[/red]"
+
+@command("lib-ask", "Ask the Library Archivist", "/lib-ask <question>")
+async def cmd_lib_ask(tui: Any, args: str) -> str:
+    """Ask the Archivist a question based on Library content."""
+    if not args.strip():
+        return "[yellow]Usage: /lib-ask <question>[/yellow]"
+    try:
+        from kantorku.library.storage.archive import Archive
+        from kantorku.library.storage.vectors import VectorStore
+        from kantorku.library.core.archivist import Archivist
+        archive = Archive()
+        await archive.initialize()
+        vector_store = VectorStore()
+        await vector_store.initialize()
+        archivist = Archivist(archive, vector_store)
+        result = await archivist.ask(args.strip())
+        lines = [f"[bold cyan]Archivist:[/bold cyan]", ""]
+        lines.append(result.get("answer", "No answer available"))
+        sources = result.get("sources", [])
+        if sources:
+            lines.append("")
+            lines.append("[dim]Sources:[/dim]")
+            for i, src in enumerate(sources[:5], 1):
+                lines.append(f"  [{i}] {src.get('title', '?')} — {src.get('shelf_path', '?')}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"[red]Ask failed: {e}[/red]"
+
+@command("export", "Export Library data", "/export <pretraining|rlhf|preference|json|all> [output_dir]")
+async def cmd_export(tui: Any, args: str) -> str:
+    """Export Library data in various formats."""
+    parts = args.strip().split()
+    if not parts:
+        return "[yellow]Usage: /export <pretraining|rlhf|preference|json|all> [output_dir][/yellow]"
+    fmt = parts[0].lower()
+    output_dir = parts[1] if len(parts) > 1 else "data/library/exports"
+    try:
+        from kantorku.library.storage.archive import Archive
+        from kantorku.library.core.exporter import Exporter
+        archive = Archive()
+        await archive.initialize()
+        exporter = Exporter(archive)
+        if fmt == "pretraining":
+            count = await exporter.export_losion_pretraining(output_dir)
+            return f"[green]Exported {count} entries as Losion pretraining data[/green]\n[dim]Output: {output_dir}[/dim]"
+        elif fmt == "rlhf":
+            qa = await exporter.export_losion_rlhf_qa(output_dir)
+            sol = await exporter.export_losion_rlhf_solutions(output_dir)
+            return f"[green]Exported RLHF data: {qa} QA + {sol} solutions[/green]\n[dim]Output: {output_dir}[/dim]"
+        elif fmt == "preference":
+            count = await exporter.export_losion_preference_pairs(output_dir)
+            return f"[green]Exported {count} preference pairs[/green]\n[dim]Output: {output_dir}[/dim]"
+        elif fmt == "json":
+            count = await exporter.export_json(f"{output_dir}/library.jsonl")
+            return f"[green]Exported {count} entries as JSONL[/green]\n[dim]Output: {output_dir}/library.jsonl[/dim]"
+        elif fmt == "all":
+            pre = await exporter.export_losion_pretraining(f"{output_dir}/pretraining")
+            qa = await exporter.export_losion_rlhf_qa(f"{output_dir}/rlhf")
+            sol = await exporter.export_losion_rlhf_solutions(f"{output_dir}/rlhf")
+            pref = await exporter.export_losion_preference_pairs(f"{output_dir}/preference")
+            js = await exporter.export_json(f"{output_dir}/library.jsonl")
+            return (f"[green]Full export complete:[/green]\n"
+                    f"  Pretraining: {pre}\n"
+                    f"  RLHF QA: {qa}\n"
+                    f"  RLHF Solutions: {sol}\n"
+                    f"  Preference: {pref}\n"
+                    f"  JSON: {js}\n"
+                    f"[dim]Output: {output_dir}[/dim]")
+        else:
+            return f"[yellow]Unknown format: {fmt}[/yellow]\n[dim]Formats: pretraining, rlhf, preference, json, all[/dim]"
+    except Exception as e:
+        return f"[red]Export failed: {e}[/red]"

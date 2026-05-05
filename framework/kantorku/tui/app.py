@@ -348,9 +348,11 @@ class ShortcutsScreen(ModalScreen[None]):
             ("Ctrl+M", "Multi-line Input", "Toggle single/multi-line input"),
             ("Ctrl+Shift+T", "Switch Theme", "Cycle through color themes"),
             ("Ctrl+F", "Focus Mode", "Toggle focus mode (chat only)"),
+            ("Tab", "Kantor / Library", "Switch between Office and Library"),
+            ("Ctrl+K", "Kantor Mode", "Switch to Office (Kantor)"),
+            ("Ctrl+B", "Library Mode", "Switch to Library (b = buku)"),
             ("Escape", "Cancel", "Cancel current input / close dialog"),
             ("F1", "Shortcuts", "Show this cheatsheet"),
-            ("Tab", "Next Panel", "Cycle focus between panels"),
             ("Up/Down", "History", "Navigate input history"),
         ]
         lines = ["[bold]Shortcut        Action                  Description[/bold]", ""]
@@ -1927,7 +1929,9 @@ class KantorKuTUI(App):
         Binding("ctrl+m", "toggle_multiline", "Multi-line", show=False),
         Binding("ctrl+shift+t", "switch_theme", "Theme", show=False),
         Binding("ctrl+f", "toggle_focus_mode", "Focus", show=False),
-        Binding("tab", "focus_next_panel", "Next Panel", show=False),
+        Binding("tab", "switch_mode", "Kantor/Library", show=True),
+        Binding("ctrl+k", "switch_to_kantor", "Kantor Mode", show=False),
+        Binding("ctrl+b", "switch_to_library", "Library Mode", show=False),
         Binding("up", "history_up", "History \u2191", show=False),
         Binding("down", "history_down", "History \u2193", show=False),
     ]
@@ -1991,6 +1995,9 @@ class KantorKuTUI(App):
 
         # Focus mode (hide center+right panels)
         self._focus_mode: bool = False
+
+        # Library mode (Kantor ↔ Library tab switching)
+        self._current_mode: str = "kantor"  # "kantor" or "library"
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -2877,19 +2884,37 @@ class KantorKuTUI(App):
                 "[dim]No active work to disrupt. Just type your message![/dim]"
             )
 
-    def action_focus_next_panel(self) -> None:
-        """Tab — Cycle focus between panels."""
-        focused = self.focused
-        if focused and focused.id == "chat-input":
-            try:
-                tabs = self.query_one("#center-tabs", TabbedContent)
-                tabs.focus()
-            except NoMatches:
-                pass
-        elif focused and hasattr(focused, 'id') and ('workers' in str(focused.id) or 'tab' in str(focused.id).lower()):
-            self.query_one("#contract-scroll").focus()
+    def action_switch_mode(self) -> None:
+        """Tab — Toggle between Kantor and Library mode."""
+        if self._current_mode == "kantor":
+            self.action_switch_to_library()
         else:
-            self.query_one("#chat-input").focus()
+            self.action_switch_to_kantor()
+
+    def action_switch_to_kantor(self) -> None:
+        """Ctrl+K — Switch to Kantor (Office) mode."""
+        if self._current_mode == "library":
+            self._current_mode = "kantor"
+            try:
+                self.pop_screen()
+            except Exception:
+                pass
+            self.sub_title = "Chat-Driven Office"
+
+    def action_switch_to_library(self) -> None:
+        """Ctrl+B — Switch to Library mode (b = buku)."""
+        if self._current_mode == "kantor":
+            self._current_mode = "library"
+            try:
+                from kantorku.tui.library.library_screen import LibraryScreen
+                self.push_screen(LibraryScreen())
+            except Exception as e:
+                self._add_manager_message(
+                    f"[red]Failed to open Library: {e}[/red]"
+                )
+                self._current_mode = "kantor"
+                return
+            self.sub_title = "Perpustakaan"
 
     def action_history_up(self) -> None:
         """Up arrow — Navigate input history."""

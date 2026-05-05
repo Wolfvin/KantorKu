@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kantorku"
-version = "0.1.0"
+version = "0.5.0"
 description = "Kantor digital yang sesungguhnya — AI worker orchestration framework"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [{ name = "Wolfvin" }]
-keywords = ["ai", "agents", "orchestration", "llm", "multi-agent", "office", "tui", "textual"]
+keywords = ["ai", "agents", "orchestration", "llm", "multi-agent", "office", "tui", "textual", "library", "knowledge-base"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: AsyncIO",
@@ -35,6 +35,7 @@ dependencies = [
     "aiosqlite>=0.20.0",
     "pyarrow>=17.0.0",
     "anyio>=4.6.0",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]
@@ -48,6 +49,10 @@ tui = [
     "rich>=13.0.0",
     "websockets>=13.0",
 ]
+library = [
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
+]
 all = [
     "anthropic>=0.39.0",
     "google-genai>=1.0.0",
@@ -55,6 +60,8 @@ all = [
     "textual>=0.40.0",
     "rich>=13.0.0",
     "websockets>=13.0",
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
 ]
 dev = [
     "pytest>=8.0",
