@@ -33,11 +33,10 @@ fn handle_browse_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbo
     }
 
     match key.code {
-        KeyCode::Up => {
-            if state.library_state.shelf_selection > 0 {
+        KeyCode::Up
+            if state.library_state.shelf_selection > 0 => {
                 state.library_state.shelf_selection -= 1;
             }
-        }
         KeyCode::Down => {
             let max = state.library_state.visible_items.len().saturating_sub(1);
             if state.library_state.shelf_selection < max {
@@ -67,12 +66,11 @@ fn handle_browse_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbo
                 }
             }
         }
-        KeyCode::Left | KeyCode::Backspace => {
-            if state.library_state.shelf_breadcrumb.len() > 1 {
+        KeyCode::Left | KeyCode::Backspace
+            if state.library_state.shelf_breadcrumb.len() > 1 => {
                 state.library_state.shelf_breadcrumb.pop();
                 rebuild_visible_items(&mut state.library_state);
             }
-        }
         KeyCode::Char('/') => {
             state.library_state.search_mode = true;
             state.library_state.search_query.clear();

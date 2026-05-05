@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 /// Contract state enum — replaces stringly-typed state tracking.
 /// Values MUST match Python ContractState enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Default)]
 pub enum ContractState {
+    #[default]
     Idle,
     ManagerThinking,
     Clarifying,
@@ -61,9 +63,6 @@ impl ContractState {
     }
 }
 
-impl Default for ContractState {
-    fn default() -> Self { Self::Idle }
-}
 
 impl std::fmt::Display for ContractState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -117,16 +116,15 @@ pub struct KantorState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum WorkersTab {
+    #[default]
     Workers,
     Briefing,
     Dag,
     Events,
 }
 
-impl Default for WorkersTab {
-    fn default() -> Self { WorkersTab::Workers }
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[allow(dead_code)] // Fields used for serde deserialization

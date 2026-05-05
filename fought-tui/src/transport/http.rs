@@ -40,7 +40,7 @@ impl BackendClient {
         }
     }
 
-    // === KANTOR ENDPOINTS ===
+    // === KANTOR ENDPOINTS (core — actively used) ===
 
     pub async fn send_message(&self, session_id: &str, message: &str) -> Result<()> {
         self.client
@@ -68,6 +68,8 @@ impl BackendClient {
         Ok(())
     }
 
+    // === KANTOR ENDPOINTS (status — used by future dashboard/status views) ===
+    #[allow(dead_code)] // API-complete: used when status panels are implemented
     pub async fn get_sessions(&self) -> Result<Vec<SessionBrief>> {
         Ok(self.client
             .get(format!("{}/sessions", self.base_url))
@@ -77,6 +79,7 @@ impl BackendClient {
             .await?)
     }
 
+    #[allow(dead_code)] // API-complete: used when status panels are implemented
     pub async fn get_status(&self) -> Result<serde_json::Value> {
         Ok(self.client
             .get(format!("{}/status", self.base_url))
@@ -86,6 +89,7 @@ impl BackendClient {
             .await?)
     }
 
+    #[allow(dead_code)] // API-complete: used when cost panels are implemented
     pub async fn get_cost(&self) -> Result<serde_json::Value> {
         Ok(self.client
             .get(format!("{}/cost", self.base_url))
@@ -95,6 +99,7 @@ impl BackendClient {
             .await?)
     }
 
+    #[allow(dead_code)] // API-complete: used when health dashboard is implemented
     pub async fn get_health(&self) -> Result<serde_json::Value> {
         Ok(self.client
             .get(format!("{}/health/dashboard", self.base_url))
@@ -104,6 +109,7 @@ impl BackendClient {
             .await?)
     }
 
+    #[allow(dead_code)] // API-complete: used when memory stats panel is implemented
     pub async fn get_memory_stats(&self) -> Result<serde_json::Value> {
         Ok(self.client
             .get(format!("{}/memory/stats", self.base_url))
@@ -113,6 +119,7 @@ impl BackendClient {
             .await?)
     }
 
+    #[allow(dead_code)] // API-complete: used when circuit breaker panel is implemented
     pub async fn get_circuit_breakers(&self) -> Result<serde_json::Value> {
         Ok(self.client
             .get(format!("{}/circuit-breaker", self.base_url))
@@ -124,6 +131,7 @@ impl BackendClient {
 
     // === LIBRARY ENDPOINTS ===
 
+    #[allow(dead_code)] // API-complete: used by initial state fetch
     pub async fn get_shelves(&self) -> Result<Vec<Shelf>> {
         Ok(self.client
             .get(format!("{}/library/shelves", self.base_url))

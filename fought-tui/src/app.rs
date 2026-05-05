@@ -124,7 +124,7 @@ impl App {
         // Global keybindings — always take precedence
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.should_quit = true;
+                let _ = self.action_tx.send(Action::Quit);
                 return;
             }
             KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -225,11 +225,10 @@ impl App {
     fn handle_command_palette_key(&mut self, key: KeyEvent) {
         use crossterm::event::KeyCode;
         match key.code {
-            KeyCode::Up => {
-                if self.state.command_palette_selection > 0 {
+            KeyCode::Up
+                if self.state.command_palette_selection > 0 => {
                     self.state.command_palette_selection -= 1;
                 }
-            }
             KeyCode::Down => {
                 let max = self.state.filtered_commands().len().saturating_sub(1);
                 if self.state.command_palette_selection < max {
@@ -272,11 +271,10 @@ impl App {
                 self.state.settings_tab = self.state.settings_tab.next();
                 self.state.settings_selection = 0;
             }
-            KeyCode::Up => {
-                if self.state.settings_selection > 0 {
+            KeyCode::Up
+                if self.state.settings_selection > 0 => {
                     self.state.settings_selection -= 1;
                 }
-            }
             KeyCode::Down => {
                 let max = match self.state.settings_tab {
                     crate::state::SettingsTab::Workers => self.state.kantor_state.workers_list.len().saturating_sub(1),

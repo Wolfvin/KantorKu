@@ -45,15 +45,14 @@ pub struct LibraryState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Default)]
 pub enum ContentMode {
+    #[default]
     Browse,
     Ask,
     Ingest,
 }
 
-impl Default for ContentMode {
-    fn default() -> Self { ContentMode::Browse }
-}
 
 impl ContentMode {
     pub fn label(self) -> &'static str {
@@ -66,27 +65,25 @@ impl ContentMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Default)]
 pub enum IngestStep {
+    #[default]
     Input,
     Analyzing,
     Confirm,
     Done,
 }
 
-impl Default for IngestStep {
-    fn default() -> Self { IngestStep::Input }
-}
 
 /// Which field in the ingest form is active
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Default)]
 pub enum IngestField {
+    #[default]
     Title,
     Content,
 }
 
-impl Default for IngestField {
-    fn default() -> Self { IngestField::Title }
-}
 
 // === Data Models — MUST match Python models.py ===
 

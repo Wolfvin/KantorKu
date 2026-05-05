@@ -8,20 +8,28 @@ use ratatui::{
 
 use crate::state::kantor_state::KantorState;
 use crate::ui::components::severity_color;
+use crate::ui::keybindings::filter_categories;
 use crate::ui::theme::Theme;
 
 /// Render the Events Log panel (tab in Workers Live)
 pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
     if state.event_log.is_empty() {
-        let placeholder = Paragraph::new("No events logged yet.")
+        let placeholder = Paragraph::new("No events logged yet.\n\nUse Alt+4 or Ctrl+Tab to switch to Events tab.\nFilter with /tasks, /errors, /llm, /briefing in the event filter.")
             .style(Style::default().fg(theme.dim));
         f.render_widget(placeholder, area);
         return;
     }
 
-    // Filter events if filter is set
+    // Filter events if filter is set — use filter_categories for named categories
     let filtered: Vec<&crate::state::kantor_state::LogEvent> = if let Some(filter) = &state.event_filter {
-        state.event_log.iter().filter(|ev| ev.event_type.contains(filter.as_str())).collect()
+        state.event_log.iter().filter(|ev| {
+            // Check if filter matches a named category first
+            if filter_categories::matches(filter, &ev.event_type) {
+                return true;
+            }
+            // Fallback to substring match
+            ev.event_type.contains(filter.as_str())
+        }).collect()
     } else {
         state.event_log.iter().collect()
     };

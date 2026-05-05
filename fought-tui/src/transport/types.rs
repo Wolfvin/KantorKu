@@ -11,6 +11,9 @@ use crate::state::library_state::{LibraryEntry, LibraryEntryBrief, SourceRef};
 #[allow(dead_code)] // Fields used for serde deserialization
 pub enum BackendEvent {
     // === KANTOR EVENTS ===
+    WsConnected,
+    WsConnecting,
+    WsDisconnected,
     ManagerQuestion { content: String, session_id: String },
     ManagerBrainstorming { content: String, session_id: String },
     ContractReady { contract: Contract, session_id: String },

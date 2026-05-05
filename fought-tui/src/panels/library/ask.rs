@@ -63,6 +63,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, ti
 
         let mut spans = vec![
             Span::styled(format!("{:<12} ", role_label), role_style.add_modifier(Modifier::BOLD)),
+            Span::styled(format!("[{}] ", msg.timestamp), Style::default().fg(theme.dim)),
             Span::styled(content, Style::default().fg(theme.fg)),
         ];
 

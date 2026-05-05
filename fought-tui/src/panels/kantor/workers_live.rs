@@ -6,8 +6,8 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::kantor_state::{ContractState, KantorState, WorkersTab};
-use crate::ui::components::{squad_color, spinner_char};
+use crate::state::kantor_state::{KantorState, WorkersTab};
+use crate::ui::components::{squad_color, spinner_char, phase_label, worker_status_icon};
 use crate::ui::theme::Theme;
 
 /// Render the tabbed Workers Live panel (middle column in Kantor mode)
@@ -24,17 +24,17 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme, tic
         .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Min(0)])
         .split(inner);
 
-    // Phase indicator — using ContractState enum
-    let (phase_text, phase_color) = match state.contract_state {
-        ContractState::Idle => ("○ IDLE", theme.dim),
-        ContractState::ManagerThinking | ContractState::Clarifying
-        | ContractState::ContractPresented | ContractState::AwaitingRevision => ("◐ NEGOTIATING", theme.yellow),
-        ContractState::TeamReview | ContractState::TodoReview => ("┼ BRIEFING", theme.secondary),
-        ContractState::Working | ContractState::Accepted => ("⚡ EXECUTING", theme.success),
-        ContractState::Verifying => ("◇ VERIFYING", theme.info),
-        ContractState::Done => ("✓ COMPLETE", theme.green),
-        ContractState::Failed => ("✗ FAILED", theme.error),
-        ContractState::ClientFeedback => ("◐ FEEDBACK", theme.info),
+    // Phase indicator — reuse phase_label from components
+    let (phase_text, phase_color_name) = phase_label(state.contract_state.as_str());
+    let phase_color = match phase_color_name {
+        "dim" => theme.dim,
+        "yellow" => theme.yellow,
+        "secondary" => theme.secondary,
+        "green" | "success" => theme.success,
+        "blue" | "info" => theme.info,
+        "red" | "error" => theme.error,
+        "warning" => theme.warning,
+        _ => theme.dim,
     };
     f.render_widget(
         Paragraph::new(format!("  {phase_text}")).style(Style::default().fg(phase_color)),
@@ -63,17 +63,55 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme, tic
     let tabs = Tabs::new(tab_titles);
     f.render_widget(tabs, chunks[1]);
 
-    // Tab content
+    // Tab content — delegate to standalone panel modules
     match state.active_tab {
         WorkersTab::Workers => render_workers_tab(f, chunks[2], state, theme, tick),
-        WorkersTab::Briefing => render_briefing_tab(f, chunks[2], state, theme),
-        WorkersTab::Dag => render_dag_tab(f, chunks[2], state, theme),
-        WorkersTab::Events => render_events_tab(f, chunks[2], state, theme),
+        WorkersTab::Briefing => crate::panels::kantor::briefing::render(f, chunks[2], state, theme),
+        WorkersTab::Dag => crate::panels::kantor::dag::render(f, chunks[2], state, theme),
+        WorkersTab::Events => crate::panels::kantor::events::render(f, chunks[2], state, theme),
     }
 }
 
 fn render_workers_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme, tick: u64) {
-    let visible_count = area.height as usize;
+    // Split into: worker roster (top 40%) + event stream (bottom 60%)
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(area);
+
+    // Worker roster — show each worker with status icon
+    let roster_items: Vec<ListItem> = state.workers_list.iter().map(|worker_id| {
+        let status = if state.llm_streaming_worker.as_deref() == Some(worker_id) {
+            "working"
+        } else {
+            "idle"
+        };
+        let icon = worker_status_icon(status);
+        let color = squad_color(worker_id, theme);
+        let streaming = if status == "working" {
+            format!(" {}", spinner_char(tick))
+        } else {
+            String::new()
+        };
+        Line::from(vec![
+            Span::styled(format!("{} ", icon), Style::default().fg(if status == "working" { theme.yellow } else { theme.dim })),
+            Span::styled(format!("{:<20}", worker_id), Style::default().fg(color)),
+            Span::styled(format!("{}{}", status, streaming), Style::default().fg(theme.dim)),
+        ])
+    }).map(ListItem::new).collect();
+
+    let roster_area = if !roster_items.is_empty() {
+        f.render_widget(
+            List::new(roster_items).block(Block::default().title("Roster").borders(Borders::NONE)),
+            chunks[0],
+        );
+        chunks[1]
+    } else {
+        chunks[1]
+    };
+
+    // Event stream
+    let visible_count = roster_area.height as usize;
     let events: Vec<&crate::state::kantor_state::WorkerEvent> = state
         .worker_events
         .iter()
@@ -123,118 +161,5 @@ fn render_workers_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &Th
         ])
     }).map(ListItem::new).collect();
 
-    f.render_widget(List::new(items), area);
-}
-
-fn render_briefing_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
-    if state.briefing_messages.is_empty() {
-        let placeholder = Paragraph::new("No active briefing.\nBriefing starts before team execution.")
-            .style(Style::default().fg(theme.dim));
-        f.render_widget(placeholder, area);
-        return;
-    }
-
-    let items: Vec<ListItem> = state.briefing_messages.iter().map(|msg| {
-        let (speaker_style, icon) = if msg.speaker == "system" {
-            (Style::default().fg(theme.secondary), "┼")
-        } else {
-            (Style::default().fg(squad_color(&msg.speaker, theme)), "◆")
-        };
-
-        let content_preview = if msg.content.len() > 120 {
-            format!("{}...", &msg.content[..117])
-        } else {
-            msg.content.clone()
-        };
-
-        Line::from(vec![
-            Span::styled(format!("{} ", icon), Style::default().fg(theme.dim)),
-            Span::styled(format!("{:<16}", msg.speaker), speaker_style),
-            Span::styled(content_preview, Style::default().fg(theme.fg)),
-        ])
-    }).map(ListItem::new).collect();
-
-    f.render_widget(List::new(items), area);
-}
-
-fn render_dag_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
-    if state.dag_nodes.is_empty() {
-        let placeholder = Paragraph::new("No task DAG yet.\nDAG builds as tasks are assigned.")
-            .style(Style::default().fg(theme.dim));
-        f.render_widget(placeholder, area);
-        return;
-    }
-
-    let lines = render_dag_tree(&state.dag_nodes, 0, theme);
-    let items: Vec<ListItem> = lines.into_iter().map(ListItem::new).collect();
-    f.render_widget(List::new(items), area);
-}
-
-fn render_events_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
-    if state.event_log.is_empty() {
-        let placeholder = Paragraph::new("No events yet.")
-            .style(Style::default().fg(theme.dim));
-        f.render_widget(placeholder, area);
-        return;
-    }
-
-    let visible_count = area.height as usize;
-    let events: Vec<&crate::state::kantor_state::LogEvent> = state
-        .event_log
-        .iter()
-        .rev()
-        .take(visible_count)
-        .collect();
-
-    let items: Vec<ListItem> = events.iter().map(|ev| {
-        let color = crate::ui::components::severity_color(&ev.severity, theme);
-        Line::from(vec![
-            Span::styled(format!("{} ", ev.timestamp), Style::default().fg(theme.dim)),
-            Span::styled(format!("{:<22}", ev.event_type), Style::default().fg(color)),
-            Span::styled(&ev.content, Style::default().fg(theme.fg)),
-        ])
-    }).map(ListItem::new).collect();
-
-    f.render_widget(List::new(items), area);
-}
-
-/// Render DAG as ASCII tree with proper ratatui styling (no dead ANSI code)
-fn render_dag_tree(nodes: &[crate::state::kantor_state::DagNode], depth: usize, theme: &Theme) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-    for (i, node) in nodes.iter().enumerate() {
-        let is_last = i == nodes.len() - 1;
-        let prefix = if depth == 0 {
-            String::new()
-        } else {
-            let indent = "│   ".repeat(depth.saturating_sub(1));
-            let connector = if is_last { "└── " } else { "├── " };
-            format!("{indent}{connector}")
-        };
-
-        let (icon, icon_color) = match node.status.as_str() {
-            "done" | "completed" => ("✓", theme.green),
-            "working" | "in_progress" => ("●", theme.yellow),
-            "failed" | "error" => ("✗", theme.red),
-            "pending" => ("○", theme.dim),
-            _ => ("·", theme.dim),
-        };
-
-        let title = if let Some(task_id) = &node.task_id {
-            format!("{} ({}…{})", node.title, &node.worker_id, &task_id[..7.min(task_id.len())])
-        } else {
-            format!("{} ({})", node.title, node.worker_id)
-        };
-
-        lines.push(Line::from(vec![
-            Span::styled(prefix, Style::default().fg(theme.dim)),
-            Span::styled(icon.to_string(), Style::default().fg(icon_color)),
-            Span::styled(format!(" {title}"), Style::default().fg(theme.fg)),
-        ]));
-
-        if !node.children.is_empty() {
-            let child_lines = render_dag_tree(&node.children, depth + 1, theme);
-            lines.extend(child_lines);
-        }
-    }
-    lines
+    f.render_widget(List::new(items), roster_area);
 }

@@ -126,6 +126,18 @@ impl AppState {
             // === Connection events ===
             BackendEvent::Error { message } => {
                 self.connection_state = ConnectionState::Error(message.clone());
+                self.notify(message.clone(), NotificationSeverity::Error, 0);
+            }
+            BackendEvent::WsConnected => {
+                self.connection_state = ConnectionState::Connected;
+                self.notify("Connected to backend".into(), NotificationSeverity::Info, 0);
+            }
+            BackendEvent::WsConnecting => {
+                self.connection_state = ConnectionState::Connecting;
+            }
+            BackendEvent::WsDisconnected => {
+                self.connection_state = ConnectionState::Disconnected;
+                self.notify("Disconnected from backend".into(), NotificationSeverity::Warning, 0);
             }
 
             // === Contract lifecycle ===

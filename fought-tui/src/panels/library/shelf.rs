@@ -5,7 +5,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::library_state::{entry_type_label, LibraryState};
+use crate::state::library_state::{entry_type_icon, entry_type_label, LibraryState};
 use crate::ui::theme::Theme;
 
 /// Render the Shelf Panel (left column in Library mode) — the "never-ending rak"
@@ -113,7 +113,7 @@ fn render_shelf_item(item: &crate::state::library_state::ShelfItem, is_selected:
         }
         crate::state::library_state::ShelfItem::Entry { depth, entry, .. } => {
             let prefix = indent.repeat(*depth);
-            let icon = entry_type_label(&entry.entry_type);
+            let icon = entry_type_icon(&entry.entry_type);
             let verified = if entry.verified { "✓" } else { "○" };
             let quality = format!("{:.0}%", entry.quality_score * 100.0);
             let text = format!(

@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use crate::state::kantor_state::KantorState;
+use crate::ui::components::task_state_icon;
 use crate::ui::theme::Theme;
 
 /// Render the DAG panel — ASCII tree with proper ratatui styling
@@ -40,10 +41,10 @@ fn render_dag_tree(nodes: &[crate::state::kantor_state::DagNode], depth: usize, 
         };
 
         let (status_icon, icon_color) = match node.status.as_str() {
-            "done" | "completed" => ("✓", theme.green),
-            "working" | "in_progress" => ("●", theme.yellow),
-            "failed" | "error" => ("✗", theme.red),
-            "pending" => ("○", theme.dim),
+            "done" | "completed" => (task_state_icon("done"), theme.green),
+            "working" | "in_progress" => (task_state_icon("in_progress"), theme.yellow),
+            "failed" | "error" => (task_state_icon("failed"), theme.red),
+            "pending" => (task_state_icon("pending"), theme.dim),
             _ => ("·", theme.dim),
         };
 

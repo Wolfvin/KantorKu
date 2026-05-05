@@ -15,11 +15,21 @@ pub async fn connect_event_stream(url: &str, tx: mpsc::UnboundedSender<AppEvent>
         connect_attempts += 1;
         tracing::info!("WebSocket connecting to {} (attempt #{})...", url, connect_attempts);
 
+        // Notify app that we're connecting
+        let _ = tx.send(AppEvent::Backend(Box::new(
+            crate::transport::types::BackendEvent::WsConnecting
+        )));
+
         match connect_async(url).await {
             Ok((ws_stream, _)) => {
                 backoff_ms = 500; // Reset backoff after successful connect
                 connect_attempts = 0;
                 tracing::info!("WebSocket connected to {}", url);
+
+                // Notify app that we're connected
+                let _ = tx.send(AppEvent::Backend(Box::new(
+                    crate::transport::types::BackendEvent::WsConnected
+                )));
 
                 let (_write, mut read) = ws_stream.split();
 
@@ -54,6 +64,9 @@ pub async fn connect_event_stream(url: &str, tx: mpsc::UnboundedSender<AppEvent>
                 }
 
                 tracing::warn!("WebSocket stream ended, reconnecting...");
+                let _ = tx.send(AppEvent::Backend(Box::new(
+                    crate::transport::types::BackendEvent::WsDisconnected
+                )));
             }
             Err(e) => {
                 tracing::warn!("WebSocket connect failed: {e}, retry in {backoff_ms}ms");

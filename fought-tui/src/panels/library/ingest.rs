@@ -166,15 +166,13 @@ fn render_confirm_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &
 }
 
 fn render_done_step(f: &mut Frame, area: Rect, theme: &Theme) {
-    let content = format!(
-        "✓ Entry ingested successfully!\n\n\
+    let content = "✓ Entry ingested successfully!\n\n\
          The entry has been categorized and added to the Library.\n\
          You can find it on the shelf or search for it.\n\n\
          The Knowledge Flywheel is now stronger:\n\
          Workers can find this solution next time they\n\
          encounter a similar problem.\n\n\
-         Press Enter to return to browsing."
-    );
+         Press Enter to return to browsing.".to_string();
     f.render_widget(
         Paragraph::new(content)
             .style(Style::default().fg(theme.green))

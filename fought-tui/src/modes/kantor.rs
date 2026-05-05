@@ -134,16 +134,15 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
             state.kantor_state.input_text.pop();
         }
         // History — allow navigation even when input is not empty
-        KeyCode::Up if state.kantor_state.input_text.is_empty() => {
-            if state.kantor_state.input_history_pos > 0 {
+        KeyCode::Up if state.kantor_state.input_text.is_empty()
+            && state.kantor_state.input_history_pos > 0 => {
                 state.kantor_state.input_history_pos -= 1;
                 if let Some(prev) = state.kantor_state.input_history.get(state.kantor_state.input_history_pos) {
                     state.kantor_state.input_text = prev.clone();
                 }
             }
-        }
-        KeyCode::Down if state.kantor_state.input_text.is_empty() => {
-            if state.kantor_state.input_history_pos < state.kantor_state.input_history.len() {
+        KeyCode::Down if state.kantor_state.input_text.is_empty()
+            && state.kantor_state.input_history_pos < state.kantor_state.input_history.len() => {
                 state.kantor_state.input_history_pos += 1;
                 if state.kantor_state.input_history_pos < state.kantor_state.input_history.len() {
                     if let Some(next) = state.kantor_state.input_history.get(state.kantor_state.input_history_pos) {
@@ -153,7 +152,6 @@ pub fn handle_key(state: &mut AppState, key: KeyEvent, action_tx: &mpsc::Unbound
                     state.kantor_state.input_text.clear();
                 }
             }
-        }
         // Character input
         KeyCode::Char(c) => {
             state.kantor_state.input_text.push(c);
@@ -209,7 +207,12 @@ fn handle_slash_command(input: &str, state: &mut AppState, action_tx: &mpsc::Unb
             state.kantor_state.push_manager_message("system", "Commands: /accept, /revise, /disrupt, /clear, /focus, /settings, /theme, /save, /help");
         }
         _ => {
-            state.kantor_state.push_manager_message("system", &format!("Unknown command: /{cmd}"));
+            // Check if this is a destructive command requiring confirmation
+            if crate::ui::keybindings::DESTRUCTIVE_COMMANDS.contains(&cmd) {
+                state.kantor_state.push_manager_message("system", &format!("⚠ Destructive command /{cmd} requires confirmation. Type /{cmd} confirm to proceed."));
+            } else {
+                state.kantor_state.push_manager_message("system", &format!("Unknown command: /{cmd}"));
+            }
         }
     }
 }
