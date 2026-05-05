@@ -48,10 +48,86 @@
 
 ## 2. Pemasangan
 
-### 2.1 Metode A: Instal dari PyPI (Direkomendasikan)
+> **PENTING:** Banyak distro Linux modern (Arch, Ubuntu 23.04+, Fedora 38+) menerapkan [PEP 668](https://peps.python.org/pep-0668/) yang melarang `pip install` ke sistem Python. **Gunakan virtual environment** seperti di bawah ini.
+
+### 2.1 Metode A: Virtual Environment (Direkomendasikan — Semua OS)
+
+#### Arch Linux / Manjaro
 
 ```bash
-# Instal dengan semua provider
+# Buat dan aktifkan venv
+python -m venv ~/.venv/kantorku
+source ~/.venv/kantorku/bin/activate
+
+# Install
+pip install kantorku[all]
+
+# (Opsional) Auto-activate saat login
+echo 'source ~/.venv/kantorku/bin/activate' >> ~/.bashrc
+```
+
+Atau gunakan `pipx` untuk CLI global tanpa venv manual:
+
+```bash
+sudo pacman -S python-pipx
+pipx install kantorku[all]
+kantorku --help
+```
+
+#### Ubuntu / Debian
+
+```bash
+# Install dukungan venv
+sudo apt install python3-venv python3-pip
+
+# Buat dan aktifkan venv
+python3 -m venv ~/.venv/kantorku
+source ~/.venv/kantorku/bin/activate
+
+# Install
+pip install kantorku[all]
+```
+
+#### Fedora
+
+```bash
+# Buat dan aktifkan venv
+python3 -m venv ~/.venv/kantorku
+source ~/.venv/kantorku/bin/activate
+
+# Install
+pip install kantorku[all]
+```
+
+#### macOS
+
+```bash
+# Install Python (jika belum ada)
+brew install python
+
+# Buat dan aktifkan venv
+python3 -m venv ~/.venv/kantorku
+source ~/.venv/kantorku/bin/activate
+
+# Install
+pip install kantorku[all]
+```
+
+#### Windows
+
+```powershell
+# Buat dan aktifkan venv
+python -m venv .venv\kantorku
+.venv\kantorku\Scripts\activate
+
+# Install
+pip install kantorku[all]
+```
+
+### 2.2 Metode B: Instal dari PyPI (Jika venv sudah aktif)
+
+```bash
+# Instal dengan semua provider + TUI
 pip install kantorku[all]
 
 # Instal hanya provider tertentu
@@ -64,24 +140,23 @@ pip install kantorku
 pip install kantorku[ollama]
 ```
 
-### 2.2 Metode B: Instal dari Source
+### 2.3 Metode C: Instal dari Source
 
 ```bash
 git clone https://github.com/Wolfvin/KantorKu.git
-cd kantorku
-pip install -e ".[dev]"
-python tests/test_office.py  # verifikasi
-```
+cd KantorKu/framework
 
-### 2.3 Metode C: Virtual Environment (Best Practice)
+# Buat dan aktifkan venv (direkomendasikan)
+python -m venv .venv
+source .venv/bin/activate    # Linux/macOS
+# .venv\Scripts\activate     # Windows
 
-```bash
-python3 -m venv kantorku-env
-source kantorku-env/bin/activate    # Linux/macOS
-# atau:
-kantorku-env\Scripts\activate       # Windows
+# Install dalam mode editable
+pip install -e ".[all]"
 
-pip install kantorku[all]
+# Verifikasi
+kantorku version
+python -m pytest tests/ -v
 ```
 
 ### 2.4 Verifikasi Instalasi
@@ -805,6 +880,21 @@ ws.onmessage = (event) => {
 ---
 
 ## 10. Troubleshooting
+
+### 10.0 `error: externally-managed-environment`
+
+Distro Linux modern (Arch, Ubuntu 23.04+, Fedora 38+) melarang `pip install` ke sistem Python (PEP 668).
+
+```bash
+# Solusi: gunakan virtual environment
+python3 -m venv ~/.venv/kantorku
+source ~/.venv/kantorku/bin/activate
+pip install kantorku[all]
+
+# Atau gunakan pipx (Arch Linux)
+sudo pacman -S python-pipx
+pipx install kantorku[all]
+```
 
 ### 10.1 `ModuleNotFoundError: No module named 'anthropic'`
 

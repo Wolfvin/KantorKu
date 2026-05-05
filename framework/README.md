@@ -46,6 +46,8 @@ KantorKu is not another agent wrapper. It is an **office metaphor** brought to l
 
 ### Install
 
+#### From PyPI (recommended)
+
 ```bash
 # Core only (use Ollama — free, local)
 pip install kantorku
@@ -53,9 +55,109 @@ pip install kantorku
 # With specific providers
 pip install kantorku[anthropic,google]
 
-# Everything
+# Everything (all providers + TUI)
 pip install kantorku[all]
 ```
+
+#### Arch Linux / Manjaro
+
+Arch-based distros enforce [PEP 668](https://peps.python.org/pep-0668/) — you **must** use a virtual environment:
+
+```bash
+# Create and activate a venv
+python -m venv ~/.venv/kantorku
+source ~/.venv/kantorku/bin/activate
+
+# Install
+pip install kantorku[all]
+
+# Add to your shell for easy access
+echo 'source ~/.venv/kantorku/bin/activate' >> ~/.bashrc
+```
+
+Or use `pipx` for a global CLI without venv hassle:
+
+```bash
+# Install pipx (if not already)
+sudo pacman -S python-pipx
+
+# Install kantorku
+pipx install kantorku[all]
+
+# Now kantorku command is available globally
+kantorku --help
+```
+
+#### Ubuntu / Debian
+
+```bash
+# Install Python venv support
+sudo apt install python3-venv python3-pip
+
+# Create and activate a venv
+python3 -m venv ~/.venv/kantorku
+source ~/.venv/kantorku/bin/activate
+
+# Install
+pip install kantorku[all]
+```
+
+#### Fedora
+
+```bash
+# Create and activate a venv
+python3 -m venv ~/.venv/kantorku
+source ~/.venv/kantorku/bin/activate
+
+# Install
+pip install kantorku[all]
+```
+
+#### macOS
+
+```bash
+# Install Python with Homebrew (if not already)
+brew install python
+
+# Create and activate a venv
+python3 -m venv ~/.venv/kantorku
+source ~/.venv/kantorku/bin/activate
+
+# Install
+pip install kantorku[all]
+```
+
+#### Windows
+
+```powershell
+# Create and activate a venv
+python -m venv .venv\kantorku
+.venv\kantorku\Scripts\activate
+
+# Install
+pip install kantorku[all]
+```
+
+#### From Source (any OS)
+
+```bash
+git clone https://github.com/Wolfvin/KantorKu.git
+cd KantorKu/framework
+
+# Create and activate a venv (recommended)
+python -m venv .venv
+source .venv/bin/activate    # Linux/macOS
+# .venv\Scripts\activate     # Windows
+
+# Install in editable mode
+pip install -e ".[all]"
+
+# Verify
+kantorku version
+python -m pytest tests/ -v
+```
+
+> **Why a venv?** Modern Linux distros (Arch, Ubuntu 23.04+, Fedora 38+) enforce [PEP 668](https://peps.python.org/pep-0668/) which prevents installing packages system-wide. A virtual environment is the cleanest solution and works everywhere.
 
 ### Run
 
@@ -433,9 +535,14 @@ kantorku/
 ```bash
 # Clone
 git clone https://github.com/Wolfvin/KantorKu.git
-cd KantorKu
+cd KantorKu/framework
 
-# Setup
+# Create venv (required on Arch/Fedora/Ubuntu 23.04+)
+python -m venv .venv
+source .venv/bin/activate    # Linux/macOS
+# .venv\Scripts\activate     # Windows
+
+# Install with dev dependencies
 pip install -e ".[dev]"
 
 # Run tests
