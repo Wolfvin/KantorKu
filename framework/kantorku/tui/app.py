@@ -407,19 +407,22 @@ class ContractDisplay(Static):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
+    def on_mount(self) -> None:
+        self._refresh()
+
     def watch_contract_data(self, data: dict[str, Any]) -> None:
-        self._render()
+        self._refresh()
 
     def watch_contract_state(self, state: str) -> None:
-        self._render()
+        self._refresh()
 
     def watch_work_result(self, data: dict[str, Any]) -> None:
-        self._render()
+        self._refresh()
 
     def watch_revision_count(self, count: int) -> None:
-        self._render()
+        self._refresh()
 
-    def _render(self) -> None:
+    def _refresh(self) -> None:
         parts: list[Any] = []
 
         # Header with state — coder-style icons (no emoji)
