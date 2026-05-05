@@ -1,17 +1,21 @@
 """
-kantorku CLI — Command-line interface.
+kantorku CLI — Professional command-line interface.
 
-Commands:
-    kantorku serve                Start the server (default)
-    kantorku tui                  Launch the TUI for coders
-    kantorku init                 Scaffold a new kantorku project
-    kantorku worker create        Create a new plug-and-play worker
-    kantorku worker add           Add a worker from an existing directory
-    kantorku worker validate      Validate a worker directory
-    kantorku worker list          List available workers
-    kantorku config validate      Validate kantorku.toml
-    kantorku run                  Run a one-shot task
-    kantorku version              Show version
+Usage:
+    kantorku                        Launch the TUI (embedded mode, no server needed)
+    kantorku tui                    Same as above — launch the TUI
+    kantorku tui --url URL          Connect to a running server
+    kantorku serve                  Start the API server
+    kantorku init                   Scaffold a new kantorku project
+    kantorku run 'task'             Run a one-shot task (non-interactive)
+    kantorku worker create NAME     Create a new plug-and-play worker
+    kantorku worker add PATH        Add a worker from an existing directory
+    kantorku worker validate PATH   Validate a worker directory
+    kantorku worker list            List available workers
+    kantorku config validate        Validate kantorku.toml
+    kantorku version                Show version
+
+Just like Codex CLI — type `kantorku` and you're in.
 """
 
 from __future__ import annotations
@@ -23,8 +27,32 @@ import sys
 from pathlib import Path
 
 
+def cmd_tui(args: argparse.Namespace) -> None:
+    """Launch the KantorKu TUI for coders — the main interaction surface."""
+    try:
+        from kantorku.tui.app import KantorKuTUI, EmbeddedKantorKuTUI
+    except ImportError as e:
+        print("Error: TUI dependencies not installed.")
+        print("  Install with: pip install \"kantorku[tui] @ git+https://github.com/Wolfvin/KantorKu.git\"")
+        print(f"  Details: {e}")
+        sys.exit(1)
+
+    server_url = getattr(args, "url", None) or "http://localhost:8000"
+    config_path = getattr(args, "config", None)
+    embedded = getattr(args, "embedded", True)  # Default: embedded (no server needed)
+
+    if embedded:
+        # Embedded mode — run Office directly in-process (default)
+        app = EmbeddedKantorKuTUI(config_path=config_path)
+    else:
+        # Remote mode — connect to a running server
+        app = KantorKuTUI(server_url=server_url, config_path=config_path)
+
+    app.run()
+
+
 def cmd_serve(args: argparse.Namespace) -> None:
-    """Start the kantorku server."""
+    """Start the kantorku API server."""
     import uvicorn
     from kantorku.interface.server import create_office
 
@@ -141,14 +169,14 @@ if __name__ == "__main__":
     print(f"Created kantorku project in ./{project_dir}/")
     print(f"  - {project_dir}/kantorku.toml  (configuration)")
     print(f"  - {project_dir}/data/          (memory storage)")
-    print(f"  - {project_dir}/workers/       (custom workers — drop worker folders here!)")
+    print(f"  - {project_dir}/workers/       (custom workers - drop worker folders here!)")
     print(f"  - {project_dir}/example.py     (example script)")
     print()
     print("Next steps:")
     print(f"  1. cd {project_dir}")
     print("  2. Edit kantorku.toml with your API keys")
     print("  3. Create a custom worker: kantorku worker create my_worker")
-    print("  4. Run: kantorku serve --config kantorku.toml")
+    print("  4. Launch TUI: kantorku")
 
 
 # ─────────────────────────────────────────────────
@@ -202,10 +230,10 @@ def cmd_worker_create(args: argparse.Namespace) -> None:
         print(f"Created worker: {worker_id}")
         print()
         print(f"  {worker_dir}/")
-        print(f"  ├── plugin.json    ← metadata (id, model, squad, capabilities)")
-        print(f"  ├── SKILL.md       ← system prompt for the LLM")
-        print(f"  ├── worker.py      ← custom BaseWorker subclass")
-        print(f"  └── __init__.py    ← re-exports for Python import")
+        print(f"  +-- plugin.json    <- metadata (id, model, squad, capabilities)")
+        print(f"  +-- SKILL.md       <- system prompt for the LLM")
+        print(f"  +-- worker.py      <- custom BaseWorker subclass")
+        print(f"  +-- __init__.py    <- re-exports for Python import")
         print()
         print("Next steps:")
         print(f"  1. Edit {worker_dir}/SKILL.md to define the worker's expertise")
@@ -524,30 +552,6 @@ def cmd_run(args: argparse.Namespace) -> None:
     asyncio.run(_run())
 
 
-def cmd_tui(args: argparse.Namespace) -> None:
-    """Launch the KantorKu TUI for coders."""
-    try:
-        from kantorku.tui.app import KantorKuTUI, EmbeddedKantorKuTUI
-    except ImportError as e:
-        print("Error: TUI dependencies not installed.")
-        print("  Install with: pip install kantorku[tui]")
-        print(f"  Details: {e}")
-        sys.exit(1)
-
-    server_url = getattr(args, "url", None) or "http://localhost:8000"
-    config_path = getattr(args, "config", None)
-    embedded = getattr(args, "embedded", False)
-
-    if embedded:
-        # Embedded mode — run Office directly in-process
-        app = EmbeddedKantorKuTUI(config_path=config_path)
-    else:
-        # Remote mode — connect to a running server
-        app = KantorKuTUI(server_url=server_url, config_path=config_path)
-
-    app.run()
-
-
 def cmd_version(args: argparse.Namespace) -> None:
     """Show kantorku version."""
     from kantorku import __version__
@@ -555,16 +559,25 @@ def cmd_version(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    """CLI entry point."""
+    """CLI entry point — just type `kantorku` to launch the TUI."""
     parser = argparse.ArgumentParser(
         prog="kantorku",
-        description="kantorku — Kantor digital yang sesungguhnya",
+        description="kantorku - Kantor digital yang sesungguhnya - AI worker orchestration",
     )
     parser.add_argument("--config", "-c", help="Path to kantorku.toml")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+    # tui (primary command, also the default)
+    tui_parser = subparsers.add_parser("tui", help="Launch the TUI for coders (default)")
+    tui_parser.add_argument("--url", "-u", default="http://localhost:8000",
+                             help="Server URL for remote mode (default: http://localhost:8000)")
+    tui_parser.add_argument("--remote", "-r", action="store_true",
+                             help="Connect to a running server instead of embedded mode")
+    tui_parser.add_argument("--embedded", "-e", action="store_true", default=True,
+                             help="Run Office in-process (default, no server needed)")
+
     # serve
-    serve_parser = subparsers.add_parser("serve", help="Start the kantorku server")
+    serve_parser = subparsers.add_parser("serve", help="Start the API server")
     serve_parser.add_argument("--host", default="0.0.0.0", help="Host to bind")
     serve_parser.add_argument("--port", "-p", type=int, default=8000, help="Port to bind")
     serve_parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
@@ -615,23 +628,21 @@ def main() -> None:
     subparsers.add_parser("config-validate", help="Validate kantorku.toml")
 
     # run
-    run_parser = subparsers.add_parser("run", help="Run a one-shot task")
+    run_parser = subparsers.add_parser("run", help="Run a one-shot task (non-interactive)")
     run_parser.add_argument("message", help="Task description")
     run_parser.add_argument("--auto-accept", "-y", action="store_true", help="Auto-accept contract")
-
-    # tui
-    tui_parser = subparsers.add_parser("tui", help="Launch the TUI for coders")
-    tui_parser.add_argument("--url", "-u", default="http://localhost:8000",
-                             help="Server URL (default: http://localhost:8000)")
-    tui_parser.add_argument("--embedded", "-e", action="store_true",
-                             help="Run Office in-process (no server needed)")
 
     # version
     subparsers.add_parser("version", help="Show version")
 
     args = parser.parse_args()
 
-    if args.command == "serve":
+    if args.command == "tui":
+        # --remote flag flips embedded to False
+        if getattr(args, "remote", False):
+            args.embedded = False
+        cmd_tui(args)
+    elif args.command == "serve":
         cmd_serve(args)
     elif args.command == "init":
         cmd_init(args)
@@ -653,16 +664,16 @@ def main() -> None:
         cmd_config_validate(args)
     elif args.command == "run":
         cmd_run(args)
-    elif args.command == "tui":
-        cmd_tui(args)
     elif args.command == "version":
         cmd_version(args)
     else:
-        # Default: launch TUI in embedded mode (no server needed)
-        # kantorku → TUI langsung terbuka
-        setattr(args, "embedded", True)
-        setattr(args, "url", "http://localhost:8000")
-        setattr(args, "config", getattr(args, "config", None))
+        # No subcommand: launch the TUI (like Codex CLI)
+        # Create a minimal args namespace for embedded TUI
+        args.command = "tui"
+        args.url = "http://localhost:8000"
+        args.config = getattr(args, "config", None)
+        args.embedded = True
+        args.remote = False
         cmd_tui(args)
 
 

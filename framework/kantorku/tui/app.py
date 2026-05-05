@@ -405,24 +405,36 @@ class ContractDisplay(Static):
     revision_count: reactive[int] = reactive(0)
 
     def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-
-    def on_mount(self) -> None:
-        self._refresh()
+        # Provide initial content so Textual's layout engine never sees None
+        super().__init__(
+            Panel(
+                Text.from_markup(
+                    "\n[dim]No active contract yet.[/dim]\n\n"
+                    "[dim]Chat with the Manager in\n"
+                    "the left panel to start.[/dim]\n\n"
+                    "[dim]Just type what you need\n"
+                    "and press Enter.[/dim]"
+                ),
+                title="Contract",
+                border_style="dim",
+                padding=(0, 1),
+            ),
+            **kwargs,
+        )
 
     def watch_contract_data(self, data: dict[str, Any]) -> None:
-        self._refresh()
+        self._refresh_display()
 
     def watch_contract_state(self, state: str) -> None:
-        self._refresh()
+        self._refresh_display()
 
     def watch_work_result(self, data: dict[str, Any]) -> None:
-        self._refresh()
+        self._refresh_display()
 
     def watch_revision_count(self, count: int) -> None:
-        self._refresh()
+        self._refresh_display()
 
-    def _refresh(self) -> None:
+    def _refresh_display(self) -> None:
         parts: list[Any] = []
 
         # Header with state — coder-style icons (no emoji)
