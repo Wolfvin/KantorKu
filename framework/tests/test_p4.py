@@ -40,7 +40,7 @@ class TestGroupChannel:
 
     def test_speak_posts_message(self, channel):
         """Test that a message is posted to the channel."""
-        msg = asyncio.get_event_loop().run_until_complete(
+        msg = asyncio.run(
             channel.speak(from_id="coder_backend", content="I think we need a schema change")
         )
         assert msg.from_id == "coder_backend"
@@ -49,14 +49,13 @@ class TestGroupChannel:
 
     def test_all_messages_visible(self, channel):
         """Test that all messages are visible in the transcript."""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_backend", content="Backend concern")
         )
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_frontend", content="Frontend agrees")
         )
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="conductor", content="Noted, let me summarize")
         )
 
@@ -68,11 +67,10 @@ class TestGroupChannel:
 
     def test_threaded_replies(self, channel):
         """Test that replies are linked to the original message."""
-        loop = asyncio.get_event_loop()
-        msg1 = loop.run_until_complete(
+        msg1 = asyncio.run(
             channel.speak(from_id="coder_backend", content="Need schema change")
         )
-        msg2 = loop.run_until_complete(
+        msg2 = asyncio.run(
             channel.respond(from_id="coder_frontend", content="I agree", reply_to=msg1.id)
         )
 
@@ -83,14 +81,13 @@ class TestGroupChannel:
 
     def test_message_types(self, channel):
         """Test different message types."""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_backend", content="Concern!", message_type=MessageType.CONCERN)
         )
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_frontend", content="I suggest...", message_type=MessageType.SUGGESTION)
         )
-        loop.run_until_complete(
+        asyncio.run(
             channel.manager_summary(content="Here's the summary", decisions=["Proceed"])
         )
 
@@ -105,18 +102,17 @@ class TestGroupChannel:
 
     def test_discussion_rounds(self, channel):
         """Test multi-round discussion."""
-        loop = asyncio.get_event_loop()
 
         # Round 1
         channel.start_round()
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_backend", content="Round 1 input")
         )
         channel.end_round(summary="Round 1 done", decisions=["Note concern"])
 
         # Round 2
         channel.start_round()
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_frontend", content="Round 2 input")
         )
         channel.end_round(summary="Round 2 done", decisions=["Approved"])
@@ -129,11 +125,10 @@ class TestGroupChannel:
 
     def test_transcript_text_formatting(self, channel):
         """Test that transcript text is formatted for LLM prompts."""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_backend", content="I have a concern", message_type=MessageType.CONCERN)
         )
-        loop.run_until_complete(
+        asyncio.run(
             channel.manager_summary(content="Summary here")
         )
 
@@ -144,8 +139,7 @@ class TestGroupChannel:
 
     def test_manager_decision(self, channel):
         """Test manager making a final decision."""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(
+        asyncio.run(
             channel.manager_decision(
                 content="Final decision: proceed with plan A",
                 decisions=["Use plan A", "Skip optimization"],
@@ -165,8 +159,7 @@ class TestGroupChannel:
 
     def test_serialization(self, channel):
         """Test full channel serialization."""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_backend", content="Test")
         )
 
@@ -357,15 +350,13 @@ class TestP4ContextIntegration:
     def test_channel_in_transcript(self):
         bus = EventBus()
         channel = GroupChannel(session_id="s1", bus=bus, participants=["w1", "w2"])
-
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="w1", content="We should use PostgreSQL")
         )
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="w2", content="I agree, PostgreSQL is best")
         )
-        loop.run_until_complete(
+        asyncio.run(
             channel.manager_summary(content="Team agrees on PostgreSQL", decisions=["Use PostgreSQL"])
         )
 
@@ -383,20 +374,18 @@ class TestP4ContextIntegration:
         transcript = SessionTranscript(session_id="s1")
         transcript.set_channel(channel)
 
-        loop = asyncio.get_event_loop()
-
         # Client discussion phase
         transcript.add_entry(phase="client_discussion", from_id="client", content="Build an API", entry_type="message")
 
         # Team briefing phase
         channel.start_round()
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_backend", content="Need schema first", message_type=MessageType.CONCERN)
         )
-        loop.run_until_complete(
+        asyncio.run(
             channel.speak(from_id="coder_frontend", content="Agreed", message_type=MessageType.AGREEMENT)
         )
-        loop.run_until_complete(
+        asyncio.run(
             channel.manager_summary(content="Backend will design schema first", decisions=["Schema first"])
         )
         channel.end_round(summary="Schema first approach agreed")

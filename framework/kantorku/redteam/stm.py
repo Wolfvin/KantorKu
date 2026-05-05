@@ -50,12 +50,12 @@ HEDGE_PATTERNS: list[tuple[re.Pattern, str]] = [
 # ── Direct Mode Patterns ────────────────────────────────────────────
 
 DIRECT_MODE_PATTERNS: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"^(Sure,?\s*)", re.I | re.M), ""),
-    (re.compile(r"^(Of course,?\s*)", re.I | re.M), ""),
-    (re.compile(r"^(Certainly,?\s*)", re.I | re.M), ""),
-    (re.compile(r"^(Absolutely,?\s*)", re.I | re.M), ""),
-    (re.compile(r"^(Great question!?\s*)", re.I | re.M), ""),
-    (re.compile(r"^(That's a great question!?\s*)", re.I | re.M), ""),
+    (re.compile(r"^(Sure[!,]?\s*)", re.I | re.M), ""),
+    (re.compile(r"^(Of course[!,]?\s*)", re.I | re.M), ""),
+    (re.compile(r"^(Certainly[!,]?\s*)", re.I | re.M), ""),
+    (re.compile(r"^(Absolutely[!,]?\s*)", re.I | re.M), ""),
+    (re.compile(r"^(Great question[!,]?\s*)", re.I | re.M), ""),
+    (re.compile(r"^(That's a great question[!,]?\s*)", re.I | re.M), ""),
     (re.compile(r"^(I'd be happy to help[^.]*\.\s*)", re.I | re.M), ""),
     (re.compile(r"^(Let me help you with that[.!]?\s*)", re.I | re.M), ""),
     (re.compile(r"^(I understand[.!]?\s*)", re.I | re.M), ""),

@@ -136,12 +136,12 @@ class TestCheckpointManager:
     def test_save_and_load_snapshot(self, tmp_dir):
         from kantorku.interface.persistence import CheckpointManager
         cm = CheckpointManager(snapshot_dir=tmp_dir)
-        snap_id = asyncio.get_event_loop().run_until_complete(
+        snap_id = asyncio.run(
             cm.save_session("s1", contract={"title": "Test"}, contract_state="working")
         )
         assert snap_id
 
-        loaded = asyncio.get_event_loop().run_until_complete(
+        loaded = asyncio.run(
             cm.load_session("s1")
         )
         assert loaded is not None
@@ -152,17 +152,17 @@ class TestCheckpointManager:
         cm = CheckpointManager(snapshot_dir=tmp_dir, auto_interval=3)
 
         # First 2 calls: no checkpoint
-        r1 = asyncio.get_event_loop().run_until_complete(
+        r1 = asyncio.run(
             cm.auto_checkpoint("s1", contract_state="idle")
         )
-        r2 = asyncio.get_event_loop().run_until_complete(
+        r2 = asyncio.run(
             cm.auto_checkpoint("s1", contract_state="idle")
         )
         assert r1 is None
         assert r2 is None
 
         # 3rd call: checkpoint saved
-        r3 = asyncio.get_event_loop().run_until_complete(
+        r3 = asyncio.run(
             cm.auto_checkpoint("s1", contract_state="working")
         )
         assert r3 is not None
@@ -170,12 +170,12 @@ class TestCheckpointManager:
     def test_delete_session(self, tmp_dir):
         from kantorku.interface.persistence import CheckpointManager
         cm = CheckpointManager(snapshot_dir=tmp_dir)
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             cm.save_session("s1", contract_state="working")
         )
         assert (os.path.join(tmp_dir, "session_s1.json"))
 
-        asyncio.get_event_loop().run_until_complete(cm.delete_session("s1"))
+        asyncio.run(cm.delete_session("s1"))
         # File should be deleted
         assert not os.path.exists(os.path.join(tmp_dir, "session_s1.json"))
 
@@ -186,7 +186,7 @@ class TestCrashRecovery:
     def test_no_recovery_data(self, tmp_path):
         from kantorku.interface.persistence import CrashRecovery
         recovery = CrashRecovery(snapshot_dir=str(tmp_path / "empty"))
-        result = asyncio.get_event_loop().run_until_complete(recovery.try_recover())
+        result = asyncio.run(recovery.try_recover())
         assert result is None
 
     def test_recover_from_snapshot(self, tmp_path):
@@ -214,7 +214,7 @@ class TestCrashRecovery:
         atomic_write_json(os.path.join(snap_dir, "office_20260501_000000.json"), snapshot_data)
 
         recovery = CrashRecovery(snapshot_dir=snap_dir)
-        result = asyncio.get_event_loop().run_until_complete(recovery.try_recover())
+        result = asyncio.run(recovery.try_recover())
         assert result is not None
         assert "s1" in result.sessions
         assert result.sessions["s1"].contract_state == "working"
@@ -236,14 +236,14 @@ class TestTaskQueue:
     def test_enqueue_dequeue(self):
         from kantorku.interface.task_queue import TaskQueue
         queue = TaskQueue()
-        asyncio.get_event_loop().run_until_complete(queue.start())
+        asyncio.run(queue.start())
 
-        task_id = asyncio.get_event_loop().run_until_complete(
+        task_id = asyncio.run(
             queue.enqueue("Build feature X", session_id="s1", priority=5)
         )
         assert task_id
 
-        task = asyncio.get_event_loop().run_until_complete(queue.dequeue(timeout=1))
+        task = asyncio.run(queue.dequeue(timeout=1))
         assert task is not None
         assert task.instruction == "Build feature X"
         assert task.priority == 5
@@ -252,39 +252,39 @@ class TestTaskQueue:
     def test_priority_ordering(self):
         from kantorku.interface.task_queue import TaskQueue
         queue = TaskQueue()
-        asyncio.get_event_loop().run_until_complete(queue.start())
+        asyncio.run(queue.start())
 
         # Enqueue with different priorities
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             queue.enqueue("Low priority", priority=1)
         )
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             queue.enqueue("High priority", priority=10)
         )
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             queue.enqueue("Medium priority", priority=5)
         )
 
         # Should get highest priority first
-        t1 = asyncio.get_event_loop().run_until_complete(queue.dequeue(timeout=1))
+        t1 = asyncio.run(queue.dequeue(timeout=1))
         assert t1.instruction == "High priority"
 
-        t2 = asyncio.get_event_loop().run_until_complete(queue.dequeue(timeout=1))
+        t2 = asyncio.run(queue.dequeue(timeout=1))
         assert t2.instruction == "Medium priority"
 
-        t3 = asyncio.get_event_loop().run_until_complete(queue.dequeue(timeout=1))
+        t3 = asyncio.run(queue.dequeue(timeout=1))
         assert t3.instruction == "Low priority"
 
     def test_mark_done(self):
         from kantorku.interface.task_queue import TaskQueue
         queue = TaskQueue()
-        asyncio.get_event_loop().run_until_complete(queue.start())
+        asyncio.run(queue.start())
 
-        task_id = asyncio.get_event_loop().run_until_complete(
+        task_id = asyncio.run(
             queue.enqueue("Test task", session_id="s1")
         )
-        task = asyncio.get_event_loop().run_until_complete(queue.dequeue(timeout=1))
-        asyncio.get_event_loop().run_until_complete(
+        task = asyncio.run(queue.dequeue(timeout=1))
+        asyncio.run(
             queue.mark_done(task.id, result={"output": "done"})
         )
 
@@ -295,13 +295,13 @@ class TestTaskQueue:
     def test_retry_on_failure(self):
         from kantorku.interface.task_queue import TaskQueue
         queue = TaskQueue(default_max_retries=2, retry_delay_seconds=0.1)
-        asyncio.get_event_loop().run_until_complete(queue.start())
+        asyncio.run(queue.start())
 
-        task_id = asyncio.get_event_loop().run_until_complete(
+        task_id = asyncio.run(
             queue.enqueue("Flaky task", max_retries=2)
         )
-        task = asyncio.get_event_loop().run_until_complete(queue.dequeue(timeout=1))
-        asyncio.get_event_loop().run_until_complete(
+        task = asyncio.run(queue.dequeue(timeout=1))
+        asyncio.run(
             queue.mark_failed(task.id, error="Temporary error")
         )
 
@@ -313,13 +313,13 @@ class TestTaskQueue:
     def test_dead_letter_queue(self):
         from kantorku.interface.task_queue import TaskQueue
         queue = TaskQueue(default_max_retries=0, retry_delay_seconds=0.01)
-        asyncio.get_event_loop().run_until_complete(queue.start())
+        asyncio.run(queue.start())
 
-        task_id = asyncio.get_event_loop().run_until_complete(
+        task_id = asyncio.run(
             queue.enqueue("Failing task", max_retries=0)
         )
-        task = asyncio.get_event_loop().run_until_complete(queue.dequeue(timeout=1))
-        asyncio.get_event_loop().run_until_complete(
+        task = asyncio.run(queue.dequeue(timeout=1))
+        asyncio.run(
             queue.mark_failed(task.id, error="Permanent error")
         )
 
@@ -331,12 +331,12 @@ class TestTaskQueue:
     def test_cancel_task(self):
         from kantorku.interface.task_queue import TaskQueue
         queue = TaskQueue()
-        asyncio.get_event_loop().run_until_complete(queue.start())
+        asyncio.run(queue.start())
 
-        task_id = asyncio.get_event_loop().run_until_complete(
+        task_id = asyncio.run(
             queue.enqueue("To be cancelled")
         )
-        success = asyncio.get_event_loop().run_until_complete(queue.cancel(task_id))
+        success = asyncio.run(queue.cancel(task_id))
         assert success
 
         task = queue.get_task(task_id)
@@ -345,10 +345,10 @@ class TestTaskQueue:
     def test_queue_stats(self):
         from kantorku.interface.task_queue import TaskQueue
         queue = TaskQueue()
-        asyncio.get_event_loop().run_until_complete(queue.start())
+        asyncio.run(queue.start())
 
-        asyncio.get_event_loop().run_until_complete(queue.enqueue("Task 1"))
-        asyncio.get_event_loop().run_until_complete(queue.enqueue("Task 2"))
+        asyncio.run(queue.enqueue("Task 1"))
+        asyncio.run(queue.enqueue("Task 2"))
 
         stats = queue.get_stats()
         assert stats["total_enqueued"] == 2
@@ -357,9 +357,9 @@ class TestTaskQueue:
     def test_dequeue_empty(self):
         from kantorku.interface.task_queue import TaskQueue
         queue = TaskQueue()
-        asyncio.get_event_loop().run_until_complete(queue.start())
+        asyncio.run(queue.start())
 
-        task = asyncio.get_event_loop().run_until_complete(queue.dequeue(timeout=0))
+        task = asyncio.run(queue.dequeue(timeout=0))
         assert task is None
 
 
@@ -659,7 +659,7 @@ class TestP3Integration:
 
         # 1. Create checkpoint manager and save session
         cm = CheckpointManager(snapshot_dir=snap_dir)
-        snap_id = asyncio.get_event_loop().run_until_complete(
+        snap_id = asyncio.run(
             cm.save_session(
                 "s1",
                 contract={"title": "Build API"},
@@ -672,7 +672,7 @@ class TestP3Integration:
 
         # 3. Create recovery and try to restore
         recovery = CrashRecovery(snapshot_dir=snap_dir)
-        result = asyncio.get_event_loop().run_until_complete(recovery.try_recover())
+        result = asyncio.run(recovery.try_recover())
         assert result is not None
         assert "s1" in result.sessions
         assert result.sessions["s1"].contract_state == "working"

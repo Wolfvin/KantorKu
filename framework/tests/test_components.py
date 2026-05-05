@@ -952,7 +952,7 @@ class TestProjectNotebook(unittest.TestCase):
         from kantorku.memory.notebook import ProjectNotebook
         notebook = ProjectNotebook(project_id="test", ring2=None)
         # ring2 is None, so get() returns []
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             notebook.get_context_for_worker("coder_backend")
         )
         self.assertEqual(result, "")

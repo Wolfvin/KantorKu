@@ -35,6 +35,7 @@ data/
 *.duckdb
 *.db
 *.sqlite3
+autotune_ema.json
 
 # KantorKu runtime
 kantorku.toml
