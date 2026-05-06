@@ -1,7 +1,9 @@
 pub mod app_state;
 pub mod config;
+pub mod contract_state;
 pub mod kantor_state;
 pub mod library_state;
+pub mod worker_state;
 
 pub use app_state::AppState;
 

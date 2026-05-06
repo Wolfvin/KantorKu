@@ -35,7 +35,17 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
     };
 
     let visible_count = area.height as usize;
-    let events: Vec<&&crate::state::kantor_state::LogEvent> = filtered.iter().rev().take(visible_count).collect();
+    let total = filtered.len();
+
+    // Reverse for display (newest first), apply scroll offset
+    let reversed: Vec<&&crate::state::kantor_state::LogEvent> = filtered.iter().rev().collect();
+    let scroll_offset = state.event_scroll.min(total.saturating_sub(visible_count));
+    let events: Vec<&&crate::state::kantor_state::LogEvent> = reversed
+        .iter()
+        .skip(scroll_offset)
+        .take(visible_count)
+        .copied()
+        .collect();
 
     let items: Vec<ListItem> = events.iter().map(|ev| {
         let color = severity_color(&ev.severity, theme);

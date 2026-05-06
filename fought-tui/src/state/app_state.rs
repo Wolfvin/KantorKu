@@ -385,6 +385,17 @@ mod tests {
         assert_eq!(state.connection_state, ConnectionState::Error("test error".into()),
             "AI Agent: Error event must set Error connection state");
     }
+
+    // AI Agent verifies: WsError event sets connection error state with message
+    #[test]
+    fn test_handle_backend_event_ws_error() {
+        let mut state = AppState::default();
+        state.handle_backend_event(BackendEvent::WsError { message: "Max reconnect attempts reached".into() });
+        assert_eq!(state.connection_state, ConnectionState::Error("Max reconnect attempts reached".into()),
+            "AI Agent: WsError must set Error connection state with message");
+        assert!(state.last_notification.is_some(),
+            "AI Agent: WsError must trigger a notification");
+    }
 }
 
 impl AppState {
@@ -405,6 +416,10 @@ impl AppState {
             BackendEvent::WsDisconnected => {
                 self.connection_state = ConnectionState::Disconnected;
                 self.notify("Disconnected from backend".into(), NotificationSeverity::Warning, 0);
+            }
+            BackendEvent::WsError { message } => {
+                self.connection_state = ConnectionState::Error(message.clone());
+                self.notify(format!("WebSocket error: {message}"), NotificationSeverity::Error, 0);
             }
 
             // === Contract lifecycle ===

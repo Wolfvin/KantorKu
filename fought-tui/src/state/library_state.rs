@@ -20,6 +20,7 @@ pub struct LibraryState {
     pub current_entries: Vec<LibraryEntryBrief>,
     pub current_entry: Option<LibraryEntry>,
     pub reader_scroll: u16,
+    pub reader_max_scroll: u16,
 
     // Ask panel
     pub content_mode: ContentMode,
@@ -237,6 +238,7 @@ impl Default for LibraryState {
             current_entries: vec![],
             current_entry: None,
             reader_scroll: 0,
+            reader_max_scroll: 0,
             content_mode: ContentMode::Browse,
             ask_input: String::new(),
             archivist_sources: vec![],

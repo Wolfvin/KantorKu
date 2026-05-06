@@ -158,15 +158,23 @@ fn main() -> anyhow::Result<()> {
         transport::websocket::connect_event_stream(&ws_url, ws_event_tx).await;
     });
 
-    // Spawn crossterm event listener (poll-based for compatibility)
+    // Spawn crossterm event listener using async EventStream (uses crossterm's event-stream feature)
     let crossterm_tx = event_tx.clone();
-    std::thread::spawn(move || {
+    tokio::spawn(async move {
+        use crossterm::event::EventStream;
+        use futures_util::StreamExt;
+
+        let mut reader = EventStream::new();
         loop {
-            if crossterm::event::poll(std::time::Duration::from_millis(16)).is_ok() {
-                if let Ok(ev) = crossterm::event::read() {
+            tokio::select! {
+                Some(Ok(ev)) = reader.next() => {
                     if crossterm_tx.send(AppEvent::Crossterm(ev)).is_err() {
-                        break; // Channel closed, exit thread
+                        break; // Channel closed, exit task
                     }
+                }
+                else => {
+                    // Stream ended or error — small backoff to avoid busy loop
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 }
             }
         }

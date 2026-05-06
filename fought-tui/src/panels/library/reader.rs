@@ -88,8 +88,14 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, _t
 
     // Content — markdown rendering with text wrapping
     let content_lines = render_markdown(&entry.content, chunks[3].width as usize, theme);
+    let total_lines = content_lines.len() as u16;
+    let visible_height = chunks[3].height;
+    // Calculate max scroll: can't scroll past the point where last line is visible
+    let max_scroll = total_lines.saturating_sub(visible_height);
+    // Note: we use reader_scroll from state but need to clamp it here since max_scroll may change
+    let scroll = state.reader_scroll.min(max_scroll);
     let content = Paragraph::new(content_lines)
-        .scroll((state.reader_scroll, 0));
+        .scroll((scroll, 0));
     f.render_widget(content, chunks[3]);
 
     // Action hints

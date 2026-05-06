@@ -4,8 +4,12 @@ use tokio_tungstenite::connect_async;
 
 use crate::app::AppEvent;
 
+/// Maximum reconnect attempts before giving up — prevents infinite retry loops
+const MAX_RECONNECT_ATTEMPTS: u32 = 50;
+
 /// Connect to the Python backend WebSocket event stream.
 /// Implements exponential backoff on connection failure — fixing the Python TUI's flat retry bug.
+/// Includes max reconnect limit (50 attempts) to prevent infinite retry loops.
 pub async fn connect_event_stream(url: &str, tx: mpsc::UnboundedSender<AppEvent>) {
     let mut backoff_ms: u64 = 500;
     let max_backoff_ms: u64 = 30_000;
@@ -13,7 +17,22 @@ pub async fn connect_event_stream(url: &str, tx: mpsc::UnboundedSender<AppEvent>
 
     loop {
         connect_attempts += 1;
-        tracing::info!("WebSocket connecting to {} (attempt #{})...", url, connect_attempts);
+
+        // Check reconnect limit before attempting
+        if connect_attempts > MAX_RECONNECT_ATTEMPTS {
+            tracing::error!(
+                "Max reconnect attempts ({}) reached, giving up",
+                MAX_RECONNECT_ATTEMPTS
+            );
+            let _ = tx.send(AppEvent::Backend(Box::new(
+                crate::transport::types::BackendEvent::WsError {
+                    message: format!("Max reconnect attempts ({}) reached", MAX_RECONNECT_ATTEMPTS),
+                }
+            )));
+            return;
+        }
+
+        tracing::info!("WebSocket connecting to {} (attempt #{}/{})...", url, connect_attempts, MAX_RECONNECT_ATTEMPTS);
 
         // Notify app that we're connecting
         let _ = tx.send(AppEvent::Backend(Box::new(
@@ -76,5 +95,15 @@ pub async fn connect_event_stream(url: &str, tx: mpsc::UnboundedSender<AppEvent>
         // Exponential backoff (fix from Python TUI which had flat retry)
         tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
         backoff_ms = (backoff_ms * 2).min(max_backoff_ms);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // AI Agent verifies: MAX_RECONNECT_ATTEMPTS is 50
+    #[test]
+    fn test_max_reconnect_attempts_value() {
+        assert_eq!(super::MAX_RECONNECT_ATTEMPTS, 50,
+            "AI Agent invariant: MAX_RECONNECT_ATTEMPTS must be 50 to prevent infinite retry");
     }
 }

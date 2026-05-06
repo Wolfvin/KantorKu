@@ -1,76 +1,13 @@
+// Re-export all public types from sub-modules so existing code doesn't break
+pub use super::contract_state::{Contract, ContractState, TodoItem};
+pub use super::worker_state::{BriefingMessage, ChatMessage, DagNode, LogEvent, WorkerEvent, WorkersTab};
+
 use std::collections::VecDeque;
 
-use serde::{Deserialize, Serialize};
-
-/// Contract state enum — replaces stringly-typed state tracking.
-/// Values MUST match Python ContractState enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[derive(Default)]
-pub enum ContractState {
-    #[default]
-    Idle,
-    ManagerThinking,
-    Clarifying,
-    ContractPresented,
-    AwaitingRevision,
-    TeamReview,
-    TodoReview,
-    ClientFeedback,
-    Working,
-    Verifying,
-    Accepted,
-    Done,
-    Failed,
-}
-
-impl ContractState {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Idle => "idle",
-            Self::ManagerThinking => "manager_thinking",
-            Self::Clarifying => "clarifying",
-            Self::ContractPresented => "contract_presented",
-            Self::AwaitingRevision => "awaiting_revision",
-            Self::TeamReview => "team_review",
-            Self::TodoReview => "todo_review",
-            Self::ClientFeedback => "client_feedback",
-            Self::Working => "working",
-            Self::Verifying => "verifying",
-            Self::Accepted => "accepted",
-            Self::Done => "done",
-            Self::Failed => "failed",
-        }
-    }
-
-    /// Parse from the string the Python backend sends.
-    pub fn from_str_lossy(s: &str) -> Self {
-        match s {
-            "idle" => Self::Idle,
-            "manager_thinking" => Self::ManagerThinking,
-            "clarifying" => Self::Clarifying,
-            "contract_presented" => Self::ContractPresented,
-            "awaiting_revision" => Self::AwaitingRevision,
-            "team_review" => Self::TeamReview,
-            "todo_review" => Self::TodoReview,
-            "client_feedback" => Self::ClientFeedback,
-            "working" => Self::Working,
-            "verifying" => Self::Verifying,
-            "accepted" => Self::Accepted,
-            "done" => Self::Done,
-            "failed" => Self::Failed,
-            _ => Self::Idle,
-        }
-    }
-}
-
-
-impl std::fmt::Display for ContractState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-/// Kantor mode state
+/// Kantor mode state — the main state container for the Kantor (office) mode.
+/// Split into sub-modules for maintainability:
+/// - contract_state.rs: ContractState enum, Contract, TodoItem
+/// - worker_state.rs: DagNode, WorkerEvent, LogEvent, ChatMessage, BriefingMessage, WorkersTab
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // State fields accessed by render methods
 pub struct KantorState {
@@ -106,6 +43,7 @@ pub struct KantorState {
     // Event log
     pub event_log: VecDeque<LogEvent>,
     pub event_filter: Option<String>,
+    pub event_scroll: usize,
 
     // LLM streaming state
     pub llm_streaming_worker: Option<String>,
@@ -113,80 +51,6 @@ pub struct KantorState {
 
     // Flags
     pub focus_mode: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
-pub enum WorkersTab {
-    #[default]
-    Workers,
-    Briefing,
-    Dag,
-    Events,
-}
-
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[allow(dead_code)] // Fields used for serde deserialization
-pub struct Contract {
-    pub title: String,
-    pub description: String,
-    pub todos: Vec<TodoItem>,
-    pub estimated_cost: Option<f64>,
-    pub workers: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[allow(dead_code)] // Fields used for serde deserialization
-pub struct TodoItem {
-    pub title: String,
-    pub done: bool,
-    pub worker_id: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)] // Used by render methods
-pub struct WorkerEvent {
-    pub worker_id: String,
-    pub event_type: String,
-    pub content: String,
-    pub task_id: Option<String>,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)] // Used by render methods
-pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)] // Used by render methods
-pub struct BriefingMessage {
-    pub speaker: String,
-    pub content: String,
-    pub timestamp: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[allow(dead_code)] // Fields used for serde deserialization
-pub struct DagNode {
-    pub title: String,
-    pub worker_id: String,
-    pub task_id: Option<String>,
-    pub status: String,
-    pub children: Vec<DagNode>,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)] // Used by render methods
-pub struct LogEvent {
-    pub event_type: String,
-    pub content: String,
-    pub timestamp: String,
-    pub severity: String,
 }
 
 impl KantorState {
@@ -279,36 +143,24 @@ impl KantorState {
         }
     }
 
-    /// Recursive search for a DAG node by task_id.
+    /// Search all DAG nodes for a given task_id
     fn find_dag_node_by_task(&self, task_id: &str) -> Option<&DagNode> {
-        fn search<'a>(nodes: &'a [DagNode], task_id: &str) -> Option<&'a DagNode> {
-            for node in nodes {
-                if node.task_id.as_deref() == Some(task_id) {
-                    return Some(node);
-                }
-                if let Some(found) = search(&node.children, task_id) {
-                    return Some(found);
-                }
+        for node in &self.dag_nodes {
+            if let Some(found) = node.find_by_task(task_id) {
+                return Some(found);
             }
-            None
         }
-        search(&self.dag_nodes, task_id)
+        None
     }
 
-    /// Recursive mutable search for a DAG node by task_id.
+    /// Search all DAG nodes for a given task_id (mutable)
     fn find_dag_node_by_task_mut(&mut self, task_id: &str) -> Option<&mut DagNode> {
-        fn search<'a>(nodes: &'a mut [DagNode], task_id: &str) -> Option<&'a mut DagNode> {
-            for node in nodes.iter_mut() {
-                if node.task_id.as_deref() == Some(task_id) {
-                    return Some(node);
-                }
-                if let Some(found) = search(&mut node.children, task_id) {
-                    return Some(found);
-                }
+        for node in &mut self.dag_nodes {
+            if let Some(found) = node.find_by_task_mut(task_id) {
+                return Some(found);
             }
-            None
         }
-        search(&mut self.dag_nodes, task_id)
+        None
     }
 
     pub fn scroll_up(&mut self) {
@@ -317,7 +169,7 @@ impl KantorState {
                 self.manager_scroll = self.manager_scroll.saturating_sub(3);
             }
             WorkersTab::Events => {
-                // Event log is displayed in reverse order; no scroll offset needed
+                self.event_scroll = self.event_scroll.saturating_sub(3);
             }
         }
     }
@@ -328,7 +180,7 @@ impl KantorState {
                 self.manager_scroll = self.manager_scroll.saturating_add(3);
             }
             WorkersTab::Events => {
-                // Event log is displayed in reverse order; no scroll offset needed
+                self.event_scroll = self.event_scroll.saturating_add(3);
             }
         }
     }
@@ -364,6 +216,7 @@ impl Default for KantorState {
             dag_nodes: vec![],
             event_log: VecDeque::new(),
             event_filter: None,
+            event_scroll: 0,
             llm_streaming_worker: None,
             llm_stream_buffer: String::new(),
             focus_mode: false,
@@ -450,6 +303,7 @@ mod tests {
         assert!(state.dag_nodes.is_empty(), "AI Agent: no dag nodes at start");
         assert!(state.event_log.is_empty(), "AI Agent: no event log at start");
         assert!(state.event_filter.is_none(), "AI Agent: no event filter at start");
+        assert_eq!(state.event_scroll, 0, "AI Agent: event scroll starts at 0");
         assert!(state.llm_streaming_worker.is_none(), "AI Agent: no streaming worker at start");
         assert!(state.llm_stream_buffer.is_empty(), "AI Agent: stream buffer empty at start");
         assert!(!state.focus_mode, "AI Agent: focus mode off by default");
@@ -605,5 +459,50 @@ mod tests {
     fn test_workers_tab_default() {
         assert_eq!(WorkersTab::default(), WorkersTab::Workers,
             "AI Agent: default WorkersTab must be Workers");
+    }
+
+    // AI Agent verifies: scroll_up/scroll_down changes offset per tab
+    #[test]
+    fn test_scroll_offsets() {
+        let mut state = KantorState::default();
+
+        // Workers tab → manager_scroll
+        state.active_tab = WorkersTab::Workers;
+        state.scroll_down();
+        assert_eq!(state.manager_scroll, 3, "AI Agent: scroll_down on Workers tab increments manager_scroll");
+        state.scroll_up();
+        assert_eq!(state.manager_scroll, 0, "AI Agent: scroll_up on Workers tab decrements manager_scroll");
+
+        // Events tab → event_scroll
+        state.active_tab = WorkersTab::Events;
+        state.scroll_down();
+        assert_eq!(state.event_scroll, 3, "AI Agent: scroll_down on Events tab increments event_scroll");
+        state.scroll_down();
+        assert_eq!(state.event_scroll, 6, "AI Agent: second scroll_down increments to 6");
+        state.scroll_up();
+        assert_eq!(state.event_scroll, 3, "AI Agent: scroll_up on Events tab decrements event_scroll");
+    }
+
+    // AI Agent verifies: DagNode::find_by_task works recursively
+    #[test]
+    fn test_dag_node_find_by_task() {
+        let node = DagNode {
+            title: "Root".into(),
+            worker_id: "w1".into(),
+            task_id: Some("task_001".into()),
+            status: "working".into(),
+            children: vec![
+                DagNode {
+                    title: "Child".into(),
+                    worker_id: "w2".into(),
+                    task_id: Some("task_002".into()),
+                    status: "done".into(),
+                    children: vec![],
+                },
+            ],
+        };
+        assert!(node.find_by_task("task_001").is_some(), "AI Agent: find root task");
+        assert!(node.find_by_task("task_002").is_some(), "AI Agent: find child task recursively");
+        assert!(node.find_by_task("task_999").is_none(), "AI Agent: nonexistent task returns None");
     }
 }

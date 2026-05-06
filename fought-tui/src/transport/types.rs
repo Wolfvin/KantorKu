@@ -14,6 +14,7 @@ pub enum BackendEvent {
     WsConnected,
     WsConnecting,
     WsDisconnected,
+    WsError { message: String },
     ManagerQuestion { content: String, session_id: String },
     ManagerBrainstorming { content: String, session_id: String },
     ContractReady { contract: Contract, session_id: String },
