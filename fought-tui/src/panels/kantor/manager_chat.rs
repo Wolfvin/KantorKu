@@ -54,7 +54,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
         };
 
         let content = if msg.content.len() > 300 {
-            format!("{}...", &msg.content[..297])
+            crate::truncate_str(&msg.content, 297)
         } else {
             msg.content.clone()
         };

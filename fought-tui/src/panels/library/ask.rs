@@ -56,7 +56,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, ti
         };
 
         let content = if msg.content.len() > 300 {
-            format!("{}...", &msg.content[..297])
+            crate::truncate_str(&msg.content, 297)
         } else {
             msg.content.clone()
         };
@@ -85,7 +85,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &LibraryState, theme: &Theme, ti
         let spinner = spinner_char(tick);
         let streaming_text: String = state.archivist_streaming.iter().take(5).cloned().collect();
         let preview = if streaming_text.len() > 100 {
-            format!("{}...", &streaming_text[..97])
+            crate::truncate_str(&streaming_text, 97)
         } else {
             streaming_text
         };

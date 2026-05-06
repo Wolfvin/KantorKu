@@ -139,7 +139,7 @@ fn render_workers_tab(f: &mut Frame, area: Rect, state: &KantorState, theme: &Th
 
         let worker_color = squad_color(&ev.worker_id, theme);
         let content_preview = if ev.content.len() > 80 {
-            format!("{}...", &ev.content[..77])
+            crate::truncate_str(&ev.content, 77)
         } else if ev.content.is_empty() {
             ev.event_type.clone()
         } else {

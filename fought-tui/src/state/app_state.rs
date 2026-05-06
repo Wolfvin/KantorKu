@@ -24,7 +24,6 @@ pub struct AppState {
 
     // Notification
     pub last_notification: Option<Notification>,
-    pub notification_tick: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -94,7 +93,6 @@ impl AppState {
 
     pub fn notify(&mut self, message: String, severity: NotificationSeverity, tick: u64) {
         self.last_notification = Some(Notification { message, severity, tick });
-        self.notification_tick = tick;
     }
 }
 
@@ -115,8 +113,277 @@ impl Default for AppState {
             settings_tab: SettingsTab::Workers,
             settings_selection: 0,
             last_notification: None,
-            notification_tick: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AI Agent verifies: default AppState has all expected initial values
+    #[test]
+    fn test_app_state_default() {
+        let state = AppState::default();
+        assert_eq!(state.connection_state, ConnectionState::Disconnected,
+            "AI Agent: default connection is Disconnected");
+        assert!(state.session_id.is_none(), "AI Agent: no session at start");
+        assert_eq!(state.active_workers, 0, "AI Agent: zero active workers at start");
+        assert_eq!(state.cost_usd, 0.0, "AI Agent: zero cost at start");
+        assert_eq!(state.total_calls, 0, "AI Agent: zero calls at start");
+        assert!(!state.command_palette_open, "AI Agent: command palette closed by default");
+        assert!(state.command_palette_query.is_empty(), "AI Agent: query empty at start");
+        assert_eq!(state.command_palette_selection, 0, "AI Agent: selection starts at 0");
+        assert!(!state.settings_open, "AI Agent: settings closed by default");
+        assert_eq!(state.settings_tab, SettingsTab::Workers, "AI Agent: default settings tab is Workers");
+        assert_eq!(state.settings_selection, 0, "AI Agent: settings selection starts at 0");
+        assert!(state.last_notification.is_none(), "AI Agent: no notification at start");
+    }
+
+    // AI Agent verifies: all_commands returns a non-empty list with expected entries
+    #[test]
+    fn test_all_commands() {
+        let cmds = AppState::all_commands();
+        assert!(!cmds.is_empty(), "AI Agent: command list must not be empty");
+        assert!(cmds.len() >= 10, "AI Agent: at least 10 commands expected, got {}", cmds.len());
+
+        // AI Agent invariant: each command has non-empty label, description, and action
+        for cmd in &cmds {
+            assert!(!cmd.label.is_empty(), "AI Agent: command label must not be empty");
+            assert!(!cmd.description.is_empty(), "AI Agent: command description must not be empty");
+            assert!(!cmd.action.is_empty(), "AI Agent: command action must not be empty");
+        }
+
+        // Verify key commands exist
+        assert!(cmds.iter().any(|c| c.action == "toggle_theme"), "AI Agent: toggle_theme command must exist");
+        assert!(cmds.iter().any(|c| c.action == "quit"), "AI Agent: quit command must exist");
+        assert!(cmds.iter().any(|c| c.action == "switch_kantor"), "AI Agent: switch_kantor must exist");
+        assert!(cmds.iter().any(|c| c.action == "switch_library"), "AI Agent: switch_library must exist");
+    }
+
+    // AI Agent verifies: empty query returns all commands
+    #[test]
+    fn test_filtered_commands_empty_query() {
+        let mut state = AppState::default();
+        state.command_palette_query = String::new();
+        let filtered = state.filtered_commands();
+        assert_eq!(filtered.len(), AppState::all_commands().len(),
+            "AI Agent invariant: empty query must return all commands");
+    }
+
+    // AI Agent verifies: query "theme" returns the Toggle Theme command
+    #[test]
+    fn test_filtered_commands_match() {
+        let mut state = AppState::default();
+        state.command_palette_query = "theme".to_string();
+        let filtered = state.filtered_commands();
+        assert!(!filtered.is_empty(), "AI Agent: 'theme' query must return results");
+        assert!(filtered.iter().any(|c| c.action == "toggle_theme"),
+            "AI Agent: 'theme' query must find Toggle Theme");
+    }
+
+    // AI Agent verifies: nonsensical query returns empty
+    #[test]
+    fn test_filtered_commands_no_match() {
+        let mut state = AppState::default();
+        state.command_palette_query = "xyzzy_nonexistent".to_string();
+        let filtered = state.filtered_commands();
+        assert!(filtered.is_empty(),
+            "AI Agent invariant: no matching query must return empty list");
+    }
+
+    // AI Agent verifies: notify sets the notification correctly
+    #[test]
+    fn test_notify() {
+        let mut state = AppState::default();
+        assert!(state.last_notification.is_none(), "AI Agent: no notification initially");
+
+        state.notify("Test message".to_string(), NotificationSeverity::Info, 42);
+        let n = state.last_notification.as_ref().unwrap();
+        assert_eq!(n.message, "Test message", "AI Agent: notification message preserved");
+        assert_eq!(n.severity, NotificationSeverity::Info, "AI Agent: notification severity preserved");
+        assert_eq!(n.tick, 42, "AI Agent: notification tick preserved in Notification struct");
+    }
+
+    // AI Agent verifies: ConnectionState variants are constructible and PartialEq
+    #[test]
+    fn test_connection_state() {
+        assert_eq!(ConnectionState::Disconnected, ConnectionState::Disconnected);
+        assert_eq!(ConnectionState::Connecting, ConnectionState::Connecting);
+        assert_eq!(ConnectionState::Connected, ConnectionState::Connected);
+        assert_eq!(ConnectionState::Error("err".into()), ConnectionState::Error("err".into()));
+        assert_ne!(ConnectionState::Connected, ConnectionState::Disconnected);
+    }
+
+    // AI Agent verifies: WsConnected event changes connection state to Connected
+    #[test]
+    fn test_handle_backend_event_ws_connected() {
+        let mut state = AppState::default();
+        assert_eq!(state.connection_state, ConnectionState::Disconnected);
+        state.handle_backend_event(BackendEvent::WsConnected);
+        assert_eq!(state.connection_state, ConnectionState::Connected,
+            "AI Agent invariant: WsConnected must set ConnectionState::Connected");
+        assert!(state.last_notification.is_some(), "AI Agent: notification should be set on connect");
+    }
+
+    // AI Agent verifies: ContractReady event changes contract state
+    #[test]
+    fn test_handle_backend_event_contract_ready() {
+        let mut state = AppState::default();
+        let contract = crate::state::kantor_state::Contract {
+            title: "Test Contract".into(),
+            description: "A test".into(),
+            todos: vec![],
+            estimated_cost: Some(0.5),
+            workers: vec!["coder_backend".into()],
+        };
+        state.handle_backend_event(BackendEvent::ContractReady {
+            contract: contract.clone(),
+            session_id: "sess_123".into(),
+        });
+        assert_eq!(state.kantor_state.contract_state, ContractState::ContractPresented,
+            "AI Agent invariant: ContractReady must set ContractPresented");
+        assert!(state.kantor_state.pending_contract.is_some(),
+            "AI Agent: pending_contract must be set after ContractReady");
+        assert_eq!(state.session_id.as_deref(), Some("sess_123"),
+            "AI Agent: session_id must be captured from ContractReady");
+    }
+
+    // AI Agent verifies: TaskStarted increments and TaskDone decrements active_workers
+    #[test]
+    fn test_handle_backend_event_task_started_done() {
+        let mut state = AppState::default();
+        assert_eq!(state.active_workers, 0);
+
+        state.handle_backend_event(BackendEvent::TaskStarted {
+            worker_id: "coder_backend".into(),
+            task_id: "task_001".into(),
+        });
+        assert_eq!(state.active_workers, 1,
+            "AI Agent invariant: TaskStarted must increment active_workers");
+
+        state.handle_backend_event(BackendEvent::TaskStarted {
+            worker_id: "coder_frontend".into(),
+            task_id: "task_002".into(),
+        });
+        assert_eq!(state.active_workers, 2,
+            "AI Agent: second TaskStarted increments to 2");
+
+        state.handle_backend_event(BackendEvent::TaskDone {
+            worker_id: "coder_backend".into(),
+            task_id: "task_001".into(),
+            output: "done!".into(),
+        });
+        assert_eq!(state.active_workers, 1,
+            "AI Agent invariant: TaskDone must decrement active_workers");
+    }
+
+    // AI Agent verifies: LibraryIngestStarted changes ingest step to Analyzing
+    #[test]
+    fn test_handle_backend_event_library_ingest() {
+        let mut state = AppState::default();
+        assert_eq!(state.library_state.ingest_step, crate::state::library_state::IngestStep::Input);
+
+        state.handle_backend_event(BackendEvent::LibraryIngestStarted {
+            entry_id: "e1".into(),
+        });
+        assert_eq!(state.library_state.ingest_step, crate::state::library_state::IngestStep::Analyzing,
+            "AI Agent: LibraryIngestStarted must set Analyzing step");
+
+        // LibraryIngestDone sets Done and increments entry_count
+        let entry = Box::new(crate::state::library_state::LibraryEntry {
+            id: "e1".into(),
+            created_at: "2024-01-01".into(),
+            updated_at: "2024-01-01".into(),
+            source: "test".into(),
+            title: "Test Entry".into(),
+            content: "Some content".into(),
+            summary: "Summary".into(),
+            keywords: vec![],
+            entry_type: "knowledge".into(),
+            domain: "web_text".into(),
+            lang: "en".into(),
+            shelf_path: vec!["Engineering".into()],
+            shelf_confidence: 0.9,
+            related_ids: vec![],
+            supersedes_id: None,
+            solution_for: None,
+            quality_score: 0.85,
+            verified: false,
+            usage_count: 0,
+            was_helpful: 0,
+            was_unhelpful: 0,
+            origin_session_id: None,
+            origin_worker_id: None,
+            origin_task_id: None,
+            problem_description: None,
+            failed_attempts: vec![],
+            solution_code: None,
+            verification_result: None,
+            question: None,
+            answer: None,
+            source_entry_ids: vec![],
+            steps: vec![],
+        });
+        let prev_count = state.library_state.entry_count;
+        state.handle_backend_event(BackendEvent::LibraryIngestDone { entry });
+        assert_eq!(state.library_state.ingest_step, crate::state::library_state::IngestStep::Done,
+            "AI Agent: LibraryIngestDone must set Done step");
+        assert_eq!(state.library_state.entry_count, prev_count + 1,
+            "AI Agent: LibraryIngestDone must increment entry_count");
+        assert!(state.library_state.current_entry.is_some(),
+            "AI Agent: current_entry must be set after LibraryIngestDone");
+
+        // LibraryIngestFailed resets to Input
+        state.library_state.ingest_step = crate::state::library_state::IngestStep::Analyzing;
+        state.handle_backend_event(BackendEvent::LibraryIngestFailed { error: "bad".into() });
+        assert_eq!(state.library_state.ingest_step, crate::state::library_state::IngestStep::Input,
+            "AI Agent: LibraryIngestFailed must reset to Input step");
+    }
+
+    // AI Agent verifies: CommandMode variants exist and are PartialEq
+    #[test]
+    fn test_command_mode_variants() {
+        assert_eq!(CommandMode::Global, CommandMode::Global);
+        assert_eq!(CommandMode::Kantor, CommandMode::Kantor);
+        assert_eq!(CommandMode::Library, CommandMode::Library);
+        assert_ne!(CommandMode::Global, CommandMode::Kantor);
+    }
+
+    // AI Agent verifies: NotificationSeverity variants are distinct
+    #[test]
+    fn test_notification_severity_variants() {
+        assert_eq!(NotificationSeverity::Info, NotificationSeverity::Info);
+        assert_ne!(NotificationSeverity::Info, NotificationSeverity::Warning);
+        assert_ne!(NotificationSeverity::Warning, NotificationSeverity::Error);
+    }
+
+    // AI Agent verifies: WsConnecting sets ConnectionState::Connecting
+    #[test]
+    fn test_handle_backend_event_ws_connecting() {
+        let mut state = AppState::default();
+        state.handle_backend_event(BackendEvent::WsConnecting);
+        assert_eq!(state.connection_state, ConnectionState::Connecting,
+            "AI Agent: WsConnecting must set Connecting state");
+    }
+
+    // AI Agent verifies: WsDisconnected sets ConnectionState::Disconnected
+    #[test]
+    fn test_handle_backend_event_ws_disconnected() {
+        let mut state = AppState::default();
+        state.connection_state = ConnectionState::Connected;
+        state.handle_backend_event(BackendEvent::WsDisconnected);
+        assert_eq!(state.connection_state, ConnectionState::Disconnected,
+            "AI Agent: WsDisconnected must set Disconnected state");
+    }
+
+    // AI Agent verifies: Error event sets connection error state
+    #[test]
+    fn test_handle_backend_event_error() {
+        let mut state = AppState::default();
+        state.handle_backend_event(BackendEvent::Error { message: "test error".into() });
+        assert_eq!(state.connection_state, ConnectionState::Error("test error".into()),
+            "AI Agent: Error event must set Error connection state");
     }
 }
 
@@ -189,7 +456,13 @@ impl AppState {
             }
             BackendEvent::TaskDone { worker_id, task_id, output } => {
                 self.active_workers = self.active_workers.saturating_sub(1);
-                let short = if output.len() > 120 { format!("{}...", &output[..117]) } else { output.clone() };
+                let short = if output.len() > 120 {
+                    // Use char-boundary-safe truncation to avoid panicking on multi-byte UTF-8
+                    let truncated: String = output.chars().take(117).collect();
+                    format!("{}...", truncated)
+                } else {
+                    output.clone()
+                };
                 self.kantor_state.push_worker_event(worker_id, "task_done", &short, Some(task_id));
                 self.kantor_state.update_dag_status(task_id, "done");
             }

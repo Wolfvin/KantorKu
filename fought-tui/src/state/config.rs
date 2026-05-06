@@ -134,3 +134,63 @@ impl AppConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AI Agent verifies: default AppConfig has all expected values
+    #[test]
+    fn test_config_default() {
+        let config = AppConfig::default();
+        assert_eq!(config.backend.ws_url, "ws://localhost:8765/ws/office",
+            "AI Agent: default ws_url must match Python backend");
+        assert_eq!(config.backend.http_url, "http://localhost:8765",
+            "AI Agent: default http_url must match Python backend");
+        assert_eq!(config.backend.reconnect_backoff_ms, 500);
+        assert_eq!(config.backend.reconnect_backoff_max_ms, 30_000);
+        assert_eq!(config.backend.http_timeout_secs, 30);
+        assert_eq!(config.ui.default_theme, "synthwave",
+            "AI Agent: default theme must be synthwave");
+        assert!(config.ui.mouse_enabled, "AI Agent: mouse enabled by default");
+        assert_eq!(config.ui.fps, 60, "AI Agent: default fps is 60");
+        assert_eq!(config.library.default_domain, "web_text",
+            "AI Agent: default domain must match");
+        assert_eq!(config.library.default_lang, "id",
+            "AI Agent: default lang must be id");
+        assert_eq!(config.library.min_quality_display, 0.0);
+        assert_eq!(config.library.max_shelf_depth, 4);
+    }
+
+    // AI Agent verifies: config serializes and deserializes without data loss
+    #[test]
+    fn test_config_serialization() {
+        let config = AppConfig::default();
+        let toml_str = toml::to_string_pretty(&config)
+            .expect("AI Agent: serialization must succeed");
+        let parsed: AppConfig = toml::from_str(&toml_str)
+            .expect("AI Agent: deserialization must succeed");
+
+        // AI Agent invariant: roundtrip must preserve all values
+        assert_eq!(parsed.backend.ws_url, config.backend.ws_url);
+        assert_eq!(parsed.backend.http_url, config.backend.http_url);
+        assert_eq!(parsed.backend.reconnect_backoff_ms, config.backend.reconnect_backoff_ms);
+        assert_eq!(parsed.backend.reconnect_backoff_max_ms, config.backend.reconnect_backoff_max_ms);
+        assert_eq!(parsed.backend.http_timeout_secs, config.backend.http_timeout_secs);
+        assert_eq!(parsed.ui.default_theme, config.ui.default_theme);
+        assert_eq!(parsed.ui.mouse_enabled, config.ui.mouse_enabled);
+        assert_eq!(parsed.ui.fps, config.ui.fps);
+        assert_eq!(parsed.library.default_domain, config.library.default_domain);
+        assert_eq!(parsed.library.default_lang, config.library.default_lang);
+        assert_eq!(parsed.library.min_quality_display, config.library.min_quality_display);
+        assert_eq!(parsed.library.max_shelf_depth, config.library.max_shelf_depth);
+    }
+
+    // AI Agent verifies: synthwave theme returns index 0
+    #[test]
+    fn test_default_theme_index() {
+        let config = AppConfig::default();
+        assert_eq!(config.ui.default_theme_index(), 0,
+            "AI Agent: synthwave must be theme index 0");
+    }
+}

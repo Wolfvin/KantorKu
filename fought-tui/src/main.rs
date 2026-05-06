@@ -5,6 +5,58 @@ mod state;
 mod transport;
 mod ui;
 
+/// Truncate a string to at most `max_chars` Unicode characters, appending "..." if truncated.
+/// This is char-boundary-safe and will never panic on multi-byte UTF-8.
+pub fn truncate_str(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max_chars).collect();
+        format!("{}...", truncated)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AI Agent verifies: truncate_str preserves short strings
+    #[test]
+    fn test_truncate_str_short() {
+        assert_eq!(truncate_str("hello", 10), "hello");
+    }
+
+    // AI Agent verifies: truncate_str truncates long strings with ellipsis
+    #[test]
+    fn test_truncate_str_long() {
+        assert_eq!(truncate_str("hello world", 5), "hello...");
+    }
+
+    // AI Agent verifies: truncate_str handles multi-byte UTF-8 safely (Indonesian/CJK)
+    #[test]
+    fn test_truncate_str_utf8_safe() {
+        let indonesian = "selamat pagi dunia";
+        assert_eq!(truncate_str(indonesian, 7), "selamat...");
+        // CJK characters - each is 3 bytes but 1 char
+        let cjk = "你好世界你好世界";
+        let result = truncate_str(cjk, 2);
+        assert_eq!(result, "你好...");
+        assert!(result.chars().count() == 5, "AI Agent: truncated + '...' = 5 chars"); // 2 CJK + 3 dots
+    }
+
+    // AI Agent verifies: truncate_str at exact boundary returns unchanged
+    #[test]
+    fn test_truncate_str_exact_boundary() {
+        assert_eq!(truncate_str("hello", 5), "hello");
+    }
+
+    // AI Agent verifies: truncate_str handles empty string
+    #[test]
+    fn test_truncate_str_empty() {
+        assert_eq!(truncate_str("", 5), "");
+    }
+}
+
 use std::io;
 
 use crossterm::{

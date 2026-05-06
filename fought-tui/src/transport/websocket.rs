@@ -46,7 +46,7 @@ pub async fn connect_event_stream(url: &str, tx: mpsc::UnboundedSender<AppEvent>
                                 }
                                 Err(e) => {
                                     // Not every message is a BackendEvent (e.g. pings, health checks)
-                                    tracing::debug!("Non-event WS message ({}): {}", e, &text[..text.len().min(100)]);
+                                    tracing::debug!("Non-event WS message ({}): {}", e, crate::truncate_str(text, 100));
                                 }
                             }
                         }

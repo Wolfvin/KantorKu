@@ -313,15 +313,24 @@ impl KantorState {
 
     pub fn scroll_up(&mut self) {
         match self.active_tab {
-            WorkersTab::Workers => {}
-            WorkersTab::Briefing => {}
-            WorkersTab::Dag => {}
-            WorkersTab::Events => {}
+            WorkersTab::Workers | WorkersTab::Briefing | WorkersTab::Dag => {
+                self.manager_scroll = self.manager_scroll.saturating_sub(3);
+            }
+            WorkersTab::Events => {
+                // Event log is displayed in reverse order; no scroll offset needed
+            }
         }
     }
 
     pub fn scroll_down(&mut self) {
-        // Mouse scroll is handled via visible window offset
+        match self.active_tab {
+            WorkersTab::Workers | WorkersTab::Briefing | WorkersTab::Dag => {
+                self.manager_scroll = self.manager_scroll.saturating_add(3);
+            }
+            WorkersTab::Events => {
+                // Event log is displayed in reverse order; no scroll offset needed
+            }
+        }
     }
 }
 
@@ -359,5 +368,242 @@ impl Default for KantorState {
             llm_stream_buffer: String::new(),
             focus_mode: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AI Agent verifies: every ContractState variant roundtrips through as_str → from_str_lossy
+    #[test]
+    fn test_contract_state_as_str_roundtrip() {
+        let variants = [
+            ContractState::Idle,
+            ContractState::ManagerThinking,
+            ContractState::Clarifying,
+            ContractState::ContractPresented,
+            ContractState::AwaitingRevision,
+            ContractState::TeamReview,
+            ContractState::TodoReview,
+            ContractState::ClientFeedback,
+            ContractState::Working,
+            ContractState::Verifying,
+            ContractState::Accepted,
+            ContractState::Done,
+            ContractState::Failed,
+        ];
+        for v in variants {
+            let s = v.as_str();
+            assert_eq!(ContractState::from_str_lossy(s), v,
+                "AI Agent invariant: as_str→from_str_lossy must roundtrip for {:?}", v);
+        }
+    }
+
+    // AI Agent verifies: unknown string gracefully falls back to Idle
+    #[test]
+    fn test_contract_state_from_str_lossy_unknown() {
+        assert_eq!(ContractState::from_str_lossy("nonexistent_state"), ContractState::Idle,
+            "AI Agent invariant: unknown state strings must default to Idle");
+        assert_eq!(ContractState::from_str_lossy(""), ContractState::Idle,
+            "AI Agent invariant: empty string must default to Idle");
+        assert_eq!(ContractState::from_str_lossy("IDLE"), ContractState::Idle,
+            "AI Agent invariant: case-sensitive mismatch must default to Idle (not crash)");
+    }
+
+    // AI Agent verifies: Display impl is consistent with as_str
+    #[test]
+    fn test_contract_state_display() {
+        let variants = [
+            ContractState::Idle,
+            ContractState::ManagerThinking,
+            ContractState::Working,
+            ContractState::Done,
+            ContractState::Failed,
+        ];
+        for v in variants {
+            assert_eq!(format!("{}", v), v.as_str(),
+                "AI Agent invariant: Display must match as_str for {:?}", v);
+        }
+    }
+
+    // AI Agent verifies: default KantorState has all expected initial values
+    #[test]
+    fn test_kantor_state_default() {
+        let state = KantorState::default();
+        assert_eq!(state.contract_state, ContractState::Idle, "AI Agent: default contract must be Idle");
+        assert!(state.pending_contract.is_none(), "AI Agent: no pending contract at start");
+        assert!(state.todos.is_empty(), "AI Agent: no todos at start");
+        assert_eq!(state.revision_count, 0, "AI Agent: zero revisions at start");
+        assert!(state.worker_events.is_empty(), "AI Agent: no worker events at start");
+        assert_eq!(state.active_tab, WorkersTab::Workers, "AI Agent: default tab is Workers");
+        assert_eq!(state.workers_list.len(), 13, "AI Agent: default workers list has 13 entries");
+        assert!(state.manager_messages.is_empty(), "AI Agent: no messages at start");
+        assert_eq!(state.manager_scroll, 0, "AI Agent: scroll starts at 0");
+        assert!(state.input_text.is_empty(), "AI Agent: input text starts empty");
+        assert_eq!(state.input_cursor, 0, "AI Agent: cursor starts at 0");
+        assert!(!state.multiline_mode, "AI Agent: multiline off by default");
+        assert!(state.input_focused, "AI Agent: input focused by default");
+        assert!(!state.briefing_active, "AI Agent: briefing off by default");
+        assert!(state.briefing_workers.is_empty(), "AI Agent: no briefing workers at start");
+        assert!(state.briefing_messages.is_empty(), "AI Agent: no briefing messages at start");
+        assert!(state.dag_nodes.is_empty(), "AI Agent: no dag nodes at start");
+        assert!(state.event_log.is_empty(), "AI Agent: no event log at start");
+        assert!(state.event_filter.is_none(), "AI Agent: no event filter at start");
+        assert!(state.llm_streaming_worker.is_none(), "AI Agent: no streaming worker at start");
+        assert!(state.llm_stream_buffer.is_empty(), "AI Agent: stream buffer empty at start");
+        assert!(!state.focus_mode, "AI Agent: focus mode off by default");
+    }
+
+    // AI Agent verifies: manager messages are capped at 500 (invariant: bounded queue)
+    #[test]
+    fn test_push_manager_message_cap() {
+        let mut state = KantorState::default();
+        for i in 0..600 {
+            state.push_manager_message("manager", &format!("msg {}", i));
+        }
+        assert!(state.manager_messages.len() <= 500,
+            "AI Agent invariant: manager_messages must be capped at 500, got {}", state.manager_messages.len());
+        assert_eq!(state.manager_messages.len(), 500,
+            "AI Agent invariant: after 600 pushes, exactly 500 remain (oldest evicted)");
+    }
+
+    // AI Agent verifies: worker events are capped at 500 (invariant: bounded queue)
+    #[test]
+    fn test_push_worker_event_cap() {
+        let mut state = KantorState::default();
+        for i in 0..600 {
+            state.push_worker_event("worker_1", "task_done", &format!("output {}", i), None);
+        }
+        assert!(state.worker_events.len() <= 500,
+            "AI Agent invariant: worker_events must be capped at 500, got {}", state.worker_events.len());
+        assert_eq!(state.worker_events.len(), 500,
+            "AI Agent invariant: after 600 pushes, exactly 500 remain");
+    }
+
+    // AI Agent verifies: event log is capped at 1000 (invariant: bounded log)
+    #[test]
+    fn test_push_log_event_cap() {
+        let mut state = KantorState::default();
+        for i in 0..1100 {
+            state.push_log_event("test", &format!("content {}", i), "info");
+        }
+        assert!(state.event_log.len() <= 1000,
+            "AI Agent invariant: event_log must be capped at 1000, got {}", state.event_log.len());
+        assert_eq!(state.event_log.len(), 1000,
+            "AI Agent invariant: after 1100 pushes, exactly 1000 remain");
+    }
+
+    // AI Agent verifies: severity mapping follows business rules
+    #[test]
+    fn test_push_worker_event_severity() {
+        let mut state = KantorState::default();
+
+        state.push_worker_event("w", "task_failed", "err", None);
+        assert_eq!(state.event_log.back().unwrap().severity, "critical",
+            "AI Agent: task_failed → critical severity");
+
+        state.push_worker_event("w", "circuit_open", "err", None);
+        assert_eq!(state.event_log.back().unwrap().severity, "critical",
+            "AI Agent: circuit_open → critical severity");
+
+        state.push_worker_event("w", "rate_limit", "err", None);
+        assert_eq!(state.event_log.back().unwrap().severity, "critical",
+            "AI Agent: rate_limit → critical severity");
+
+        state.push_worker_event("w", "task_timeout", "err", None);
+        assert_eq!(state.event_log.back().unwrap().severity, "warning",
+            "AI Agent: task_timeout → warning severity");
+
+        state.push_worker_event("w", "task_started", "ok", None);
+        assert_eq!(state.event_log.back().unwrap().severity, "info",
+            "AI Agent: task_started → info severity");
+
+        state.push_worker_event("w", "task_done", "done", None);
+        assert_eq!(state.event_log.back().unwrap().severity, "info",
+            "AI Agent: task_done → info severity (default)");
+    }
+
+    // AI Agent verifies: DAG node deduplication (invariant: no duplicate task_ids)
+    #[test]
+    fn test_add_dag_node_if_needed() {
+        let mut state = KantorState::default();
+        state.add_dag_node_if_needed("coder_backend", "task_abc12345");
+        assert_eq!(state.dag_nodes.len(), 1, "AI Agent: first add creates a node");
+
+        state.add_dag_node_if_needed("coder_frontend", "task_abc12345");
+        assert_eq!(state.dag_nodes.len(), 1, "AI Agent invariant: duplicate task_id must not create a second node");
+
+        state.add_dag_node_if_needed("coder_frontend", "task_def67890");
+        assert_eq!(state.dag_nodes.len(), 2, "AI Agent: different task_id creates a new node");
+
+        // Verify node content
+        assert_eq!(state.dag_nodes[0].task_id.as_deref(), Some("task_abc12345"));
+        assert_eq!(state.dag_nodes[0].worker_id, "coder_backend");
+        assert_eq!(state.dag_nodes[0].status, "working");
+    }
+
+    // AI Agent verifies: DAG status updates correctly transition state
+    #[test]
+    fn test_update_dag_status() {
+        let mut state = KantorState::default();
+        state.add_dag_node_if_needed("coder_backend", "task_abc12345");
+        assert_eq!(state.dag_nodes[0].status, "working", "AI Agent: initial status is working");
+
+        state.update_dag_status("task_abc12345", "done");
+        assert_eq!(state.dag_nodes[0].status, "done", "AI Agent: status updated to done");
+
+        state.update_dag_status("task_abc12345", "failed");
+        assert_eq!(state.dag_nodes[0].status, "failed", "AI Agent: status updated to failed");
+
+        // Nonexistent task_id should not panic
+        state.update_dag_status("nonexistent_task", "done");
+        assert_eq!(state.dag_nodes.len(), 1, "AI Agent: updating nonexistent task does not add nodes");
+    }
+
+    // AI Agent verifies: LLM streaming state transitions (worker switch → buffer reset)
+    #[test]
+    fn test_append_llm_chunk() {
+        let mut state = KantorState::default();
+
+        // First chunk for worker A starts streaming
+        state.append_llm_chunk("worker_a", "Hello ");
+        assert_eq!(state.llm_streaming_worker.as_deref(), Some("worker_a"));
+        assert_eq!(state.llm_stream_buffer, "Hello ");
+
+        // Same worker: chunk appends
+        state.append_llm_chunk("worker_a", "World");
+        assert_eq!(state.llm_stream_buffer, "Hello World",
+            "AI Agent invariant: same worker appends to buffer");
+
+        // Switch to worker B: buffer resets
+        state.append_llm_chunk("worker_b", "New");
+        assert_eq!(state.llm_streaming_worker.as_deref(), Some("worker_b"),
+            "AI Agent: streaming worker switches");
+        assert_eq!(state.llm_stream_buffer, "New",
+            "AI Agent invariant: switching workers resets the buffer");
+    }
+
+    // AI Agent verifies: briefing messages accumulate correctly
+    #[test]
+    fn test_add_briefing_msg() {
+        let mut state = KantorState::default();
+        assert!(state.briefing_messages.is_empty());
+
+        state.add_briefing_msg("system", "Briefing opened");
+        assert_eq!(state.briefing_messages.len(), 1);
+        assert_eq!(state.briefing_messages[0].speaker, "system");
+        assert_eq!(state.briefing_messages[0].content, "Briefing opened");
+
+        state.add_briefing_msg("coder_backend", "I'll handle the API");
+        assert_eq!(state.briefing_messages.len(), 2);
+        assert_eq!(state.briefing_messages[1].speaker, "coder_backend");
+    }
+
+    // AI Agent verifies: WorkersTab default is Workers
+    #[test]
+    fn test_workers_tab_default() {
+        assert_eq!(WorkersTab::default(), WorkersTab::Workers,
+            "AI Agent: default WorkersTab must be Workers");
     }
 }

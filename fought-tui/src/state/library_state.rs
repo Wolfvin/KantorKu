@@ -275,3 +275,188 @@ pub fn entry_type_label(entry_type: &str) -> &'static str {
         _           => "[?]",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AI Agent verifies: all ContentMode variants return correct labels
+    #[test]
+    fn test_content_mode_label() {
+        assert_eq!(ContentMode::Browse.label(), "Browse", "AI Agent: Browse label must match");
+        assert_eq!(ContentMode::Ask.label(), "Ask", "AI Agent: Ask label must match");
+        assert_eq!(ContentMode::Ingest.label(), "Ingest", "AI Agent: Ingest label must match");
+    }
+
+    // AI Agent verifies: IngestStep default is Input
+    #[test]
+    fn test_ingest_step_default() {
+        assert_eq!(IngestStep::default(), IngestStep::Input,
+            "AI Agent invariant: IngestStep default must be Input");
+    }
+
+    // AI Agent verifies: IngestField default is Title
+    #[test]
+    fn test_ingest_field_default() {
+        assert_eq!(IngestField::default(), IngestField::Title,
+            "AI Agent invariant: IngestField default must be Title");
+    }
+
+    // AI Agent verifies: all known entry types return correct emoji icon
+    #[test]
+    fn test_entry_type_icon() {
+        assert_eq!(entry_type_icon("knowledge"), "\u{1F4D6}", "AI Agent: knowledge → 📖");
+        assert_eq!(entry_type_icon("solution"), "\u{1F4A1}", "AI Agent: solution → 💡");
+        assert_eq!(entry_type_icon("qa_pair"), "\u{1F4AC}", "AI Agent: qa_pair → 💬");
+        assert_eq!(entry_type_icon("procedure"), "\u{1F527}", "AI Agent: procedure → 🔧");
+        assert_eq!(entry_type_icon("unknown"), "\u{1F4C4}", "AI Agent: unknown → 📄 fallback");
+        assert_eq!(entry_type_icon(""), "\u{1F4C4}", "AI Agent: empty → 📄 fallback");
+    }
+
+    // AI Agent verifies: all known entry types return correct text label
+    #[test]
+    fn test_entry_type_label() {
+        assert_eq!(entry_type_label("knowledge"), "[K]", "AI Agent: knowledge → [K]");
+        assert_eq!(entry_type_label("solution"), "[S]", "AI Agent: solution → [S]");
+        assert_eq!(entry_type_label("qa_pair"), "[Q]", "AI Agent: qa_pair → [Q]");
+        assert_eq!(entry_type_label("procedure"), "[P]", "AI Agent: procedure → [P]");
+        assert_eq!(entry_type_label("other"), "[?]", "AI Agent: unknown → [?] fallback");
+        assert_eq!(entry_type_label(""), "[?]", "AI Agent: empty → [?] fallback");
+    }
+
+    // AI Agent verifies: default LibraryState has all expected values
+    #[test]
+    fn test_library_state_default() {
+        let state = LibraryState::default();
+        assert!(!state.shelves.is_empty(), "AI Agent: default shelves should not be empty");
+        assert_eq!(state.shelf_count, 3, "AI Agent: default shelf_count is 3");
+        assert_eq!(state.entry_count, 0, "AI Agent: no entries at start");
+        assert!(state.shelf_breadcrumb.is_empty(), "AI Agent: no breadcrumb at start");
+        assert!(state.shelf_expanded.is_empty(), "AI Agent: no expanded shelves at start");
+        assert_eq!(state.shelf_selection, 0, "AI Agent: shelf selection starts at 0");
+        assert_eq!(state.shelf_scroll, 0, "AI Agent: shelf scroll starts at 0");
+        assert!(state.visible_items.is_empty(), "AI Agent: no visible items at start");
+        assert!(state.current_entries.is_empty(), "AI Agent: no current entries at start");
+        assert!(state.current_entry.is_none(), "AI Agent: no current entry at start");
+        assert_eq!(state.reader_scroll, 0, "AI Agent: reader scroll starts at 0");
+        assert_eq!(state.content_mode, ContentMode::Browse, "AI Agent: default mode is Browse");
+        assert!(state.ask_input.is_empty(), "AI Agent: ask input empty at start");
+        assert!(state.archivist_sources.is_empty(), "AI Agent: no sources at start");
+        assert!(state.archivist_streaming.is_empty(), "AI Agent: no streaming at start");
+        assert!(state.ask_history.is_empty(), "AI Agent: no ask history at start");
+        assert!(state.ingest_title.is_empty(), "AI Agent: ingest title empty at start");
+        assert!(state.ingest_content.is_empty(), "AI Agent: ingest content empty at start");
+        assert_eq!(state.ingest_step, IngestStep::Input, "AI Agent: default ingest step is Input");
+        assert_eq!(state.ingest_field_active, IngestField::Title, "AI Agent: default ingest field is Title");
+        assert!(state.search_query.is_empty(), "AI Agent: search query empty at start");
+        assert!(!state.search_mode, "AI Agent: search mode off at start");
+        assert!(state.search_results.is_empty(), "AI Agent: no search results at start");
+        assert!(state.input_focused, "AI Agent: input focused by default");
+    }
+
+    // AI Agent verifies: scroll_up in Browse mode decrements shelf_selection (clamped at 0)
+    #[test]
+    fn test_library_state_scroll_browse() {
+        let mut state = LibraryState::default();
+        state.content_mode = ContentMode::Browse;
+        state.shelf_selection = 0;
+
+        // Scroll up at 0 stays at 0
+        state.scroll_up();
+        assert_eq!(state.shelf_selection, 0, "AI Agent: scroll_up at 0 stays at 0");
+
+        // Set up some visible items for scroll_down
+        state.visible_items = vec![
+            ShelfItem::Shelf { depth: 0, name: "A".into(), full_path: vec!["A".into()], entry_count: 1, is_expanded: false },
+            ShelfItem::Shelf { depth: 0, name: "B".into(), full_path: vec!["B".into()], entry_count: 2, is_expanded: false },
+            ShelfItem::Shelf { depth: 0, name: "C".into(), full_path: vec!["C".into()], entry_count: 3, is_expanded: false },
+        ];
+
+        state.scroll_down();
+        assert_eq!(state.shelf_selection, 1, "AI Agent: scroll_down increments selection");
+
+        state.scroll_down();
+        assert_eq!(state.shelf_selection, 2, "AI Agent: scroll_down increments again");
+
+        // At max, scroll_down clamps
+        state.scroll_down();
+        assert_eq!(state.shelf_selection, 2, "AI Agent: scroll_down at max stays at max");
+
+        state.scroll_up();
+        assert_eq!(state.shelf_selection, 1, "AI Agent: scroll_up decrements selection");
+    }
+
+    // AI Agent verifies: scroll in Ask mode adjusts reader_scroll
+    #[test]
+    fn test_library_state_scroll_ask() {
+        let mut state = LibraryState::default();
+        state.content_mode = ContentMode::Ask;
+        state.reader_scroll = 10;
+
+        state.scroll_up();
+        assert_eq!(state.reader_scroll, 7, "AI Agent: Ask scroll_up subtracts 3");
+
+        state.scroll_up();
+        assert_eq!(state.reader_scroll, 4, "AI Agent: Ask scroll_up subtracts 3 again");
+
+        // Saturating: scroll_up at 0 stays at 0
+        state.reader_scroll = 0;
+        state.scroll_up();
+        assert_eq!(state.reader_scroll, 0, "AI Agent: Ask scroll_up at 0 saturates");
+
+        state.scroll_down();
+        assert_eq!(state.reader_scroll, 3, "AI Agent: Ask scroll_down adds 3");
+
+        state.scroll_down();
+        assert_eq!(state.reader_scroll, 6, "AI Agent: Ask scroll_down adds 3 again");
+    }
+
+    // AI Agent verifies: ShelfItem variants can be constructed and are Debug
+    #[test]
+    fn test_shelf_item_construction() {
+        let shelf_item = ShelfItem::Shelf {
+            depth: 1,
+            name: "Backend".into(),
+            full_path: vec!["Engineering".into(), "Backend".into()],
+            entry_count: 5,
+            is_expanded: false,
+        };
+        let entry_item = ShelfItem::Entry {
+            depth: 2,
+            entry: LibraryEntryBrief {
+                id: "e1".into(),
+                title: "Test".into(),
+                entry_type: "knowledge".into(),
+                quality_score: 0.9,
+                verified: true,
+                usage_count: 3,
+                shelf_path: vec!["Engineering".into(), "Backend".into()],
+                updated_at: "2024-01-01".into(),
+            },
+        };
+
+        // AI Agent: verify Debug impl works (no panic)
+        let _shelf_debug = format!("{:?}", shelf_item);
+        let _entry_debug = format!("{:?}", entry_item);
+
+        // AI Agent: verify Clone impl works
+        let _shelf_clone = shelf_item.clone();
+        let _entry_clone = entry_item.clone();
+    }
+
+    // AI Agent verifies: ContentMode default is Browse
+    #[test]
+    fn test_content_mode_default() {
+        assert_eq!(ContentMode::default(), ContentMode::Browse,
+            "AI Agent: ContentMode default must be Browse");
+    }
+
+    // AI Agent verifies: Ingest step transitions are well-defined
+    #[test]
+    fn test_ingest_step_variants() {
+        assert_eq!(IngestStep::Input, IngestStep::Input);
+        assert_ne!(IngestStep::Input, IngestStep::Analyzing);
+        assert_ne!(IngestStep::Analyzing, IngestStep::Confirm);
+        assert_ne!(IngestStep::Confirm, IngestStep::Done);
+    }
+}

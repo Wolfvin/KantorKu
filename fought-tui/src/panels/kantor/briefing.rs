@@ -45,7 +45,7 @@ fn render_messages(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme
         };
 
         let content_preview = if msg.content.len() > 150 {
-            format!("{}...", &msg.content[..147])
+            crate::truncate_str(&msg.content, 147)
         } else {
             msg.content.clone()
         };

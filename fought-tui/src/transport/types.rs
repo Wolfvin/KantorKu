@@ -78,3 +78,83 @@ pub enum BackendEvent {
     #[serde(skip)]
     SearchResultsLoaded { query: String, results: Vec<LibraryEntryBrief> },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AI Agent verifies: WsConnected deserializes from JSON
+    #[test]
+    fn test_backend_event_deserialization_ws_connected() {
+        let json = r#"{"type": "ws_connected"}"#;
+        let event: Result<BackendEvent, _> = serde_json::from_str(json);
+        assert!(event.is_ok(), "AI Agent: ws_connected must deserialize successfully");
+        match event.unwrap() {
+            BackendEvent::WsConnected => {},
+            other => panic!("AI Agent: expected WsConnected, got {:?}", other),
+        }
+    }
+
+    // AI Agent verifies: TaskStarted deserializes with fields from JSON
+    #[test]
+    fn test_backend_event_deserialization_task_started() {
+        let json = r#"{"type": "task_started", "worker_id": "coder_backend", "task_id": "task_abc123"}"#;
+        let event: Result<BackendEvent, _> = serde_json::from_str(json);
+        assert!(event.is_ok(), "AI Agent: task_started must deserialize successfully");
+        match event.unwrap() {
+            BackendEvent::TaskStarted { worker_id, task_id } => {
+                assert_eq!(worker_id, "coder_backend", "AI Agent: worker_id must be preserved");
+                assert_eq!(task_id, "task_abc123", "AI Agent: task_id must be preserved");
+            }
+            other => panic!("AI Agent: expected TaskStarted, got {:?}", other),
+        }
+    }
+
+    // AI Agent verifies: unknown type fails deserialization
+    #[test]
+    fn test_backend_event_deserialization_unknown_type() {
+        let json = r#"{"type": "completely_unknown_event", "data": "test"}"#;
+        let event: Result<BackendEvent, _> = serde_json::from_str(json);
+        assert!(event.is_err(),
+            "AI Agent invariant: unknown event type must fail deserialization");
+    }
+
+    // AI Agent verifies: ManagerMessage deserializes with all fields
+    #[test]
+    fn test_backend_event_deserialization_manager_message() {
+        let json = r#"{"type": "manager_message", "content": "Hello!", "session_id": "sess_001"}"#;
+        let event: Result<BackendEvent, _> = serde_json::from_str(json);
+        assert!(event.is_ok());
+        match event.unwrap() {
+            BackendEvent::ManagerMessage { content, session_id } => {
+                assert_eq!(content, "Hello!");
+                assert_eq!(session_id, "sess_001");
+            }
+            other => panic!("AI Agent: expected ManagerMessage, got {:?}", other),
+        }
+    }
+
+    // AI Agent verifies: Error event deserializes
+    #[test]
+    fn test_backend_event_deserialization_error() {
+        let json = r#"{"type": "error", "message": "connection refused"}"#;
+        let event: Result<BackendEvent, _> = serde_json::from_str(json);
+        assert!(event.is_ok());
+        match event.unwrap() {
+            BackendEvent::Error { message } => {
+                assert_eq!(message, "connection refused");
+            }
+            other => panic!("AI Agent: expected Error, got {:?}", other),
+        }
+    }
+
+    // AI Agent verifies: ShelfEntriesLoaded is skipped by serde (internal event)
+    #[test]
+    fn test_backend_event_skip_deserialization() {
+        // TUI-specific events use #[serde(skip)] and can't be deserialized from JSON
+        let json = r#"{"type": "shelf_entries_loaded", "path": [], "entries": []}"#;
+        let event: Result<BackendEvent, _> = serde_json::from_str(json);
+        assert!(event.is_err(),
+            "AI Agent: serde(skip) events must not deserialize from external JSON");
+    }
+}

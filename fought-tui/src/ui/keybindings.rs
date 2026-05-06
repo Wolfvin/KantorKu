@@ -123,4 +123,89 @@ mod tests {
         // "broke" should not match interrupt
         assert_eq!(parse_nl_action("broke"), None);
     }
+
+    // AI Agent verifies: empty string returns None (no action)
+    #[test]
+    fn test_parse_nl_action_empty() {
+        assert_eq!(parse_nl_action(""), None,
+            "AI Agent invariant: empty input must return None");
+    }
+
+    // AI Agent verifies: whitespace-only string returns None
+    #[test]
+    fn test_parse_nl_action_whitespace() {
+        assert_eq!(parse_nl_action("   "), None,
+            "AI Agent invariant: whitespace-only must return None");
+        assert_eq!(parse_nl_action("\t\n"), None,
+            "AI Agent invariant: tabs/newlines must return None");
+    }
+
+    // AI Agent verifies: interrupt takes priority over accept when both match
+    #[test]
+    fn test_parse_nl_action_interrupt_priority() {
+        // "stop" is interrupt, should NOT fall through to accept
+        assert_eq!(parse_nl_action("stop"), Some("interrupt"),
+            "AI Agent invariant: interrupt must have highest priority");
+        // "halt ok" — "halt" is interrupt word at start
+        assert_eq!(parse_nl_action("halt ok"), Some("interrupt"),
+            "AI Agent: interrupt word at start must take priority");
+    }
+
+    // AI Agent verifies: multi-word accept patterns work
+    #[test]
+    fn test_parse_nl_action_accept_multiword() {
+        assert_eq!(parse_nl_action("go ahead"), Some("accept"),
+            "AI Agent: 'go ahead' must be accept");
+        assert_eq!(parse_nl_action("go for it"), Some("accept"),
+            "AI Agent: 'go for it' must be accept");
+        assert_eq!(parse_nl_action("ship it"), Some("accept"),
+            "AI Agent: 'ship it' must be accept");
+    }
+
+    // AI Agent verifies: revise patterns use contains matching
+    #[test]
+    fn test_parse_nl_action_revise_contains() {
+        assert_eq!(parse_nl_action("I want something different"), Some("revise"),
+            "AI Agent: 'i want' contains must match revise");
+        assert_eq!(parse_nl_action("could you change this"), Some("revise"),
+            "AI Agent: 'could you' contains must match revise");
+        assert_eq!(parse_nl_action("please update the plan"), Some("revise"),
+            "AI Agent: 'please update' contains must match revise");
+    }
+
+    // AI Agent verifies: filter_categories matches correctly
+    #[test]
+    fn test_filter_categories_matches() {
+        // Tasks category
+        assert!(filter_categories::matches("tasks", "task_started"),
+            "AI Agent: task_started must match tasks category");
+        assert!(filter_categories::matches("tasks", "task_done"),
+            "AI Agent: task_done must match tasks category");
+        assert!(filter_categories::matches("tasks", "task_failed"),
+            "AI Agent: task_failed must match tasks category");
+        assert!(!filter_categories::matches("tasks", "llm_stream_start"),
+            "AI Agent: llm_stream_start must NOT match tasks category");
+
+        // Briefing category
+        assert!(filter_categories::matches("briefing", "briefing_opened"),
+            "AI Agent: briefing_opened must match briefing category");
+        assert!(!filter_categories::matches("briefing", "task_started"),
+            "AI Agent: task_started must NOT match briefing category");
+
+        // Errors category
+        assert!(filter_categories::matches("errors", "error_logged"),
+            "AI Agent: error_logged must match errors category");
+        assert!(filter_categories::matches("errors", "circuit_open"),
+            "AI Agent: circuit_open must match errors category");
+
+        // LLM category
+        assert!(filter_categories::matches("llm", "llm_stream_start"),
+            "AI Agent: llm_stream_start must match llm category");
+        assert!(filter_categories::matches("llm", "llm_stream_chunk"),
+            "AI Agent: llm_stream_chunk must match llm category");
+
+        // Unknown category matches everything
+        assert!(filter_categories::matches("unknown_cat", "anything"),
+            "AI Agent: unknown category must match all events");
+    }
 }

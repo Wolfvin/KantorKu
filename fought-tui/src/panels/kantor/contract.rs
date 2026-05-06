@@ -42,7 +42,7 @@ pub fn render(f: &mut Frame, area: Rect, state: &KantorState, theme: &Theme) {
     };
     let desc = if let Some(contract) = &state.pending_contract {
         if contract.description.len() > 80 {
-            format!("{}...", &contract.description[..77])
+            crate::truncate_str(&contract.description, 77)
         } else {
             contract.description.clone()
         }

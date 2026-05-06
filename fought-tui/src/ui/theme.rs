@@ -191,3 +191,62 @@ impl Theme {
 pub fn theme_index_by_name(name: &str) -> usize {
     Theme::index_by_name(name)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AI Agent verifies: exactly 5 themes exist
+    #[test]
+    fn test_theme_all_count() {
+        let themes = Theme::all();
+        assert_eq!(themes.len(), 5, "AI Agent: exactly 5 themes must exist");
+    }
+
+    // AI Agent verifies: synthwave is index 0
+    #[test]
+    fn test_theme_index_by_name_synthwave() {
+        assert_eq!(Theme::index_by_name("synthwave"), 0,
+            "AI Agent: synthwave must be index 0");
+        assert_eq!(theme_index_by_name("synthwave"), 0,
+            "AI Agent: free function must return same result");
+    }
+
+    // AI Agent verifies: unknown theme name returns index 0 (default fallback)
+    #[test]
+    fn test_theme_index_by_name_unknown() {
+        assert_eq!(Theme::index_by_name("nonexistent"), 0,
+            "AI Agent invariant: unknown theme must default to index 0");
+        assert_eq!(Theme::index_by_name(""), 0,
+            "AI Agent: empty string must default to index 0");
+    }
+
+    // AI Agent verifies: all theme names are unique (invariant: no name collisions)
+    #[test]
+    fn test_theme_names_unique() {
+        let themes = Theme::all();
+        let names: Vec<&str> = themes.iter().map(|t| t.name).collect();
+        for i in 0..names.len() {
+            for j in (i+1)..names.len() {
+                assert_ne!(names[i], names[j],
+                    "AI Agent invariant: theme names must be unique, but found duplicate '{}'", names[i]);
+            }
+        }
+    }
+
+    // AI Agent verifies: synthwave theme has specific color values from Python port
+    #[test]
+    fn test_synthwave_theme_values() {
+        let theme = Theme::synthwave();
+        assert_eq!(theme.name, "synthwave");
+        assert_eq!(theme.bg, Color::Rgb(13, 13, 26), "AI Agent: synthwave bg must match Python");
+        assert_eq!(theme.surface, Color::Rgb(20, 20, 40), "AI Agent: synthwave surface must match");
+        assert_eq!(theme.fg, Color::Rgb(248, 248, 242), "AI Agent: synthwave fg must match");
+        assert_eq!(theme.accent, Color::Rgb(241, 250, 140), "AI Agent: synthwave accent must match");
+        assert_eq!(theme.green, Color::Rgb(80, 250, 123), "AI Agent: synthwave green must match");
+        assert_eq!(theme.red, Color::Rgb(255, 85, 85), "AI Agent: synthwave red must match");
+        assert_eq!(theme.cyan, Color::Rgb(139, 233, 253), "AI Agent: synthwave cyan must match");
+        assert_eq!(theme.primary, Color::Rgb(255, 121, 198), "AI Agent: synthwave primary must match");
+        assert_eq!(theme.secondary, Color::Rgb(189, 147, 249), "AI Agent: synthwave secondary must match");
+    }
+}

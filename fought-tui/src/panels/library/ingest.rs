@@ -127,7 +127,7 @@ fn render_confirm_step(f: &mut Frame, area: Rect, state: &LibraryState, theme: &
 
     // Preview
     let content_preview = if state.ingest_content.len() > 400 {
-        format!("{}...", &state.ingest_content[..397])
+        crate::truncate_str(&state.ingest_content, 397)
     } else {
         state.ingest_content.clone()
     };
