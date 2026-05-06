@@ -85,6 +85,12 @@ from kantorku.tui.markdown_renderer import (
 )
 from kantorku.tui.commands import handle_slash_command, COMMANDS
 
+# Office screen — lazy import to avoid circular dependencies
+def _import_office_screen():
+    """Lazy import of OfficeScreen to avoid circular imports."""
+    from kantorku.tui.office.office_screen import OfficeScreen
+    return OfficeScreen
+
 
 # ── Natural Language Action Parser ──────────────────────────────────
 
@@ -2892,7 +2898,12 @@ class KantorKuTUI(App):
             self.action_switch_to_kantor()
 
     def action_switch_to_kantor(self) -> None:
-        """Ctrl+K — Switch to Kantor (Office) mode."""
+        """Ctrl+K — Switch to Kantor (Office) mode.
+
+        When in Library mode, pops back to the office.
+        When already in Kantor mode, pushes the OfficeScreen
+        with the modular O1-O5 panel layout.
+        """
         if self._current_mode == "library":
             self._current_mode = "kantor"
             try:
@@ -2900,6 +2911,18 @@ class KantorKuTUI(App):
             except Exception:
                 pass
             self.sub_title = "Chat-Driven Office"
+        else:
+            # Already in Kantor mode — push OfficeScreen for modular panels
+            try:
+                OfficeScreen = _import_office_screen()
+                self.push_screen(OfficeScreen(
+                    connection=self._connection,
+                    office=getattr(self, '_office', None),
+                ))
+            except Exception as e:
+                self._add_manager_message(
+                    f"[red]Failed to open Office screen: {e}[/red]"
+                )
 
     def action_switch_to_library(self) -> None:
         """Ctrl+B — Switch to Library mode (b = buku)."""

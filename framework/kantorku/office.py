@@ -85,6 +85,13 @@ from kantorku.layers.execution_channel import ExecutionChannel
 # P4: ProjectNotebook for shared persistent knowledge
 from kantorku.memory.notebook import ProjectNotebook
 
+# O8-O25: Enrichment layer imports (additive, optional)
+from kantorku.layers.think_gate import OfficeThinkGate
+from kantorku.layers.smart_plan import SmartPlan
+from kantorku.layers.token_budget import TokenBudgetManager
+from kantorku.layers.halt_conditions import HaltMonitor
+from kantorku.layers.self_healing import OfficeDoctor
+
 logger = logging.getLogger("kantorku.office")
 
 
@@ -131,6 +138,11 @@ class Office:
         middleware: MiddlewarePipeline | None = None,
         # P3: Health
         health_check_interval: int = 30,
+        # O8-O25: Enrichment layer optional components
+        think_gate: OfficeThinkGate | None = None,
+        smart_planner: SmartPlan | None = None,
+        token_budget_manager: TokenBudgetManager | None = None,
+        halt_monitor: HaltMonitor | None = None,
     ) -> None:
         self.config = config or KantorkuConfig(conductor_model=conductor_model)
         self.hooks = hooks or Hooks()
@@ -235,6 +247,13 @@ class Office:
 
         # P4: Personality-driven speaking tasks (running per session)
         self._personality_tasks: dict[str, asyncio.Task] = {}
+
+        # O8-O25: Enrichment layer components (with None defaults)
+        self._think_gate = think_gate
+        self._smart_planner = smart_planner
+        self._token_budget_manager = token_budget_manager
+        self._halt_monitor = halt_monitor
+        self._office_doctor: OfficeDoctor | None = None
 
         self._initialized = False
 
@@ -640,6 +659,19 @@ class Office:
 
         # 1. Conductor drafts plan
         plan = await self.conductor.draft_plan(contract)
+
+        # O9: Think gate check before plan drafting — if configured
+        if self._think_gate:
+            think_judgment = await self._think_gate.evaluate_before_plan(
+                conductor=self.conductor,
+                client_message=contract.description or contract.title,
+            )
+            if think_judgment.needs_more_context:
+                logger.info(
+                    f"Think gate suggests NEEDS_MORE_CONTEXT for session {session_id}. "
+                    f"Gaps: {think_judgment.context_gaps}"
+                )
+
         await emitter.plan_drafted(from_id="conductor", content=str(plan))
         transcript.add_entry(
             phase="team_briefing",
@@ -870,6 +902,29 @@ class Office:
                             "worker_id": assigned_to,
                             "error": results[todo_id].error,
                         })
+
+                    # O18: Halt condition check after each task — if configured
+                    if self._halt_monitor:
+                        if results[todo_id].status == "failed":
+                            self._halt_monitor.record_failure(
+                                session_id=session_id,
+                                worker_id=assigned_to,
+                                error=results[todo_id].error,
+                            )
+                        halt_status = self._halt_monitor.check_execution(session_id)
+                        if halt_status == "HALT_REPLAN":
+                            halt_report = self._halt_monitor.generate_halt_report(
+                                reason="consecutive_failures",
+                                evidence={"session_id": session_id, "last_worker": assigned_to},
+                            )
+                            logger.warning(
+                                f"HALT condition triggered for session {session_id}: {halt_report.reason}"
+                            )
+                            break
+                        elif halt_status == "PAUSE_NOTIFY":
+                            logger.info(
+                                f"PAUSE_NOTIFY for session {session_id} — monitoring"
+                            )
 
         # 4. Verification
         verification_needed = final_plan.get("verification_needed", [])

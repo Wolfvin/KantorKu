@@ -34,6 +34,11 @@ from kantorku.events.bus import EventBus
 from kantorku.events.emitter import EventEmitter
 from kantorku.worker.base import Task
 
+# O8-O25: Enrichment integrations (additive, optional)
+from kantorku.layers.think_gate import OfficeThinkGate, Judgment
+from kantorku.layers.ceo_mode import CEOOrchestrationMode, FailureType
+from kantorku.layers.blocker_resolver import BlockerResolver
+
 
 class ContractState(Enum):
     """State machine for the full client ↔ manager ↔ team flow."""
@@ -185,12 +190,24 @@ class Conductor:
         bus: EventBus,
         model: str = "anthropic/claude-opus-4-6",
         ring1: Any = None,
+        # O8-O25: Optional enrichment components
+        think_gate: OfficeThinkGate | None = None,
+        blocker_resolver: BlockerResolver | None = None,
     ) -> None:
         self.router = router
         self.bus = bus
         self.model = model
         self.ring1 = ring1
         self._sessions: dict[str, dict[str, Any]] = {}
+
+        # O8: CEO Orchestration Mode
+        self.ceo_mode = CEOOrchestrationMode()
+
+        # O9: Think Gate (use provided or create default)
+        self.think_gate = think_gate or OfficeThinkGate()
+
+        # O15: Blocker Resolver (use provided or create default)
+        self.blocker_resolver = blocker_resolver or BlockerResolver()
 
     def set_ring1(self, ring1: Any) -> None:
         """Set reference to Ring1 memory for session persistence."""
@@ -542,13 +559,29 @@ class Conductor:
             )
 
         # Decide recovery strategy
-        # In a full implementation, this would use the LLM to decide
-        # For now, log the blocker for manual intervention
-        strategy = details.get("response", "Unknown blocker")
+        # O15: Use BlockerResolver for automated blocker classification
+        error_msg = details.get("response", "Unknown blocker")
+        blocker_type = self.blocker_resolver.analyze_blocker(
+            error=error_msg,
+            context=details,
+            worker_id=from_id,
+        )
+        strategy = self.blocker_resolver.select_strategy(
+            blocker_type=blocker_type,
+            attempt_count=details.get("attempt_count", 0),
+        )
+
+        # Record the blocker for future reference
+        self.blocker_resolver.record_resolution(
+            blocker=error_msg,
+            strategy=strategy,
+            outcome="pending",
+            worker_id=from_id,
+        )
 
         if emitter:
             await emitter.manager_message(
-                content=f"Blocker detected: {strategy}. Conductor reviewing."
+                content=f"Blocker detected: {blocker_type}. Strategy: {strategy}. Conductor reviewing."
             )
 
     # ── P4: Iterative Client↔Manager↔Team Flow ───────────────────

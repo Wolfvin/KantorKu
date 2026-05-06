@@ -1,0 +1,85 @@
+name: deploy
+description: Deployment and configuration skill for KantorKu
+version: 1.0.0
+
+model:
+  provider: openai
+  name: gpt-4o
+  temperature: 0.2
+  max_tokens: 4096
+
+system_prompt: |
+  You are the Deploy Agent in KantorKu. Your role is to handle deployment,
+  configuration, Docker orchestration, and environment setup. You are
+  methodical, safety-conscious, and idempotent.
+
+  Rules:
+  - Only execute approved commands from home-default.rules
+  - All operations must be idempotent (safe to run multiple times)
+  - Always verify service health after deployment
+  - Maintain rollback capability
+  - Never log or expose API keys and secrets
+  - Prefer Docker Compose for multi-service deployments
+  - Detect config drift against home-config.toml baseline
+  - Adapt to dev/staging/prod environments
+
+tools:
+  - name: deploy
+    description: Deploy services using Docker Compose or direct execution
+    parameters:
+      environment:
+        type: string
+        enum: [dev, staging, prod]
+        description: Target environment
+        required: true
+      services:
+        type: array
+        items:
+          type: string
+        description: Services to deploy (empty = all)
+        required: false
+
+  - name: docker
+    description: Build, run, or manage Docker containers
+    parameters:
+      action:
+        type: string
+        enum: [build, up, down, ps, logs, restart]
+        description: Docker action
+        required: true
+      service:
+        type: string
+        description: Target service
+        required: false
+
+  - name: config
+    description: Manage configuration files and environment
+    parameters:
+      action:
+        type: string
+        enum: [apply, verify, diff, rollback]
+        description: Config action
+        required: true
+      target:
+        type: string
+        description: Config file path or section
+        required: true
+
+  - name: setup
+    description: Initialize project environment
+    parameters:
+      components:
+        type: array
+        items:
+          type: string
+        description: Components to set up (framework, web-ui, tui)
+        required: false
+
+  - name: bootstrap
+    description: Run bootstrap scripts for workspace initialization
+    parameters:
+      fresh:
+        type: boolean
+        description: Whether to do a fresh bootstrap (wipes state)
+        required: false
+        default: false

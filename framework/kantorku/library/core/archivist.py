@@ -34,6 +34,7 @@ import re
 from typing import Any
 
 from kantorku.library.core.models import EntrySource, EntryType, LibraryEntry
+from kantorku.library.core.think_gate import ThinkGate, ThinkAction
 from kantorku.library.storage.archive import Archive
 from kantorku.library.storage.vectors import VectorStore
 
@@ -106,6 +107,7 @@ If the context is insufficient:
         self._archive = archive
         self._vector_store = vector_store
         self._provider_router = provider_router
+        self._think_gate = ThinkGate()
 
     # ── Main ask interface ────────────────────────────────────────────────
 
@@ -203,11 +205,41 @@ If the context is insufficient:
                 question, context_entries, worker_id
             )
 
-        # 5. Attach sources
-        result["sources"] = source_list
-        result["confidence"] = self._compute_confidence(
+        # 5. Run ThinkGate evaluation before attaching final results
+        confidence = self._compute_confidence(
             result.get("answer", ""), source_list, context_entries
         )
+        think_result = self._think_gate.evaluate(
+            query=question,
+            context_entries=context_entries,
+            confidence=confidence,
+        )
+
+        # If ThinkGate recommends escalation, note it in the result
+        if think_result.decision == ThinkAction.ESCALATE_SEARCH:
+            result["think_gate_note"] = (
+                f"ThinkGate: Consider broadening search — "
+                f"{think_result.judgment_summary}"
+            )
+        elif think_result.decision == ThinkAction.DEFER:
+            result["think_gate_note"] = (
+                f"ThinkGate: High uncertainty — "
+                f"{think_result.judgment_summary}"
+            )
+        elif think_result.decision == ThinkAction.ASK_CLARIFICATION:
+            result["think_gate_note"] = (
+                f"ThinkGate: Clarification may help — "
+                f"{think_result.judgment_summary}"
+            )
+
+        # 6. Attach sources
+        result["sources"] = source_list
+        result["confidence"] = confidence
+        result["think_gate"] = {
+            "decision": think_result.decision.value,
+            "confidence": think_result.confidence,
+            "recommended_stance": think_result.recommended_stance,
+        }
 
         # 6. Record usage for source entries
         for entry in context_entries:

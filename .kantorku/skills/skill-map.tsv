@@ -1,0 +1,6 @@
+skill_name	category	keywords
+library	knowledge	search,ask,ingest,browse,shelf,book,knowledge
+office	orchestration	plan,execute,verify,brief,contract,delegate,manage
+debug	troubleshooting	fix,debug,error,trace,diagnose,reproduce
+evolve	improvement	evolve,optimize,tune,upgrade,improve,benchmark
+deploy	deployment	deploy,docker,config,setup,install,bootstrap

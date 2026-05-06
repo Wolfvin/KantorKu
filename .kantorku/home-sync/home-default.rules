@@ -1,0 +1,51 @@
+# =====================================================
+# HOME-DEFAULT.RULES — Approval Rules
+# These rules define which operations are allowed
+# to execute without explicit human approval.
+# =====================================================
+
+# Allow pip/pipx install
+allow: pip install*
+allow: pipx install*
+
+# Allow python kantorku commands
+allow: python -m kantorku*
+allow: python3 -m kantorku*
+allow: kantorku*
+
+# Allow docker compose
+allow: docker compose*
+allow: docker-compose*
+
+# Allow npm/pnpm for web-ui
+allow: npm install*
+allow: npm run*
+allow: pnpm install*
+allow: pnpm run*
+
+# Allow cargo for fought-tui
+allow: cargo check*
+allow: cargo build*
+allow: cargo test*
+
+# Allow git operations
+allow: git status*
+allow: git diff*
+allow: git log*
+allow: git branch*
+allow: git add*
+allow: git commit*
+
+# Allow file operations within workspace
+allow: ls *
+allow: cat *
+allow: mkdir *
+allow: cp *
+allow: mv *
+
+# Deny dangerous operations
+deny: rm -rf /*
+deny: sudo *
+deny: chmod 777 *
+deny: curl * | sh
+deny: wget * | sh

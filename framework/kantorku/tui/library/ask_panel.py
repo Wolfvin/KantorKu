@@ -29,6 +29,7 @@ Layout:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from textual.app import ComposeResult
@@ -463,25 +464,82 @@ class AskPanel(Static):
             self._ask_again()
 
     def _copy_answer(self) -> None:
-        """Copy the last answer to clipboard (placeholder)."""
+        """Copy the last answer to clipboard using pyperclip or fallback."""
         if not self._last_answer:
             return
 
+        # Try pyperclip first
         try:
-            # Try to copy to system clipboard
-            import subprocess
+            import pyperclip
+            pyperclip.copy(self._last_answer)
+            self._show_status("[green]✓ Jawaban disalin ke clipboard[/green]")
+            return
+        except ImportError:
+            logger.debug("pyperclip not installed — trying fallback")
+        except Exception as exc:
+            logger.debug("pyperclip failed: %s — trying fallback", exc)
 
-            process = subprocess.Popen(
-                ["xclip", "-selection", "clipboard"],
-                stdin=subprocess.PIPE,
-            )
-            process.communicate(self._last_answer.encode("utf-8"))
-            self._show_status("[green]\u2713 Jawaban disalin ke clipboard[/green]")
+        # Fallback: try platform-specific clipboard commands
+        import subprocess
+        import tempfile
+
+        try:
+            if os.name == "posix":
+                # Try xclip, xsel, wl-copy
+                for cmd_args in [
+                    ["xclip", "-selection", "clipboard"],
+                    ["xsel", "--clipboard", "--input"],
+                    ["wl-copy"],
+                ]:
+                    try:
+                        process = subprocess.Popen(
+                            cmd_args,
+                            stdin=subprocess.PIPE,
+                        )
+                        process.communicate(self._last_answer.encode("utf-8"))
+                        if process.returncode == 0:
+                            self._show_status(
+                                "[green]✓ Jawaban disalin ke clipboard[/green]"
+                            )
+                            return
+                    except FileNotFoundError:
+                        continue
+
+            elif os.name == "nt":
+                process = subprocess.Popen(
+                    ["clip"],
+                    stdin=subprocess.PIPE,
+                )
+                process.communicate(self._last_answer.encode("utf-8"))
+                self._show_status("[green]✓ Jawaban disalin ke clipboard[/green]")
+                return
+
+            elif os.name == "mac":
+                process = subprocess.Popen(
+                    ["pbcopy"],
+                    stdin=subprocess.PIPE,
+                )
+                process.communicate(self._last_answer.encode("utf-8"))
+                self._show_status("[green]✓ Jawaban disalin ke clipboard[/green]")
+                return
+
         except Exception:
-            # Fallback: show the answer for manual copy
+            pass
+
+        # Final fallback: write to temp file and show path
+        try:
+            import os
+            tmp_dir = tempfile.gettempdir()
+            tmp_path = os.path.join(tmp_dir, "kantorku_answer.txt")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(self._last_answer)
+            self._show_status(
+                f"[yellow]Clipboard tidak tersedia. Jawaban disimpan di: {tmp_path}[/yellow]"
+            )
+        except Exception:
             self._show_status(
                 "[yellow]Clipboard tidak tersedia. "
-                "Jawaban ditampilkan di bawah.[/yellow]"
+                "Jawaban ditampilkan di atas untuk disalin manual.[/yellow]"
             )
 
     def _ask_again(self) -> None:

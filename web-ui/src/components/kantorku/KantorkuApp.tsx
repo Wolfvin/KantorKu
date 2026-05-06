@@ -16,6 +16,7 @@ import {
 import { LobbyZone } from './LobbyZone';
 import { WorkspaceZone } from './WorkspaceZone';
 import { DashboardZone } from './DashboardZone';
+import { LibraryZone } from './LibraryZone';
 import { SettingsDialog, SettingsButton } from './SettingsDialog';
 import { OnboardingOverlay } from './OnboardingOverlay';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -26,6 +27,7 @@ import {
   MessageSquare,
   Briefcase,
   BarChart3,
+  BookOpen,
   Wifi,
   WifiOff,
   ChevronDown,
@@ -36,7 +38,7 @@ import {
   Globe,
 } from 'lucide-react';
 
-type MobileTab = 'lobby' | 'workspace' | 'dashboard';
+type MobileTab = 'lobby' | 'workspace' | 'dashboard' | 'library';
 type ThemeMode = 'dark' | 'light' | 'system';
 
 export function KantorkuApp() {
@@ -50,6 +52,7 @@ export function KantorkuApp() {
     setPanelLayout,
   } = useKantorkuStore();
   const [mobileTab, setMobileTab] = useState<MobileTab>('lobby');
+  const [showLibrary, setShowLibrary] = useState(false);
   const { t, locale, setLocale } = useTranslations();
 
   // ── Theme Management ──────────────────────────────────────────
@@ -97,13 +100,20 @@ export function KantorkuApp() {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         if (e.key === '1') {
           e.preventDefault();
+          setShowLibrary(false);
           setMobileTab('lobby');
         } else if (e.key === '2') {
           e.preventDefault();
+          setShowLibrary(false);
           setMobileTab('workspace');
         } else if (e.key === '3') {
           e.preventDefault();
+          setShowLibrary(false);
           setMobileTab('dashboard');
+        } else if (e.key === '4') {
+          e.preventDefault();
+          setShowLibrary(true);
+          setMobileTab('library');
         }
       }
     },
@@ -281,6 +291,16 @@ export function KantorkuApp() {
               </div>
             )}
           </button>
+          {/* Library toggle */}
+          <button
+            onClick={() => setShowLibrary(!showLibrary)}
+            className={`p-1.5 rounded-md transition-colors ${showLibrary ? (isLightTheme ? 'bg-cyan-100 text-cyan-600' : 'bg-cyan-500/20 text-cyan-400') : (isLightTheme ? 'hover:bg-slate-200 text-slate-500' : 'hover:bg-slate-700/50 text-slate-400')}`}
+            title="Toggle Library (⌘4)"
+            aria-label="Toggle Library"
+            aria-pressed={showLibrary}
+          >
+            <BookOpen className="h-4 w-4" />
+          </button>
           <SettingsButton isLightTheme={isLightTheme} />
         </div>
       </header>
@@ -292,12 +312,13 @@ export function KantorkuApp() {
             { id: 'lobby' as const, icon: MessageSquare, label: t('zones.lobby') },
             { id: 'workspace' as const, icon: Briefcase, label: t('zones.workspace') },
             { id: 'dashboard' as const, icon: BarChart3, label: t('zones.dashboard') },
+            { id: 'library' as const, icon: BookOpen, label: t('zones.library') },
           ].map(({ id, icon: Icon, label }) => (
             <button
               key={id}
-              onClick={() => setMobileTab(id)}
+              onClick={() => { setMobileTab(id); if (id === 'library') setShowLibrary(true); else setShowLibrary(false); }}
               className={`flex-1 py-2 flex flex-col items-center gap-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-400 ${isLightTheme ? 'focus:ring-offset-white' : 'focus:ring-offset-2 focus:ring-offset-[#0a0e1a]'} ${
-                mobileTab === id
+                (id === 'library' ? showLibrary : mobileTab === id)
                   ? `text-cyan-400 border-b-2 border-cyan-400 ${isLightTheme ? 'bg-cyan-50' : ''}`
                   : isLightTheme ? 'text-slate-400' : 'text-slate-500'
               }`}
@@ -313,6 +334,13 @@ export function KantorkuApp() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden" id="main-content" role="main">
+        {/* Library Mode — full-screen overlay */}
+        {showLibrary ? (
+          <ErrorBoundary fallbackTitle="Library Error">
+            <LibraryZone onBack={() => setShowLibrary(false)} isLightTheme={isLightTheme} />
+          </ErrorBoundary>
+        ) : (
+        <>
         {/* Desktop 3-Panel Layout */}
         <div className="hidden sm:block h-full">
           <ResizablePanelGroup
@@ -370,6 +398,8 @@ export function KantorkuApp() {
           {mobileTab === 'workspace' && <ErrorBoundary fallbackTitle="Workspace Error"><WorkspaceZone /></ErrorBoundary>}
           {mobileTab === 'dashboard' && <ErrorBoundary fallbackTitle="Dashboard Error"><DashboardZone /></ErrorBoundary>}
         </div>
+        </>
+        )}
       </div>
 
       {/* Settings Dialog */}

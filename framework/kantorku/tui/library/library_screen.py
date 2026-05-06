@@ -192,6 +192,7 @@ class LibraryScreen(Screen):
         Binding("escape", "close_library", "Close", show=True),
         Binding("ctrl+f", "focus_search", "Cari", show=True),
         Binding("tab", "switch_to_office", "Kantor", show=True),
+        Binding("ctrl+shift+t", "cycle_theme", "Theme", show=True),
         Binding("1", "mode_browse", "Browse", show=False),
         Binding("2", "mode_read", "Baca", show=False),
         Binding("3", "mode_ask", "Tanya", show=False),
@@ -225,6 +226,10 @@ class LibraryScreen(Screen):
         self._current_mode: str = "browse"
         self._selected_entry: LibraryEntry | None = None
         self._current_shelf_path: list[str] = []
+
+        # Theme cycling
+        self._theme_index: int = 0
+        self._themes: list[str] = ["textual-dark", "textual-light", "nord", "gruvbox-dark"]
 
     # ── Compose ────────────────────────────────────────────────────────
 
@@ -358,6 +363,15 @@ class LibraryScreen(Screen):
     def action_mode_ingest(self) -> None:
         """Switch to ingest mode."""
         self._switch_mode("ingest")
+
+    def action_cycle_theme(self) -> None:
+        """Cycle through available themes."""
+        self._theme_index = (self._theme_index + 1) % len(self._themes)
+        theme_name = self._themes[self._theme_index]
+        try:
+            self.app.theme = theme_name
+        except Exception:
+            logger.debug("Theme %s not available", theme_name)
 
     # ── Mode switching ─────────────────────────────────────────────────
 

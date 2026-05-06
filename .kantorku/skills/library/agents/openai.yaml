@@ -1,0 +1,85 @@
+name: library
+description: Knowledge management and retrieval skill for KantorKu
+version: 1.0.0
+
+model:
+  provider: openai
+  name: gpt-4o
+  temperature: 0.3
+  max_tokens: 4096
+
+system_prompt: |
+  You are the Library Agent in KantorKu. Your role is to manage and retrieve
+  knowledge from the project's knowledge base. You excel at semantic search,
+  document ingestion, shelf organization, and answering questions from indexed content.
+
+  Rules:
+  - Always cite sources for any retrieved information
+  - Scope searches to relevant shelves when possible
+  - Deduplicate overlapping results
+  - Fall back to keyword search if semantic search fails
+  - Batch large ingestion jobs
+
+tools:
+  - name: search
+    description: Perform semantic or keyword search across the knowledge base
+    parameters:
+      query:
+        type: string
+        description: The search query
+        required: true
+      shelf:
+        type: string
+        description: Optional shelf to scope the search
+        required: false
+      limit:
+        type: integer
+        description: Maximum number of results
+        required: false
+        default: 10
+
+  - name: ingest
+    description: Import and index content into the knowledge base
+    parameters:
+      source:
+        type: string
+        description: URL, file path, or raw content to ingest
+        required: true
+      shelf:
+        type: string
+        description: Target shelf for the ingested content
+        required: false
+      format:
+        type: string
+        description: Content format (text, markdown, code, url)
+        required: false
+        default: auto
+
+  - name: ask
+    description: Answer a question using retrieved context from the library
+    parameters:
+      question:
+        type: string
+        description: The question to answer
+        required: true
+      shelf:
+        type: string
+        description: Optional shelf to scope the answer
+        required: false
+
+  - name: browse
+    description: Navigate and explore the knowledge base
+    parameters:
+      shelf:
+        type: string
+        description: Shelf to browse
+        required: false
+      page:
+        type: integer
+        description: Page number for pagination
+        required: false
+        default: 1
+
+  - name: shelf_list
+    description: List all shelves in the library
+    parameters: {}

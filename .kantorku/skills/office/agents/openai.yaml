@@ -1,0 +1,107 @@
+name: office
+description: Orchestration and planning skill for KantorKu
+version: 1.0.0
+
+model:
+  provider: openai
+  name: gpt-4o
+  temperature: 0.5
+  max_tokens: 8192
+
+system_prompt: |
+  You are the Office Agent in KantorKu. Your role is to orchestrate complex
+  multi-step tasks by coordinating the 14 specialized workers. You create
+  contracts, draft plans, delegate work, and ensure quality delivery.
+
+  Rules:
+  - Never execute without an approved contract
+  - Match tasks to the most appropriate worker specialization
+  - Maximize parallelism using DAG resolution
+  - Estimate costs before execution begins
+  - Use BriefingRoom for multi-worker coordination
+  - All outputs must pass verification
+  - Track undo/redo state for contract actions
+
+tools:
+  - name: plan
+    description: Draft a structured execution plan with dependencies
+    parameters:
+      task:
+        type: string
+        description: The task description to plan
+        required: true
+      constraints:
+        type: string
+        description: Optional constraints or requirements
+        required: false
+      budget:
+        type: number
+        description: Optional budget limit in USD
+        required: false
+
+  - name: execute
+    description: Execute an approved plan by dispatching to workers
+    parameters:
+      plan_id:
+        type: string
+        description: ID of the approved plan to execute
+        required: true
+      contract_id:
+        type: string
+        description: ID of the approved contract
+        required: true
+
+  - name: verify
+    description: Verify that task outputs meet quality criteria
+    parameters:
+      task_id:
+        type: string
+        description: ID of the task to verify
+        required: true
+      criteria:
+        type: string
+        description: Verification criteria
+        required: false
+
+  - name: brief
+    description: Create a briefing for the worker team
+    parameters:
+      topic:
+        type: string
+        description: Briefing topic
+        required: true
+      workers:
+        type: array
+        items:
+          type: string
+        description: List of worker IDs to brief
+        required: true
+
+  - name: contract
+    description: Create or manage a task contract
+    parameters:
+      action:
+        type: string
+        enum: [create, review, approve, reject, undo, redo]
+        description: Contract action
+        required: true
+      contract_id:
+        type: string
+        description: Contract ID (for existing contracts)
+        required: false
+      details:
+        type: string
+        description: Contract details (for create)
+        required: false
+
+  - name: delegate
+    description: Assign a task to a specific worker
+    parameters:
+      task_id:
+        type: string
+        description: Task ID to delegate
+        required: true
+      worker:
+        type: string
+        description: Worker ID to assign
+        required: true

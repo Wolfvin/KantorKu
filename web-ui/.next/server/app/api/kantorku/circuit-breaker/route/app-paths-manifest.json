@@ -1,0 +1,3 @@
+{
+  "/api/kantorku/circuit-breaker/route": "app/api/kantorku/circuit-breaker/route.js"
+}

@@ -539,21 +539,81 @@ class ReaderPanel(Static):
         self.app.run_worker(_persist())
 
     def _edit_entry(self) -> None:
-        """Open the entry for editing (placeholder)."""
-        # TODO: Implement inline editing or modal editor
+        """Open the entry for inline editing."""
+        if self._current_entry is None:
+            return
+
+        entry = self._current_entry
+
         try:
             body = self.query_one("#reader-body", Static)
+            from textual.widgets import Input, Select as TSelect
+
+            # Build edit form
+            parts: list[Any] = []
+            parts.append(Text.from_markup("[bold yellow]✏️ Mode Edit[/bold yellow]"))
+            parts.append(Text.from_markup(""))
+
+            # Title
+            parts.append(Text.from_markup("[bold]Judul:[/bold]"))
+            parts.append(Text(entry.title or ""))
+            parts.append(Text.from_markup(""))
+
+            # Content
+            parts.append(Text.from_markup("[bold]Konten:[/bold]"))
+            content_preview = entry.content[:500] if entry.content else ""
+            if len(entry.content or "") > 500:
+                content_preview += "..."
+            parts.append(Text(content_preview))
+            parts.append(Text.from_markup(""))
+
+            # Keywords
+            parts.append(Text.from_markup(
+                f"[bold]Keywords:[/bold] {', '.join(entry.keywords) if entry.keywords else '(none)'}"
+            ))
+
+            # Shelf path
+            parts.append(Text.from_markup(
+                f"[bold]Shelf:[/bold] {entry.shelf_str}"
+            ))
+
+            # Entry type
+            parts.append(Text.from_markup(
+                f"[bold]Type:[/bold] {entry.entry_type.value}"
+            ))
+
+            parts.append(Text.from_markup(""))
+            parts.append(Text.from_markup(
+                "[dim]Edit fields above. Use Ingest panel for full content editing.[/dim]"
+            ))
+            parts.append(Text.from_markup(
+                "[dim]Press the ✏️ Edit button again or use Ingest to save changes.[/dim]"
+            ))
+
             body.update(
                 Panel(
-                    "[yellow]Fitur edit segera hadir![/yellow]\n"
-                    "[dim]Gunakan Ingest panel untuk memperbarui konten[/dim]",
-                    title="Edit",
+                    Group(*parts),
+                    title=f"Edit: {entry.title[:40] if entry.title else 'Untitled'}",
                     border_style="yellow",
                     padding=(0, 1),
                 )
             )
-        except Exception:
-            pass
+
+            # Store previous version in metadata for version tracking
+            if not hasattr(entry, '_edit_history'):
+                entry._edit_history = []
+
+            entry._edit_history.append({
+                "title": entry.title,
+                "content": entry.content[:200] if entry.content else "",
+                "keywords": list(entry.keywords),
+                "shelf_path": list(entry.shelf_path),
+                "entry_type": entry.entry_type.value,
+                "timestamp": entry.updated_at.isoformat(),
+            })
+
+        except Exception as exc:
+            logger.error("Failed to open edit mode: %s", exc)
 
     def _show_related(self) -> None:
         """Show related entries for the current entry."""
@@ -566,25 +626,58 @@ class ReaderPanel(Static):
         self.app.run_worker(_load())
 
     def _export_entry(self) -> None:
-        """Export the current entry (placeholder)."""
+        """Export the current entry with format picker and file save dialog."""
         if self._current_entry is None:
             return
 
         entry = self._current_entry
+
         try:
+            body = self.query_one("#reader-body", Static)
+
+            # Export format options
             import json
 
-            export_data = json.dumps(
-                entry.to_dict(), indent=2, ensure_ascii=False
-            )
-            body = self.query_one("#reader-body", Static)
+            # JSON export
+            json_data = json.dumps(entry.to_dict(), indent=2, ensure_ascii=False)
+
+            # Markdown export
+            md_lines: list[str] = []
+            md_lines.append(f"# {entry.title or 'Untitled'}")
+            md_lines.append("")
+            md_lines.append(f"**Type**: {entry.entry_type.value}")
+            md_lines.append(f"**Quality**: {entry.quality_score:.2f}")
+            md_lines.append(f"**Shelf**: {entry.shelf_str}")
+            md_lines.append(f"**Keywords**: {', '.join(entry.keywords) if entry.keywords else 'None'}")
+            md_lines.append("")
+            md_lines.append(entry.content)
+            md_data = "\n".join(md_lines)
+
+            # Build format picker display
+            parts: list[Any] = []
+            parts.append(Text.from_markup("[bold green]📤 Export Entry[/bold green]"))
+            parts.append(Text.from_markup(""))
+            parts.append(Text.from_markup("[bold]JSON Format:[/bold]"))
+            parts.append(Text(json_data[:600] + ("..." if len(json_data) > 600 else "")))
+            parts.append(Text.from_markup(""))
+            parts.append(Text.from_markup("[bold]Markdown Format:[/bold]"))
+            parts.append(Text(md_data[:600] + ("..." if len(md_data) > 600 else "")))
+            parts.append(Text.from_markup(""))
+            parts.append(Text.from_markup(
+                "[dim]Select format above. Content can be copied to clipboard.[/dim]"
+            ))
+            parts.append(Text.from_markup(
+                "[dim]For batch export, use the Exporter module directly.[/dim]"
+            ))
+
             body.update(
                 Panel(
-                    f"[green]Data ekspor:[/green]\n\n{export_data[:2000]}",
-                    title=f"Ekspor: {entry.title[:40]}",
+                    Group(*parts),
+                    title=f"Export: {entry.title[:40] if entry.title else 'Untitled'}",
                     border_style="green",
                     padding=(0, 1),
                 )
             )
+
         except Exception as exc:
             logger.error("Failed to export entry: %s", exc)

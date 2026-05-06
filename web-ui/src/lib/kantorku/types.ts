@@ -613,3 +613,124 @@ export interface UndoableAction {
   before: Record<string, unknown>;
   after: Record<string, unknown>;
 }
+
+// ── Library Types ──────────────────────────────────────────────────
+
+export type EntrySource = 'manual' | 'kantorku' | 'import' | 'archivist';
+export type EntryType = 'knowledge' | 'solution' | 'qa_pair' | 'procedure';
+export type EvidenceTier = 'official' | 'vendor' | 'secondary' | 'community';
+export type VerificationResult = 'pass' | 'fail' | 'untested';
+
+export interface LibraryEntry {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  source: EntrySource;
+  title: string;
+  content: string;
+  summary: string;
+  keywords: string[];
+  entry_type: EntryType;
+  evidence_tier?: EvidenceTier;
+  domain: string;
+  lang: string;
+  shelf_path: string[];
+  shelf_confidence: number;
+  related_ids: string[];
+  supersedes_id: string | null;
+  solution_for: string | null;
+  quality_score: number;
+  verified: boolean;
+  usage_count: number;
+  was_helpful: number;
+  was_unhelpful: number;
+  origin_session_id: string | null;
+  origin_worker_id: string | null;
+  origin_task_id: string | null;
+  problem_description: string | null;
+  failed_attempts: Array<Record<string, unknown>>;
+  solution_code: string | null;
+  verification_result: VerificationResult | null;
+  question: string | null;
+  answer: string | null;
+  source_entry_ids: string[];
+  steps: Array<{ step: number; action: string; expected?: string }>;
+}
+
+export interface ShelfNode {
+  name: string;
+  path: string[];
+  entry_count: number;
+  quality_avg: number;
+  last_updated: string | null;
+  children: ShelfNode[];
+}
+
+export interface IngestRequest {
+  content: string;
+  title: string;
+  source?: EntrySource;
+  user_hint?: string;
+}
+
+export interface IngestResult {
+  entry: LibraryEntry;
+  classification: {
+    entry_type: EntryType;
+    keywords: string[];
+    shelf_path: string[];
+    quality_initial: number;
+    domain: string;
+    shelf_confidence: number;
+    summary: string;
+  };
+}
+
+export interface SearchResult {
+  entry: LibraryEntry;
+  relevance: number;
+}
+
+export interface AskRequest {
+  question: string;
+  top_k?: number;
+  save_to_library?: boolean;
+}
+
+export interface AskResult {
+  answer: string;
+  sources: Array<{
+    entry_id: string;
+    title: string;
+    similarity: number;
+    entry_type: EntryType;
+  }>;
+  confidence: number;
+  saved_entry_id?: string;
+}
+
+export interface ExportRequest {
+  format: 'json' | 'markdown' | 'losion_pretraining' | 'rlhf_qa' | 'rlhf_solutions' | 'preference_pairs';
+  quality_threshold?: number;
+  entry_types?: EntryType[];
+  shelf_path?: string[];
+}
+
+export interface LibraryStats {
+  total_entries: number;
+  entries_by_type: Record<EntryType, number>;
+  quality_distribution: Array<{ range: string; count: number }>;
+  top_shelves: Array<{ path: string; count: number; avg_quality: number }>;
+  trending_entries: LibraryEntry[];
+  total_usage: number;
+  avg_quality: number;
+  vector_coverage: number;
+  recent_entries: LibraryEntry[];
+}
+
+export interface LibrarySettings {
+  embedding_backend: 'chromadb' | 'faiss' | 'memory';
+  similarity_threshold: number;
+  auto_index: boolean;
+  default_shelf_taxonomy: string[];
+}

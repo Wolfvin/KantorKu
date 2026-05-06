@@ -39,6 +39,21 @@ class VerificationResult(str, Enum):
     UNTESTED = "untested"
 
 
+class EvidenceTier(str, Enum):
+    """Source quality tier for Library entries.
+
+    Used to factor evidence quality into quality scoring:
+    - OFFICIAL: Official documentation (quality bonus +0.1)
+    - VENDOR: Vendor blogs/tutorials (neutral)
+    - SECONDARY: Stack Overflow, wikis (default, neutral)
+    - COMMUNITY: Blog posts, forums (quality penalty -0.05)
+    """
+    OFFICIAL = "official"
+    VENDOR = "vendor"
+    SECONDARY = "secondary"
+    COMMUNITY = "community"
+
+
 # Icon mappings for TUI display
 ENTRY_TYPE_ICONS: dict[EntryType, str] = {
     EntryType.KNOWLEDGE: "\U0001f4d6",   # 📖
@@ -113,6 +128,9 @@ class LibraryEntry:
     origin_worker_id: Optional[str] = None
     origin_task_id: Optional[str] = None
 
+    # ── Evidence tier ──────────────────────────────────────────────────
+    evidence_tier: EvidenceTier = EvidenceTier.SECONDARY
+
     # ── SOLUTION specific ─────────────────────────────────────────────
     problem_description: Optional[str] = None
     failed_attempts: list[dict[str, Any]] = field(default_factory=list)
@@ -161,6 +179,12 @@ class LibraryEntry:
                       (prior_weight + helpful + unhelpful)
 
         Where prior = 0.5, prior_weight = 2 (minimum 2 "virtual" votes).
+
+        Evidence tier adjustments are applied after the base calculation:
+        - OFFICIAL: +0.1 quality bonus
+        - VENDOR: no adjustment
+        - SECONDARY: no adjustment (default)
+        - COMMUNITY: -0.05 quality penalty
         """
         if self.verified:
             # Verified entries get a quality floor of 0.8
@@ -177,7 +201,16 @@ class LibraryEntry:
         # Usage bonus: entries used many times are slightly better
         usage_bonus = min(self.usage_count * 0.005, 0.05)
 
-        self.quality_score = min(raw + usage_bonus, 1.0)
+        # Evidence tier adjustment
+        tier_adjustments: dict[EvidenceTier, float] = {
+            EvidenceTier.OFFICIAL: 0.1,
+            EvidenceTier.VENDOR: 0.0,
+            EvidenceTier.SECONDARY: 0.0,
+            EvidenceTier.COMMUNITY: -0.05,
+        }
+        tier_adjustment = tier_adjustments.get(self.evidence_tier, 0.0)
+
+        self.quality_score = min(max(raw + usage_bonus + tier_adjustment, 0.0), 1.0)
 
     @property
     def shelf_str(self) -> str:
@@ -240,6 +273,7 @@ class LibraryEntry:
             "answer": self.answer,
             "source_entry_ids": self.source_entry_ids,
             "steps": self.steps,
+            "evidence_tier": self.evidence_tier.value,
         }
 
     @classmethod
@@ -302,6 +336,13 @@ class LibraryEntry:
             import json
             steps = json.loads(steps)
 
+        evidence_tier = data.get("evidence_tier", "secondary")
+        if isinstance(evidence_tier, str):
+            try:
+                evidence_tier = EvidenceTier(evidence_tier)
+            except ValueError:
+                evidence_tier = EvidenceTier.SECONDARY
+
         return cls(
             id=data.get("id", str(uuid.uuid4())),
             created_at=created_at,
@@ -335,6 +376,7 @@ class LibraryEntry:
             answer=data.get("answer"),
             source_entry_ids=source_entry_ids,
             steps=steps,
+            evidence_tier=evidence_tier,
         )
 
 

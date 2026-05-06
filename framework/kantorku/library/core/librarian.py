@@ -165,10 +165,12 @@ Respond with ONLY a JSON object (no markdown fences, no explanation):
         archive: Archive,
         vector_store: VectorStore,
         provider_router: Any | None = None,
+        hot_index: Any | None = None,
     ) -> None:
         self._archive = archive
         self._vector_store = vector_store
         self._provider_router = provider_router
+        self._hot_index = hot_index
 
     # ── Classification ───────────────────────────────────────────────────
 
@@ -430,10 +432,15 @@ Respond with ONLY a JSON object (no markdown fences, no explanation):
         await self._archive.store(entry)
         logger.debug("Stored entry %s in archive", entry.id)
 
-        # 4. Index in hot_index (if the archive has a hot index reference)
-        # The hot_index is accessed through a separate reference if available.
-        # For now we rely on the caller to set up the hot_index separately,
-        # or the Indexer class handles this.
+        # 4. Index in hot_index (if available)
+        if self._hot_index is not None:
+            try:
+                await self._hot_index.upsert(entry)
+                logger.debug("Upserted entry %s in hot index", entry.id)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to upsert entry %s in hot index: %s", entry.id, exc
+                )
 
         # 5. Embed in vector store
         try:

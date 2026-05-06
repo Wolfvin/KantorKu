@@ -1,0 +1,40 @@
+name: Plan-Implement-Verify
+description: Structured workflow with think gate and halt conditions
+
+nodes:
+  plan:
+    skill: office
+    action: draft plan with think gate
+    next: implement
+
+  implement:
+    skill: office
+    action: execute with halt conditions
+    loop: true
+    loop_condition: all_tasks_complete
+    fresh_context: true
+    next: verify
+
+  verify:
+    skill: debug
+    action: verify all outputs
+
+halt_conditions:
+  - type: cost_exceeded
+    threshold: 0.5
+    currency: USD
+  - type: regression
+    consecutive: 2
+  - type: context_miss
+    consecutive: 2
+  - type: blind_agreement
+    consecutive: 3
+
+output:
+  format: markdown
+  includes:
+    - plan_summary
+    - implementation_details
+    - verification_results
+    - cost_summary
+    - memory_updates

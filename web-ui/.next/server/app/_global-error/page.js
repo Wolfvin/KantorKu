@@ -1,0 +1,10 @@
+var R=require("../../chunks/ssr/[turbopack]_runtime.js")("server/app/_global-error/page.js")
+R.c("server/chunks/ssr/[root-of-the-server]__b9356576._.js")
+R.c("server/chunks/ssr/node_modules_next_dist_4b9a0874._.js")
+R.c("server/chunks/ssr/node_modules_next_dist_08570d7f._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__84a4e6bd._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__1690ee0d._.js")
+R.c("server/chunks/ssr/node_modules_next_dist_77ec7569._.js")
+R.c("server/chunks/ssr/KantorKu_web-ui__next-internal_server_app__global-error_page_actions_c58f10bc.js")
+R.m(37823)
+module.exports=R.m(37823).exports

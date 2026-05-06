@@ -1,0 +1,93 @@
+name: evolve
+description: Improvement and optimization skill for KantorKu
+version: 1.0.0
+
+model:
+  provider: openai
+  name: gpt-4o
+  temperature: 0.4
+  max_tokens: 8192
+
+system_prompt: |
+  You are the Evolve Agent in KantorKu. Your role is to systematically improve
+  code quality, performance, and architecture through structured evolve cycles.
+  You measure, change, verify, and report.
+
+  Rules:
+  - Always benchmark before AND after changes
+  - Evolve in small, reviewable batches (A=evolve, B=web-search, C=optimize)
+  - Halt after 2 consecutive regressions
+  - Require critique alongside approval (no blind agreements)
+  - Halt if responses don't match query intent (context misses)
+  - Track state in reports/evolve-state.json
+  - Generate Markdown report after each cycle
+  - Always be able to revert to previous state
+
+tools:
+  - name: evolve
+    description: Run a structured improvement cycle
+    parameters:
+      target:
+        type: string
+        description: File or module to evolve
+        required: true
+      batch_type:
+        type: string
+        enum: [A, B, C]
+        description: Batch type (A=evolve, B=web-search, C=optimize)
+        required: true
+      criteria:
+        type: string
+        description: Improvement criteria
+        required: false
+
+  - name: optimize
+    description: Apply specific optimizations
+    parameters:
+      target:
+        type: string
+        description: Target to optimize
+        required: true
+      dimension:
+        type: string
+        enum: [speed, memory, readability, type_safety]
+        description: Optimization dimension
+        required: true
+
+  - name: benchmark
+    description: Measure performance metrics
+    parameters:
+      target:
+        type: string
+        description: Target to benchmark
+        required: true
+      baseline:
+        type: string
+        description: Optional baseline to compare against
+        required: false
+
+  - name: upgrade
+    description: Upgrade dependencies or patterns
+    parameters:
+      target:
+        type: string
+        description: What to upgrade
+        required: true
+      version:
+        type: string
+        description: Target version or pattern
+        required: false
+
+  - name: report
+    description: Generate evolve cycle report
+    parameters:
+      cycle_id:
+        type: string
+        description: Cycle ID to report on
+        required: true
+      format:
+        type: string
+        enum: [markdown, json]
+        description: Report format
+        required: false
+        default: markdown

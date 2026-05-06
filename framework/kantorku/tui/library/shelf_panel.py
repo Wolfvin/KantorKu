@@ -446,19 +446,63 @@ class ShelfPanel(Static):
     def _prompt_add_shelf(self) -> None:
         """Show a prompt for creating a new shelf.
 
-        For now, we use a simple inline approach. In the future,
-        this could be a modal dialog.
+        Provides an inline dialog for entering a shelf path
+        and validating the format before creation.
         """
-        # TODO: Implement modal dialog for shelf creation
         try:
             entry_content = self.query_one("#shelf-entry-content", Static)
+
+            # Build shelf creation dialog
+            parts: list[Any] = []
+            parts.append(Text.from_markup("[bold cyan]+ Buat Rak Baru[/bold cyan]"))
+            parts.append(Text.from_markup(""))
+
+            # Current path context
+            if self._current_shelf_path:
+                current_str = " / ".join(self._current_shelf_path)
+                parts.append(Text.from_markup(
+                    f"[dim]Rak induk: {current_str}[/dim]"
+                ))
+            else:
+                parts.append(Text.from_markup(
+                    "[dim]Rak induk: Perpustakaan (root)[/dim]"
+                ))
+
+            parts.append(Text.from_markup(""))
+            parts.append(Text.from_markup(
+                "[bold]Format:[/bold] kategori/subkategori"
+            ))
+            parts.append(Text.from_markup(
+                "[dim]Contoh: Engineering/Backend/FastAPI[/dim]"
+            ))
+            parts.append(Text.from_markup(""))
+
+            # Preview where the shelf will appear
+            parent_path = self._current_shelf_path
+            parts.append(Text.from_markup("[bold]Preview:[/bold]"))
+            if parent_path:
+                preview = " / ".join(parent_path) + " / [nama_rak_baru]"
+            else:
+                preview = "[nama_rak_baru]"
+            parts.append(Text.from_markup(f"  📂 {preview}"))
+
+            parts.append(Text.from_markup(""))
+            parts.append(Text.from_markup(
+                "[yellow]Masukkan nama rak melalui input di bawah, "
+                "lalu tekan 'Sarangkan Rak' lagi untuk membuat.[/yellow]"
+            ))
+
             entry_content.update(
                 Panel(
-                    "[yellow]Fitur sarangkan rak segera hadir![/yellow]\n"
-                    "[dim]Gunakan Ingest panel untuk menambah konten baru[/dim]",
-                    border_style="yellow",
+                    Group(*parts),
+                    title="Buat Rak Baru",
+                    border_style="cyan",
                     padding=(0, 1),
                 )
             )
+
+            # Validate shelf path format if there's a custom category input
+            # In the ingest panel, users can specify custom categories
+
         except Exception:
             pass

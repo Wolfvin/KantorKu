@@ -34,6 +34,13 @@ import {
   CacheEntry,
   WorkerApiKeyConfig,
   UndoableAction,
+  LibraryEntry,
+  ShelfNode,
+  SearchResult,
+  AskResult,
+  LibraryStats,
+  LibrarySettings,
+  EntryType,
 } from './types';
 import { WORKERS } from './workers-data';
 
@@ -274,6 +281,37 @@ interface KantorkuStore {
   panelLayout: { lobby: number; workspace: number; dashboard: number };
   setPanelLayout: (layout: { lobby: number; workspace: number; dashboard: number }) => void;
 
+  // ── Library ─────────────────────────────────────────────────────
+  libraryEntries: LibraryEntry[];
+  librarySelectedEntry: LibraryEntry | null;
+  libraryShelves: ShelfNode[];
+  librarySearchQuery: string;
+  librarySearchResults: SearchResult[];
+  librarySearchTypeFilter: EntryType | 'all';
+  librarySearchMinQuality: number;
+  libraryAskHistory: Array<{ question: string; result: AskResult }>;
+  libraryStats: LibraryStats | null;
+  librarySettings: LibrarySettings;
+  libraryLoading: boolean;
+  libraryIngesting: boolean;
+  libraryAsking: boolean;
+  setLibraryEntries: (entries: LibraryEntry[]) => void;
+  setLibrarySelectedEntry: (entry: LibraryEntry | null) => void;
+  setLibraryShelves: (shelves: ShelfNode[]) => void;
+  setLibrarySearchQuery: (query: string) => void;
+  setLibrarySearchResults: (results: SearchResult[]) => void;
+  setLibrarySearchTypeFilter: (filter: EntryType | 'all') => void;
+  setLibrarySearchMinQuality: (quality: number) => void;
+  addLibraryAskHistory: (question: string, result: AskResult) => void;
+  setLibraryStats: (stats: LibraryStats | null) => void;
+  setLibrarySettings: (settings: LibrarySettings) => void;
+  setLibraryLoading: (loading: boolean) => void;
+  setLibraryIngesting: (ingesting: boolean) => void;
+  setLibraryAsking: (asking: boolean) => void;
+  addLibraryEntry: (entry: LibraryEntry) => void;
+  updateLibraryEntry: (id: string, updates: Partial<LibraryEntry>) => void;
+  removeLibraryEntry: (id: string) => void;
+
   // ── Reset ─────────────────────────────────────────────────────
   resetAll: () => void;
 }
@@ -326,6 +364,24 @@ const initialState = {
   isBackendConnected: false,
   settingsOpen: false,
   sseConnected: false,
+  libraryEntries: [] as LibraryEntry[],
+  librarySelectedEntry: null as LibraryEntry | null,
+  libraryShelves: [] as ShelfNode[],
+  librarySearchQuery: '',
+  librarySearchResults: [] as SearchResult[],
+  librarySearchTypeFilter: 'all' as EntryType | 'all',
+  librarySearchMinQuality: 0,
+  libraryAskHistory: [] as Array<{ question: string; result: AskResult }>,
+  libraryStats: null as LibraryStats | null,
+  librarySettings: {
+    embedding_backend: 'memory',
+    similarity_threshold: 0.5,
+    auto_index: true,
+    default_shelf_taxonomy: ['Engineering', 'Mathematics', 'Science', 'Philosophy', 'Business'],
+  } as LibrarySettings,
+  libraryLoading: false,
+  libraryIngesting: false,
+  libraryAsking: false,
 };
 
 // Load persisted data for specific fields
@@ -837,6 +893,44 @@ export const useKantorkuStore = create<KantorkuStore>((set, get) => ({
       } catch {}
     }
   },
+
+  // ── Library ───────────────────────────────────────────────────
+  setLibraryEntries: (entries) => set({ libraryEntries: entries }),
+  setLibrarySelectedEntry: (entry) => set({ librarySelectedEntry: entry }),
+  setLibraryShelves: (shelves) => set({ libraryShelves: shelves }),
+  setLibrarySearchQuery: (query) => set({ librarySearchQuery: query }),
+  setLibrarySearchResults: (results) => set({ librarySearchResults: results }),
+  setLibrarySearchTypeFilter: (filter) => set({ librarySearchTypeFilter: filter }),
+  setLibrarySearchMinQuality: (quality) => set({ librarySearchMinQuality: quality }),
+  addLibraryAskHistory: (question, result) =>
+    set((state) => ({
+      libraryAskHistory: [...state.libraryAskHistory, { question, result }],
+    })),
+  setLibraryStats: (stats) => set({ libraryStats: stats }),
+  setLibrarySettings: (settings) => set({ librarySettings: settings }),
+  setLibraryLoading: (loading) => set({ libraryLoading: loading }),
+  setLibraryIngesting: (ingesting) => set({ libraryIngesting: ingesting }),
+  setLibraryAsking: (asking) => set({ libraryAsking: asking }),
+  addLibraryEntry: (entry) =>
+    set((state) => ({
+      libraryEntries: [...state.libraryEntries, entry],
+    })),
+  updateLibraryEntry: (id, updates) =>
+    set((state) => ({
+      libraryEntries: state.libraryEntries.map((e) =>
+        e.id === id ? { ...e, ...updates } : e
+      ),
+      librarySelectedEntry:
+        state.librarySelectedEntry?.id === id
+          ? { ...state.librarySelectedEntry, ...updates }
+          : state.librarySelectedEntry,
+    })),
+  removeLibraryEntry: (id) =>
+    set((state) => ({
+      libraryEntries: state.libraryEntries.filter((e) => e.id !== id),
+      librarySelectedEntry:
+        state.librarySelectedEntry?.id === id ? null : state.librarySelectedEntry,
+    })),
 
   // ── Reset ──────────────────────────────────────────────────
   resetAll: () => {

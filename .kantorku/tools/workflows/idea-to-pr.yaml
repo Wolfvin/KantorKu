@@ -1,0 +1,47 @@
+name: Idea to PR
+description: End-to-end workflow from idea to pull request summary
+
+nodes:
+  intake:
+    skill: office
+    action: understand client request
+    next: plan
+
+  plan:
+    skill: office
+    action: draft structured plan
+    next: implement
+
+  implement:
+    skill: office
+    action: execute tasks
+    loop: true
+    loop_condition: tasks_remaining
+    next: review
+
+  review:
+    skill: debug
+    action: review and verify output
+    next: pr-summary
+
+  pr-summary:
+    skill: office
+    action: generate PR summary
+
+halt_conditions:
+  - type: cost_exceeded
+    threshold: 1.0
+    currency: USD
+  - type: regression
+    consecutive: 2
+  - type: blind_agreement
+    consecutive: 3
+
+output:
+  format: markdown
+  includes:
+    - pr_title
+    - pr_description
+    - files_changed
+    - test_results
+    - cost_summary

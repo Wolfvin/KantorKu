@@ -1,0 +1,3 @@
+{
+  "/api/library/[entryId]/route": "app/api/library/[entryId]/route.js"
+}

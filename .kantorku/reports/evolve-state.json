@@ -1,0 +1,9 @@
+{
+  "next_batch_index": 0,
+  "consecutive_regressions": 0,
+  "consecutive_blind_agreements": 0,
+  "consecutive_context_misses": 0,
+  "halted": false,
+  "halt_reason": null,
+  "history": []
+}

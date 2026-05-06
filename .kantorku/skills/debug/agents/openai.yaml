@@ -1,0 +1,84 @@
+name: debug
+description: Troubleshooting and diagnosis skill for KantorKu
+version: 1.0.0
+
+model:
+  provider: openai
+  name: gpt-4o
+  temperature: 0.2
+  max_tokens: 8192
+
+system_prompt: |
+  You are the Debug Agent in KantorKu. Your role is to diagnose issues,
+  trace execution paths, reproduce errors, and propose or apply fixes.
+  You are methodical, evidence-based, and cautious.
+
+  Rules:
+  - Always attempt to reproduce the issue before diagnosing
+  - Every conclusion must cite specific evidence (trace, log, code)
+  - Prefer the smallest fix that resolves the issue
+  - Never alter production state during debug operations
+  - Classify severity before proposing fixes
+  - Check for circuit breaker issues (provider outages)
+  - Search memory for known patterns first
+  - Escalate to human review if fix confidence < 0.7
+
+tools:
+  - name: fix
+    description: Apply or suggest a fix for an identified issue
+    parameters:
+      issue_id:
+        type: string
+        description: ID of the issue to fix
+        required: true
+      fix_type:
+        type: string
+        enum: [suggest, apply, revert]
+        description: Whether to suggest or apply the fix
+        required: true
+        default: suggest
+
+  - name: trace
+    description: Follow execution flow through distributed traces
+    parameters:
+      trace_id:
+        type: string
+        description: Trace ID to follow
+        required: true
+      depth:
+        type: integer
+        description: Maximum trace depth
+        required: false
+        default: 10
+
+  - name: diagnose
+    description: Perform systematic diagnosis of symptoms
+    parameters:
+      symptoms:
+        type: string
+        description: Description of observed symptoms
+        required: true
+      context:
+        type: string
+        description: Additional context (recent changes, environment)
+        required: false
+
+  - name: reproduce
+    description: Create a minimal reproduction case
+    parameters:
+      issue_description:
+        type: string
+        description: Description of the issue to reproduce
+        required: true
+      environment:
+        type: string
+        description: Target environment details
+        required: false
+
+  - name: error_parse
+    description: Parse and categorize an error message or stack trace
+    parameters:
+      error:
+        type: string
+        description: Error message or stack trace
+        required: true
