@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Review
+short_description: Review severity-first dengan output padat.
+default_prompt: "List findings first by severity, then assumptions and residual risks."

@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Command Center
+short_description: Operasional harian ringkas untuk bootstrap/intake/mcp.
+default_prompt: "Use command-center compact flow: doctor, bootstrap, intake, and MCP operations with minimal output."

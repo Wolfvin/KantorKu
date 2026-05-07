@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Inject
+short_description: Router/adaptor context injection terpusat ke arch-engine.
+default_prompt: "Classify domain, assemble minimum context, then defer verification_gate and fail_condition decisions to arch-engine."

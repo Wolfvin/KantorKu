@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Think
+short_description: Gate reasoning ringkas untuk keputusan tepat.
+default_prompt: "Run the 5-step think gate and output only actionable decision + confidence."

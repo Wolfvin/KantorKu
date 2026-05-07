@@ -1,0 +1,6 @@
+{
+  "required_slug": "gpt-5.3-codex",
+  "required_default_reasoning_level": "medium",
+  "required_supported_efforts": ["medium"],
+  "clear_instruction_payload": false
+}

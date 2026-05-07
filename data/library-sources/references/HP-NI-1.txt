@@ -1,0 +1,743 @@
+# Penjelasan Mendalam Semua Kategori
+
+---
+
+# 🌐 KATEGORI 1: Jaringan & Sistem
+
+## Konsep Dasar
+
+Remote Access adalah teknologi yang memungkinkan seseorang mengoperasikan komputer lain dari jarak jauh, seolah-olah duduk langsung di depan komputer tersebut. Teknologi ini sudah ada sejak era awal internet dan terus berkembang hingga sekarang.
+
+Prinsip dasarnya sederhana:
+```
+Komputer A (controller) ──────────── Komputer B (target)
+     │                                      │
+     │         Kirim input                  │
+     │ ─────────────────────────────────►   │
+     │                                      │
+     │         Kirim tampilan layar         │
+     │ ◄─────────────────────────────────   │
+```
+
+Komputer pengontrol mengirimkan sinyal keyboard dan mouse, sementara komputer target membalas dengan tampilan layarnya secara real-time.
+
+---
+
+## Remote Desktop Protocol (RDP)
+
+**Sejarah & Asal Usul:**
+RDP adalah protokol buatan Microsoft yang pertama kali diperkenalkan pada Windows NT 4.0 Terminal Server Edition tahun 1998, lalu dipopulerkan pada Windows XP tahun 2001. Hingga sekarang RDP masih menjadi standar utama remote access di ekosistem Windows.
+
+**Cara Kerja:**
+- Berjalan di port **3389** secara default
+- Menggunakan enkripsi TLS untuk mengamankan koneksi
+- Mentransmisikan tampilan layar dalam format bitmap yang dikompresi
+- Mendukung redirect audio, clipboard, printer, dan USB drive
+
+**Fitur Utama:**
+- Multi-monitor support
+- RemoteApp — jalankan aplikasi tunggal tanpa full desktop
+- Network Level Authentication (NLA) untuk keamanan tambahan
+- Session shadowing — admin bisa memantau session user lain
+
+**Kelebihan:**
+- Built-in di Windows, tidak perlu install tambahan
+- Performa baik untuk jaringan lokal
+- Integrasi penuh dengan Active Directory
+
+**Kelemahan:**
+- Sering menjadi target serangan brute force
+- Tidak ideal untuk koneksi internet publik tanpa VPN
+- Berbayar untuk Windows Server (Client Access License)
+
+---
+
+## VNC (Virtual Network Computing)
+
+**Sejarah:**
+Dikembangkan oleh AT&T Laboratories Cambridge pada tahun 1999. VNC adalah teknologi open-source yang menjadi fondasi banyak tools remote access modern.
+
+**Cara Kerja:**
+- Menggunakan protokol **RFB (Remote Framebuffer)**
+- Bekerja di level framebuffer — artinya platform-agnostic
+- Bisa dipakai di Windows, Linux, macOS sekaligus
+
+**Perbedaan dengan RDP:**
+| Aspek | RDP | VNC |
+|---|---|---|
+| Platform | Windows-centric | Cross-platform |
+| Lisensi | Proprietary | Open source |
+| Performa | Lebih cepat | Lebih lambat |
+| Keamanan bawaan | Lebih baik | Tergantung implementasi |
+
+---
+
+## TeamViewer & AnyDesk
+
+**TeamViewer:**
+- Didirikan tahun 2005, berbasis di Jerman
+- Bekerja menembus NAT dan firewall tanpa konfigurasi khusus
+- Menggunakan server relay TeamViewer sebagai perantara
+- Gratis untuk penggunaan personal, berbayar untuk komersial
+- Harga: mulai dari ~$50/bulan untuk paket bisnis
+
+**AnyDesk:**
+- Didirikan tahun 2014 oleh mantan developer TeamViewer
+- Menggunakan teknologi **DeskRT codec** — kompresi video yang sangat efisien
+- Klaim latensi di bawah 16ms pada jaringan yang baik
+- Lebih ringan dari TeamViewer
+- Harga: mulai dari ~$14/bulan
+
+**Perbandingan:**
+| Aspek | TeamViewer | AnyDesk |
+|---|---|---|
+| Kecepatan | Baik | Sangat baik |
+| Ukuran file | Besar | Kecil |
+| Harga | Lebih mahal | Lebih murah |
+| Fitur | Lebih lengkap | Lebih simpel |
+
+---
+
+## SSH & Telnet
+
+**Telnet:**
+- Protokol tertua, ada sejak tahun **1969**
+- Komunikasi **plaintext** — tidak ada enkripsi sama sekali
+- Port default: **23**
+- Sekarang dianggap tidak aman dan hampir tidak dipakai
+
+**SSH (Secure Shell):**
+- Dikembangkan tahun 1995 oleh Tatu Ylönen sebagai pengganti Telnet yang aman
+- Port default: **22**
+- Semua komunikasi dienkripsi
+- Mendukung autentikasi via password atau **public key**
+
+**Cara Kerja SSH:**
+```
+Client                          Server
+  │                               │
+  │── SYN ──────────────────────► │
+  │◄─ SYN-ACK ──────────────────  │
+  │── Key Exchange (Diffie-Hellman)│
+  │◄──────────────────────────────│
+  │   [Saluran terenkripsi terbentuk]
+  │── Autentikasi ───────────────►│
+  │◄─ Shell / Command hasil ─────  │
+```
+
+**Use Case SSH:**
+- Remote server management
+- Secure file transfer (SCP, SFTP)
+- Port forwarding / tunneling
+- Git operations (GitHub, GitLab)
+
+---
+
+# 🔐 KATEGORI 2: Kriptografi
+
+## Konsep Dasar Enkripsi
+
+Enkripsi adalah proses mengubah data yang bisa dibaca (**plaintext**) menjadi data acak yang tidak bisa dibaca (**ciphertext**) menggunakan algoritma matematika dan kunci rahasia.
+
+```
+Plaintext + Kunci ──► [Algoritma Enkripsi] ──► Ciphertext
+Ciphertext + Kunci ──► [Algoritma Dekripsi] ──► Plaintext
+```
+
+Ada dua jenis utama enkripsi:
+- **Symmetric** — kunci enkripsi dan dekripsi sama
+- **Asymmetric** — kunci publik untuk enkripsi, kunci privat untuk dekripsi
+
+Semua yang dibahas dalam sesi ini menggunakan **symmetric encryption** karena lebih cepat dan cocok untuk enkripsi data dalam jumlah besar.
+
+---
+
+## AES-256-GCM
+
+**AES (Advanced Encryption Standard):**
+- Ditetapkan oleh NIST (National Institute of Standards and Technology) pada tahun 2001
+- Menggantikan DES yang sudah dianggap lemah
+- Digunakan oleh militer AS, bank, dan pemerintah seluruh dunia
+- Angka **256** merujuk pada panjang kunci — 256 bit = 2²⁵⁶ kemungkinan kunci
+
+**Seberapa kuat AES-256?**
+```
+Jumlah kemungkinan kunci:
+2²⁵⁶ = 115,792,089,237,316,195,423,570,985,008,687,907,853,
+        269,984,665,640,564,039,457,584,007,913,129,639,936
+
+Komputer tercepat di dunia (Frontier, 1.1 exaFLOPS):
+Butuh waktu lebih panjang dari umur alam semesta untuk brute force.
+```
+
+**GCM (Galois/Counter Mode):**
+GCM adalah **mode operasi** AES yang memberikan dua fungsi sekaligus:
+1. **Enkripsi** — mengacak data
+2. **Authentication** — memastikan data tidak dimodifikasi (integrity check)
+
+Komponen GCM:
+- **Nonce (IV)** — angka random 12 byte, wajib unik setiap enkripsi
+- **Ciphertext** — data yang sudah dienkripsi
+- **Auth Tag** — 16 byte checksum untuk verifikasi integritas
+- **AAD** — Additional Authenticated Data, data yang diverifikasi tapi tidak dienkripsi
+
+```
+Enkripsi GCM:
+Plaintext + Key + Nonce ──► Ciphertext + Auth Tag
+
+Dekripsi GCM:
+Ciphertext + Key + Nonce + Auth Tag ──► Plaintext (atau ERROR jika data dimodifikasi)
+```
+
+**Kenapa GCM lebih baik dari mode lain (CBC, ECB)?**
+| Mode | Enkripsi | Integrity Check | Parallelizable |
+|---|---|---|---|
+| ECB | ✅ | ❌ | ✅ |
+| CBC | ✅ | ❌ | ❌ |
+| GCM | ✅ | ✅ | ✅ |
+
+---
+
+## DEK & KEK — Hierarki Kunci
+
+**Masalah yang dipecahkan:**
+Jika satu kunci digunakan untuk semua data, maka:
+- Rotasi kunci = harus re-encrypt semua data sekaligus
+- Kompromi satu kunci = semua data bocor
+
+**Solusinya — Key Hierarchy:**
+
+```
+Master KEK (Key Encryption Key)
+    │
+    ├── DEK file_001 ──► enkripsi file_001
+    ├── DEK file_002 ──► enkripsi file_002
+    └── DEK file_003 ──► enkripsi file_003
+```
+
+**DEK (Data Encryption Key):**
+- Kunci random 32 byte yang unik per file/record
+- Digunakan langsung untuk enkripsi data
+- Disimpan dalam kondisi terenkripsi (wrapped) oleh KEK
+- Tidak pernah tersimpan dalam plaintext di disk
+
+**KEK (Key Encryption Key):**
+- Kunci master yang mengenkripsi semua DEK
+- Tidak pernah digunakan langsung untuk enkripsi data
+- Disimpan aman di OS (DPAPI) atau dihasilkan dari password
+
+**Keuntungan sistem ini:**
+- Rotasi KEK: cukup re-wrap semua DEK, tidak perlu re-encrypt data
+- Kompromi DEK tunggal: hanya satu file yang bocor
+- Revoke akses: hapus DEK dari storage
+
+---
+
+## Argon2id — Key Derivation Function
+
+**Masalah yang dipecahkan:**
+Password manusia lemah. "admin123" hanya punya ~37 bit entropy. Hacker bisa coba jutaan kombinasi per detik dengan GPU modern.
+
+**KDF (Key Derivation Function):**
+Fungsi yang mengubah password lemah menjadi kunci kriptografi yang kuat, dengan cara sengaja **membuat prosesnya lambat dan berat**.
+
+**Argon2:**
+- Memenangkan Password Hashing Competition tahun 2015
+- Tiga varian: Argon2d, Argon2i, **Argon2id** (rekomendasi)
+- Argon2id menggabungkan ketahanan terhadap GPU attack dan side-channel attack
+
+**Parameter Argon2id:**
+```rust
+Params::new(
+    65536,  // memory_cost: 64MB RAM wajib dipakai
+    3,      // time_cost: 3 iterasi
+    2,      // parallelism: 2 thread
+    Some(32) // output: 32 byte kunci
+)
+```
+
+**Perbandingan dengan KDF lain:**
+| KDF | Memory Hard | GPU Resistant | Rekomendasi |
+|---|---|---|---|
+| MD5 | ❌ | ❌ | ❌ Jangan pakai |
+| SHA-256 | ❌ | ❌ | ❌ Bukan untuk password |
+| bcrypt | ❌ | Sebagian | ⚠️ Masih ok |
+| PBKDF2 | ❌ | ❌ | ⚠️ Masih ok |
+| scrypt | ✅ | ✅ | ✅ Baik |
+| **Argon2id** | ✅ | ✅ | ✅ **Terbaik saat ini** |
+
+---
+
+## Time-based Key Derivation
+
+**Konsep Asli dari Diskusi:**
+Ide untuk membuat KEK berdasarkan tanggal sehingga kunci berubah otomatis setiap hari.
+
+**Implementasi yang Dibahas:**
+```
+KEK = Argon2id(
+    secret = MASTER_SECRET,
+    salt   = hari + bulan + tahun + MASTER_SECRET
+)
+```
+
+**Kelebihan:**
+- KEK berbeda setiap hari secara otomatis
+- Tidak perlu rotasi manual
+- Data lama tetap bisa didekripsi karena tanggal disimpan di metadata
+
+**Kelemahan yang Diidentifikasi:**
+- Tanggal hanya punya 365 nilai per tahun — **entropy sangat rendah**
+- Jika tanpa MASTER_SECRET, hacker tinggal coba 365 kemungkinan
+- Dengan MASTER_SECRET, kelemahannya teratasi
+
+**Perbaikan yang Direkomendasikan:**
+```
+KEK = Argon2id(MASTER_SECRET, salt = tanggal + MASTER_SECRET)
+```
+Hacker harus tahu MASTER_SECRET dulu — yang tidak bisa ditebak.
+
+---
+
+## Security through Obscurity & Kerckhoffs's Principle
+
+**Security through Obscurity:**
+Pendekatan keamanan yang mengandalkan kerahasiaan *cara kerja* sistem, bukan kerahasiaan kunci.
+
+Contoh ide yang masuk kategori ini dari diskusi:
+- "Pakai 4 jenis enkripsi berbeda supaya orang tidak tahu"
+- "Aplikasi akan hapus teknik enkripsinya jika di-reverse engineer"
+
+**Kenapa ini lemah:**
+1. Hacker berpengalaman bisa reverse engineer binary apapun
+2. Begitu metodenya diketahui, keamanan langsung runtuh total
+3. Tidak ada "self-destruct" yang benar-benar tidak bisa di-bypass — hacker cukup copy binary sebelum menjalankannya
+
+**Kerckhoffs's Principle (1883):**
+> *"Sebuah sistem kriptografi harus aman meskipun semua detailnya — kecuali kuncinya — diketahui publik."*
+
+Ini adalah prinsip fundamental kriptografi modern. AES, RSA, semua algoritma standar bersifat **open source dan dipublikasikan** — kekuatannya bukan dari kerahasiaan algoritmanya, tapi dari kerahasiaan **kuncinya**.
+
+**Implikasinya untuk desain sistem:**
+- Boleh pakai algoritma custom sebagai lapisan tambahan
+- Tapi **jangan andalkan** kerahasiaan algoritma sebagai satu-satunya pertahanan
+- Fokus pada keamanan **kunci**, bukan kerahasiaan **metode**
+
+---
+
+# 🛡️ KATEGORI 3: Keamanan OS
+
+## Windows DPAPI
+
+**DPAPI (Data Protection API):**
+Fitur bawaan Windows sejak Windows 2000 yang menyediakan enkripsi transparan terikat ke identitas user dan mesin.
+
+**Cara Kerja Internal:**
+```
+Password Login Windows
+        │
+        ▼
+   Derive Master Key (via PBKDF2)
+        │
+        ▼
+   Master Key tersimpan di:
+   %APPDATA%\Microsoft\Protect\{SID}\
+        │
+        ▼
+   DPAPI pakai Master Key untuk
+   enkripsi/dekripsi data aplikasi
+```
+
+**Ikatan Keamanan DPAPI:**
+- Terikat ke **SID (Security Identifier)** akun Windows
+- Terikat ke **machine secret** yang unik per instalasi Windows
+- Kombinasi keduanya = double lock
+
+**Skenario Keamanan:**
+| Situasi | Hasil |
+|---|---|
+| User login normal | ✅ Dekripsi berhasil otomatis |
+| Reset password via admin | ⚠️ Master key bisa hilang |
+| Reinstall Windows | ❌ Data tidak bisa dipulihkan |
+| Hardisk dipindah ke PC lain | ❌ Tidak bisa dekripsi |
+| Backup dan restore profil | ✅ Bisa, jika backup benar |
+
+**Batasan DPAPI:**
+- Tidak cocok untuk **multi-user access**
+- Tidak cocok untuk **server** yang perlu akses dari banyak mesin
+- Tidak ada mekanisme key recovery bawaan yang mudah
+
+---
+
+## Multi-Admin Key Management
+
+**Masalah:**
+DPAPI terikat ke satu user. Bagaimana jika ada 5 admin yang perlu akses data yang sama?
+
+**Solusi yang Dibahas:**
+
+### 1. Shared Passphrase
+```
+KEK = Argon2id(password_bersama)
+Semua admin tahu password yang sama
+```
+- ✅ Simpel, mudah implementasi
+- ❌ Satu admin resign → harus ganti password → re-encrypt semua data
+- ❌ Tidak ada audit trail siapa yang akses
+
+### 2. Shared Key File
+```
+kek.key ──► disimpan di USB terenkripsi
+         ──► dibagikan ke setiap admin
+```
+- ✅ Tidak perlu ingat password panjang
+- ❌ File bisa hilang/dicopy tanpa sepengetahuan
+- ❌ Sulit revoke akses jika admin keluar
+
+### 3. HashiCorp Vault
+Sistem manajemen secret enterprise-grade:
+- Setiap admin punya **kredensial masing-masing**
+- Vault mengeluarkan kunci hanya setelah autentikasi
+- **Audit log** lengkap — siapa akses apa, kapan
+- **Revoke** akses per-individu tanpa ganggu yang lain
+- **Secret leasing** — kunci otomatis expire setelah durasi tertentu
+- Open source (Community Edition) dan Enterprise
+- Harga Enterprise: mulai $0.03/jam per node
+
+### 4. Cloud KMS
+| Provider | Layanan | Harga |
+|---|---|---|
+| AWS | KMS | $1/bulan per kunci + $0.03/10.000 request |
+| Google Cloud | Cloud KMS | $0.06/bulan per kunci |
+| Azure | Key Vault | $0.04/10.000 operasi |
+| Hashicorp | Vault Cloud | mulai $0.03/jam |
+
+**Rekomendasi Berdasarkan Skala:**
+```
+2-3 admin, budget terbatas  → Shared passphrase + SOP ketat
+Tim 5-20 orang              → HashiCorp Vault self-hosted
+Tim enterprise / cloud-first → Cloud KMS
+```
+
+---
+
+# 🏗️ KATEGORI 4: Desain Sistem
+
+## 3-Level Data Access Control
+
+**Kebutuhan yang Diidentifikasi:**
+Sistem harus mendukung tiga kombinasi akses berbeda dalam satu record data:
+
+```
+Record Data
+├── Field A: "user_only"    → Hanya user yang bisa lihat
+│                             (tidak masuk akal dari diskusi,
+│                              yang benar adalah public/shared)
+├── Field B: "shared"       → User DAN admin bisa lihat
+└── Field C: "admin_only"   → Hanya admin yang bisa lihat
+```
+
+**Implementasi Teknis:**
+Setiap record dipecah menjadi dua blok terenkripsi:
+
+```
+EncryptedRecord
+├── public_block  ──► dienkripsi dengan USER_KEK
+│   (berisi field shared)   (bisa dibuka app tanpa password)
+│
+└── private_block ──► dienkripsi dengan ADMIN_KEK
+    (berisi field admin_only) (butuh password admin)
+```
+
+**Alur Akses:**
+
+```
+USER mengakses data:
+App ──► decrypt public_block pakai USER_KEK ──► tampilkan shared fields
+
+ADMIN mengakses data:
+App ──► decrypt public_block pakai USER_KEK ──► shared fields
+App ──► minta password admin
+App ──► decrypt private_block pakai ADMIN_KEK ──► private fields
+App ──► tampilkan semua fields
+```
+
+---
+
+## Dual Encryption per Record
+
+**Struktur File `.enc` Lengkap:**
+```json
+{
+  "v": 1,
+  "alg": "AES-256-GCM",
+  "saved_date": "2026-04-02",
+  "public": {
+    "nonce_b64": "...",
+    "nonce_dek_b64": "...",
+    "wrapped_dek_b64": "...",
+    "ciphertext_b64": "..."
+  },
+  "private": {
+    "nonce_b64": "...",
+    "nonce_dek_b64": "...",
+    "wrapped_dek_b64": "...",
+    "ciphertext_b64": "..."
+  }
+}
+```
+
+**Kenapa DEK terpisah per blok?**
+- Jika satu DEK bocor, hanya satu blok yang terekspos
+- Public dan private block punya DEK masing-masing yang random
+- KEK yang berbeda untuk public vs private
+
+---
+
+## Environment Variable untuk Secret
+
+**Anti-pattern yang harus dihindari:**
+```rust
+// ❌ JANGAN LAKUKAN INI
+const MASTER_SECRET: &str = "my_super_secret_key_123";
+```
+
+**Kenapa berbahaya:**
+- Secret tersimpan di source code
+- Jika source code di-push ke GitHub → secret bocor
+- Binary yang dikompilasi bisa di-strings untuk extract secret
+
+**Best Practice:**
+```rust
+// ✅ Ambil dari environment variable
+let master_secret = std::env::var("MASTER_SECRET")
+    .expect("MASTER_SECRET belum di-set!");
+```
+
+**Cara set di berbagai platform:**
+```bash
+# Linux/Mac (sementara)
+export MASTER_SECRET="nilai_rahasia"
+
+# Linux/Mac (permanen, tambahkan ke ~/.bashrc)
+echo 'export MASTER_SECRET="nilai_rahasia"' >> ~/.bashrc
+
+# Windows PowerShell
+$env:MASTER_SECRET = "nilai_rahasia"
+
+# Windows (permanen via System Properties)
+[System.Environment]::SetEnvironmentVariable("MASTER_SECRET","nilai","Machine")
+```
+
+**Alternatif yang lebih baik untuk production:**
+- `.env` file yang masuk `.gitignore`
+- Secret manager (Vault, AWS Secrets Manager)
+- OS Keychain (untuk desktop app)
+
+---
+
+# 💻 KATEGORI 5: Development
+
+## Tauri v2 + Rust Architecture
+
+**Tauri:**
+Framework untuk membangun aplikasi desktop menggunakan teknologi web (HTML/CSS/JS) untuk frontend dan Rust untuk backend.
+
+**Perbandingan dengan Electron:**
+| Aspek | Tauri | Electron |
+|---|---|---|
+| Bahasa backend | Rust | Node.js |
+| Ukuran binary | ~3-10 MB | ~100-200 MB |
+| Memory usage | Rendah | Tinggi |
+| Keamanan | Lebih baik | Standar |
+| Ekosistem | Berkembang | Mature |
+
+**Mengapa Tauri + Rust ideal untuk sistem enkripsi:**
+1. **Memory safety** — Rust mencegah buffer overflow, use-after-free, dan race condition yang sering jadi celah keamanan
+2. **No garbage collector** — data sensitif di memory lebih terkontrol, bisa di-zeroize manual
+3. **Zero-cost abstraction** — performa enkripsi setara C/C++
+4. **Small binary** — attack surface lebih kecil
+
+**Arsitektur Tauri untuk sistem ini:**
+```
+Frontend (JS/HTML)
+      │
+      │ invoke("command_name", {args})
+      ▼
+Tauri Bridge (IPC)
+      │
+      ▼
+Rust Backend
+├── crypto module (enkripsi/dekripsi)
+├── storage module (baca/tulis file .enc)
+└── auth module (validasi admin password)
+```
+
+---
+
+## Tauri Commands untuk Akses Data
+
+**Definisi Command di Rust:**
+```rust
+// Command untuk user biasa — tidak butuh password
+#[tauri::command]
+fn get_record_user(record_id: &str) -> Result<serde_json::Value, String> {
+    let app_secret = get_app_secret(); // dari env var
+    let record = load_enc_file(record_id)
+        .map_err(|e| e.to_string())?;
+    Ok(decrypt_as_user(&record, &app_secret))
+}
+
+// Command untuk admin — butuh password
+#[tauri::command]
+fn get_record_admin(
+    record_id: &str,
+    admin_password: &str,
+) -> Result<serde_json::Value, String> {
+    let app_secret = get_app_secret();
+    let record = load_enc_file(record_id)
+        .map_err(|e| e.to_string())?;
+
+    let (public, private) = decrypt_as_admin(&record, &app_secret, admin_password)
+        .map_err(|_| "Password admin salah!".to_string())?;
+
+    Ok(serde_json::json!({
+        "public": public,
+        "private": private
+    }))
+}
+```
+
+**Register command di main.rs:**
+```rust
+fn main() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            get_record_user,
+            get_record_admin,
+            save_record,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+```
+
+**Pemanggilan dari Frontend (JavaScript):**
+```javascript
+import { invoke } from "@tauri-apps/api/core";
+
+// User biasa
+const publicData = await invoke("get_record_user", {
+    recordId: "record_001"
+});
+
+// Admin
+const allData = await invoke("get_record_admin", {
+    recordId: "record_001",
+    adminPassword: passwordInput.value
+});
+```
+
+---
+
+# ⚠️ KATEGORI 6: Security Risks & Mitigasi
+
+## Reverse Engineering Risk
+
+**Ancaman:**
+Hacker bisa menganalisis binary aplikasi Tauri untuk menemukan APP_SECRET yang digunakan sebagai USER_KEK.
+
+**Tools yang biasa digunakan hacker:**
+- `strings` — extract semua string dari binary
+- Ghidra / IDA Pro — decompiler untuk analisis binary
+- x64dbg / OllyDbg — debugger untuk analisis runtime
+- Frida — dynamic instrumentation untuk hook fungsi
+
+**Tingkat Risiko per Komponen:**
+| Komponen | Risiko RE | Dampak jika bocor |
+|---|---|---|
+| APP_SECRET di binary | 🔴 Tinggi | Public block bisa didekripsi |
+| ADMIN_KEK | 🟢 Rendah | Tidak ada di binary |
+| Admin password | 🟢 Rendah | Tidak ada di binary |
+| Algoritma enkripsi | 🟡 Medium | Tidak langsung berbahaya |
+
+**Mitigasi yang Bisa Dilakukan:**
+1. **Obfuscation** — bukan solusi sempurna, tapi menambah kesulitan
+2. **Remote key fetch** — APP_SECRET diambil dari server, bukan di binary
+3. **Hardware binding** — pakai TPM chip untuk menyimpan secret
+4. **Terima risikonya** — untuk public data, anggap saja semi-public
+
+**Kesimpulan Penting:**
+> Private data (admin_only) **tetap aman** meski binary di-reverse engineer, karena ADMIN_KEK dibuat dari password admin yang tidak ada di binary.
+> Public data hanya aman dari **user awam**, bukan dari hacker berpengalaman.
+
+---
+
+## Secure Memory & Zeroize
+
+**Masalah:**
+Setelah dekripsi, kunci dan data plaintext ada di memory (RAM). Jika:
+- Aplikasi crash → memory dump bisa berisi kunci
+- OS swap ke disk → kunci tersimpan di pagefile
+- Cold boot attack → RAM dibaca langsung
+
+**Solusi — Zeroize:**
+Setelah kunci tidak dibutuhkan, timpa memory-nya dengan nol:
+
+```rust
+use zeroize::Zeroize;
+
+fn decrypt_and_use(enc: &EncryptedBlock, kek: &[u8; 32]) {
+    let mut dek = unwrap_dek(enc, kek); // DEK di memory
+
+    // Gunakan DEK untuk dekripsi
+    let plaintext = decrypt_data(&enc.ciphertext, &dek);
+
+    // Setelah selesai, hapus DEK dari memory!
+    dek.zeroize();
+
+    // Gunakan plaintext...
+    process(plaintext);
+}
+// dek sudah di-zero, tidak bisa diambil dari memory dump
+```
+
+**Tambahkan ke Cargo.toml:**
+```toml
+[dependencies]
+zeroize = { version = "1", features = ["derive"] }
+```
+
+**Dengan derive macro:**
+```rust
+use zeroize::ZeroizeOnDrop;
+
+#[derive(ZeroizeOnDrop)]
+struct SensitiveKeys {
+    kek: [u8; 32],
+    dek: [u8; 32],
+}
+// Otomatis di-zeroize saat struct di-drop
+```
+
+---
+
+## Ringkasan Keamanan Keseluruhan Sistem
+
+```
+ANCAMAN                    PERLINDUNGAN                STATUS
+─────────────────────────────────────────────────────────────
+File .enc dicuri           AES-256-GCM                 ✅ Aman
+Brute force KEK            Argon2id (lambat)            ✅ Aman
+Tebak tanggal              + MASTER_SECRET              ✅ Aman
+Akses public data          USER_KEK (app secret)        ⚠️ Semi-aman
+Akses private data         ADMIN_KEK (password)         ✅ Aman
+Reverse engineering        Partial mitigation           ⚠️ Risiko public data
+Memory dump                Zeroize                      ✅ Aman (jika diimplementasi)
+Admin resign               Ganti password + re-encrypt  ⚠️ Perlu SOP
+Reinstall OS               Backup MASTER_SECRET         ⚠️ Perlu backup
+```
+
+---
+
+Mau gue bantu implementasi bagian mana yang masih kurang dari sistem ini? 😄

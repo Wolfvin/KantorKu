@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Token Optimizer
+short_description: Optimasi token dan compaction safety.
+default_prompt: "Audit token pressure, apply minimal interventions, and report compact metrics."

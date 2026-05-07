@@ -1,0 +1,4 @@
+path=/home/raymond/workspace/projets/skills_and_mcp/.codex/compact/codex-linux-x64
+size_bytes=172278088
+sha256=e5ed092cc2b640f9e9be5c7778aade1c0dbf992e27a7503a8a06c16b404e1da3
+/home/raymond/workspace/projets/skills_and_mcp/.codex/compact/codex-linux-x64: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked, stripped

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Senior Call Router"
+  short_description: "Routes senior checks to frontend/backend skill."
+  default_prompt: "Use this router to pick senior-call-frontend or senior-call-backend based on domain risk and scope."

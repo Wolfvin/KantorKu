@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Smart Plan
+short_description: Planning multi-fase dengan gate verifikasi.
+default_prompt: "Create a tight phased plan with explicit verification gates and next steps."

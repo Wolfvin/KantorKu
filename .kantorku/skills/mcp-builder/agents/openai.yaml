@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: MCP Builder
+short_description: Integrasi/build MCP dengan lifecycle on-demand.
+default_prompt: "Choose integrate or build path, validate callable tools, and use ephemeral MCP enablement."

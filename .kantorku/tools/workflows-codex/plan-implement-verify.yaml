@@ -1,0 +1,22 @@
+name: plan-implement-verify
+description: Deterministic loop: plan -> implement -> verify -> report.
+nodes:
+  - id: plan
+    prompt: >
+      Create a short implementation plan with ordered steps and explicit
+      verification for each step. Use the local repo context.
+
+  - id: implement
+    depends_on: [plan]
+    loop:
+      prompt: >
+        Read the plan. Implement the next unfinished step only.
+        Run the verification for that step. Report result and remaining steps.
+      until: ALL_TASKS_COMPLETE
+      fresh_context: true
+
+  - id: final-review
+    depends_on: [implement]
+    prompt: >
+      Review changes against the plan. List any gaps, risks, or missing tests.
+

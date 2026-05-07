@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dead Code Checker"
+  short_description: "Check dead/unwired code after deletion"
+  default_prompt: "Use this skill to detect class/id dead code and unwired references after code removal."

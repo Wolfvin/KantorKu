@@ -1,0 +1,30 @@
+name: idea-to-pr
+description: Plan and deliver a feature with verification gates.
+nodes:
+  - id: intake
+    prompt: >
+      Clarify requirements. Identify assumptions and ask questions if needed.
+
+  - id: plan
+    depends_on: [intake]
+    prompt: >
+      Produce a plan with acceptance criteria and verification steps.
+
+  - id: implement
+    depends_on: [plan]
+    loop:
+      prompt: >
+        Implement the next step from the plan. Run verification for that step.
+      until: ALL_TASKS_COMPLETE
+      fresh_context: true
+
+  - id: review
+    depends_on: [implement]
+    prompt: >
+      Review changes vs acceptance criteria. List risks and test gaps.
+
+  - id: pr-summary
+    depends_on: [review]
+    prompt: >
+      Write a concise PR summary: scope, tests, risks, and follow-ups.
+

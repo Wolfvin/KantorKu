@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: GitHub
+short_description: Workflow commit/push aman dan ringkas.
+default_prompt: "Perform safe GitHub workflow with concise status, no destructive operations."

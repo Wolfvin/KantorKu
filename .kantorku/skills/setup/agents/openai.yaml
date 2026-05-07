@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Setup
+short_description: Setup lingkungan dan SOP dengan preflight ringkas.
+default_prompt: "Run compact setup checks and enforce MCP manual on-demand mode."

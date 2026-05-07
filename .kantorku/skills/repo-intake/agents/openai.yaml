@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Repo Intake
+short_description: Intake repo jadi insight reusable.
+default_prompt: "Extract high-signal practices from repo and map them to existing skills."

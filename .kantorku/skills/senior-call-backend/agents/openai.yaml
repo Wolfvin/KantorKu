@@ -1,0 +1,4 @@
+interface:
+  display_name: "Senior Call Backend"
+  short_description: "Backend simplicity and reliability guardrails."
+  default_prompt: "Use this skill to enforce clean, simple, maintainable backend architecture, API boundaries, error handling, and data flow decisions."

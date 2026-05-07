@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Skill Router
+short_description: Routing skill minimum untuk task aktif.
+default_prompt: "Select the minimum set of skills needed and provide short routing rationale."

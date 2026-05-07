@@ -1,0 +1,4 @@
+interface:
+  display_name: "Command Creator"
+  short_description: "Create cross-platform Codex hub commands safely."
+  default_prompt: "Design and wire a new command into agentic hub (bash+ps1), update docs, and verify command behavior."

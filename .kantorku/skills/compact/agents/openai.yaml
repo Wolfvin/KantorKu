@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Compact
+short_description: Smart compact pre-layer with multi-file memory staging.
+default_prompt: "Run smart compact pre-layer, persist latest-relevant lessons into .codex/memory/*.md, and output structured compact handoff."

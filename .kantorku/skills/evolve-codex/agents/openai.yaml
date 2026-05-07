@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Evolve
+short_description: Upgrade skill set lintas domain dengan approval-first.
+default_prompt: "Use recommendation-first evolve gates, then patch only after explicit approval."

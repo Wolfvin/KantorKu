@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Checkpoint
+short_description: Simpan memory high-signal secara ringkas dan konsisten.
+default_prompt: "Capture reusable lessons into .codex/memory/memory.md plus topic files, deduplicate, and keep MCP state aligned with config."

@@ -1,0 +1,4 @@
+model: gpt-5.3-codex
+display_name: Web Search
+short_description: Akuisisi konteks web dengan escalation efisien.
+default_prompt: "Use quick-first search escalation and return concise evidence-linked results."

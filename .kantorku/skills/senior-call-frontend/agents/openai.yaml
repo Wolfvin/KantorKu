@@ -1,0 +1,4 @@
+interface:
+  display_name: "Senior Call Frontend"
+  short_description: "Frontend simplicity and maintainability guardrails."
+  default_prompt: "Use this skill to enforce clean, simple, maintainable frontend architecture, UI structure, state flow, and styling decisions."
