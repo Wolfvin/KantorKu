@@ -166,11 +166,15 @@ Respond with ONLY a JSON object (no markdown fences, no explanation):
         vector_store: VectorStore,
         provider_router: Any | None = None,
         hot_index: Any | None = None,
+        arch_engine: Any | None = None,
     ) -> None:
         self._archive = archive
         self._vector_store = vector_store
         self._provider_router = provider_router
         self._hot_index = hot_index
+        # Arch-engine integration for feature extraction, reusability gating,
+        # and conflict resolution. See .kantorku/apps/arch-engine/
+        self._arch_engine = arch_engine
 
     # ── Classification ───────────────────────────────────────────────────
 
@@ -456,6 +460,18 @@ Respond with ONLY a JSON object (no markdown fences, no explanation):
                 "Failed to embed entry %s in vector store: %s", entry.id, exc
             )
 
+        # 6. Arch-engine integration (if available)
+        # Ingest knowledge into arch-engine for feature extraction, reusability
+        # gating, and conflict resolution. This enables the dual-lane evolve
+        # pattern where arch-engine is the primary decision memory.
+        if self._arch_engine is not None:
+            try:
+                await self._ingest_to_arch_engine(entry)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to ingest entry %s to arch-engine: %s", entry.id, exc
+                )
+
         logger.info(
             "Ingested entry %s: type=%s, shelf=%s, quality=%.2f",
             entry.id,
@@ -464,6 +480,50 @@ Respond with ONLY a JSON object (no markdown fences, no explanation):
             entry.quality_score,
         )
         return entry
+
+    # ── Arch-Engine Integration ────────────────────────────────────────────
+
+    async def _ingest_to_arch_engine(self, entry: LibraryEntry) -> dict[str, Any] | None:
+        """Ingest a LibraryEntry into the arch-engine for feature extraction.
+
+        The arch-engine performs:
+        1. Feature extraction — identify reusable patterns from the entry
+        2. Reusability gating — score how reusable the knowledge is
+        3. Conflict resolution — detect conflicts with existing features
+           (replace|merge_variant|keep_old)
+        4. Decision caching — store decisions for future reference
+
+        Args:
+            entry: The LibraryEntry to ingest into arch-engine.
+
+        Returns:
+            The arch-engine ingestion result dict, or None if not available.
+        """
+        if self._arch_engine is None:
+            return None
+
+        try:
+            result = self._arch_engine.ingest(
+                source=f"library:{entry.id}",
+                content=entry.content,
+                metadata={
+                    "entry_type": entry.entry_type.value,
+                    "domain": entry.domain,
+                    "shelf_path": entry.shelf_path,
+                    "keywords": entry.keywords,
+                    "quality_score": entry.quality_score,
+                    "evidence_tier": entry.evidence_tier.value,
+                },
+            )
+            logger.info(
+                "Arch-engine ingested entry %s: status=%s",
+                entry.id,
+                result.get("status", "unknown") if isinstance(result, dict) else "done",
+            )
+            return result
+        except Exception as exc:
+            logger.warning("Arch-engine ingestion failed for %s: %s", entry.id, exc)
+            return None
 
     # ── Private helpers ───────────────────────────────────────────────────
 

@@ -1,4 +1,0 @@
-model: gpt-5.3-codex
-display_name: Debug N Check
-short_description: Debug evidence-first dengan loop kecil.
-default_prompt: "Run compact debug loop: reproduce, isolate, patch minimally, verify with concrete evidence."

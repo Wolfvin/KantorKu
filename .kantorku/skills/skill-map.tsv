@@ -1,9 +1,8 @@
 skill_name	category	keywords
-library	knowledge	search,ask,ingest,browse,shelf,book,knowledge
+library	knowledge	search,ask,ingest,browse,shelf,book,knowledge,arch-engine
 office	orchestration	plan,execute,verify,brief,contract,delegate,manage
-debug	troubleshooting	fix,debug,error,trace,diagnose,reproduce
-debug-n-check	verification	debug,verify,test,console,runtime,bug,repro,logs
-evolve	improvement	evolve,optimize,tune,upgrade,improve,benchmark
+debug	troubleshooting	fix,debug,error,trace,diagnose,reproduce,verify,check,evidence
+evolve	improvement	evolve,optimize,tune,upgrade,improve,benchmark,arch-engine,dual-lane
 deploy	deployment	deploy,docker,config,setup,install,bootstrap
 think	reasoning	think,judgment,decision,uncertainty,risk,context,gap
 smart-plan	planning	plan,roadmap,phases,gates,execute,verify,delivery

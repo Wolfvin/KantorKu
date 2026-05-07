@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # =====================================================
-# KantorKu Home Guard — Config Drift Protection
+# KantorKu Guard — Unified Config Drift Protection
+# Merges: guard.sh (KantorKu) + home-codex-guard.sh (codex-skill)
 # Commands: doctor | repair | enforce | snapshot
 # =====================================================
 set -euo pipefail
@@ -23,6 +24,132 @@ log_info()  { echo -e "${BLUE}[INFO]${NC}  $*"; }
 log_ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
+pass()      { printf "[PASS] %s\n" "$1"; }
+warn()      { printf "[WARN] %s\n" "$1"; }
+fail()      { printf "[FAIL] %s\n" "$1"; }
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+check_file_equal() {
+  local current="$1"
+  local template="$2"
+  local label="$3"
+
+  if [ ! -f "$template" ]; then
+    fail "$label template missing: $template"
+    return 1
+  fi
+  if [ ! -f "$current" ]; then
+    fail "$label missing: $current"
+    return 1
+  fi
+
+  local a b
+  a="$(sha256_of "$current")"
+  b="$(sha256_of "$template")"
+  if [ "$a" = "$b" ]; then
+    pass "$label matches baseline"
+    return 0
+  fi
+
+  fail "$label drift detected"
+  return 1
+}
+
+check_models_cache_policy() {
+  local cache="$HOME_KANTORKU/models_cache.json"
+  local policy_file="$BASELINE_DIR/home-model-policy.json"
+
+  if [ ! -f "$policy_file" ]; then
+    log_info "Model policy file not found, skipping model cache check"
+    return 0
+  fi
+
+  if [ ! -f "$cache" ]; then
+    warn "models cache missing: $cache"
+    return 1
+  fi
+
+  local result
+  result="$(python3 - <<'PY' "$cache" "$policy_file"
+import json, sys
+cache_path=sys.argv[1]
+policy_path=sys.argv[2]
+policy=json.load(open(policy_path, encoding='utf-8'))
+cache=json.load(open(cache_path, encoding='utf-8'))
+models=cache.get('models') or []
+slug=policy.get('required_slug')
+default_effort=policy.get('required_default_reasoning_level')
+required_supported=set(policy.get('required_supported_efforts') or [])
+
+m=next((x for x in models if x.get('slug')==slug), None)
+if not m:
+    print('fail:missing_slug')
+    raise SystemExit(0)
+
+if default_effort and m.get('default_reasoning_level')!=default_effort:
+    print('fail:default_reasoning_mismatch')
+    raise SystemExit(0)
+
+supported=m.get('supported_reasoning_levels') or []
+supported_efforts={x.get('effort') for x in supported if isinstance(x, dict) and x.get('effort')}
+if required_supported and supported_efforts!=required_supported:
+    print('fail:supported_reasoning_mismatch')
+    raise SystemExit(0)
+
+print('pass')
+PY
+)"
+
+  if [ "$result" = "pass" ]; then
+    pass "models_cache policy matches baseline"
+    return 0
+  fi
+
+  fail "models_cache policy check failed ($result)"
+  return 1
+}
+
+sanitize_models_cache() {
+  local cache="$HOME_KANTORKU/models_cache.json"
+  local policy_file="$BASELINE_DIR/home-model-policy.json"
+  [ -f "$cache" ] || return 0
+  [ -f "$policy_file" ] || return 0
+
+  node -e '
+const fs=require("fs");
+const cachePath=process.argv[1];
+const policyPath=process.argv[2];
+const policy=JSON.parse(fs.readFileSync(policyPath,"utf8"));
+const requiredSlug=policy.required_slug;
+const requiredEffort=policy.required_default_reasoning_level;
+const requiredSupported=(policy.required_supported_efforts||[]).map(e=>({effort:e,description:"Balances speed and reasoning depth for everyday tasks"}));
+const clearPayload=Boolean(policy.clear_instruction_payload);
+const d=JSON.parse(fs.readFileSync(cachePath,"utf8"));
+if(!Array.isArray(d.models)) d.models=[];
+for(const m of d.models){
+  if(clearPayload){
+    if(typeof m.base_instructions==="string") m.base_instructions="";
+    if(!m.model_messages || typeof m.model_messages!=="object") m.model_messages={};
+    if(typeof m.model_messages.instructions_template==="string") m.model_messages.instructions_template="";
+    if(m.model_messages.instructions_variables && typeof m.model_messages.instructions_variables==="object"){
+      m.model_messages.instructions_variables={};
+    }
+  }
+  if(m.slug===requiredSlug){
+    m.default_reasoning_level=requiredEffort;
+    m.supported_reasoning_levels=requiredSupported;
+  }
+}
+fs.writeFileSync(cachePath, JSON.stringify(d));
+' "$cache" "$policy_file"
+}
 
 # ─────────────────────────────────────
 # doctor: Check workspace integrity
@@ -44,23 +171,29 @@ cmd_doctor() {
         drift_found=1
     fi
 
-    # Check 2: config.toml matches baseline
+    # Check 2: config.toml matches baseline (sha256)
     local home_config="${HOME_KANTORKU}/config.toml"
     local baseline_config="${BASELINE_DIR}/home-config.toml"
 
     if [[ -f "${home_config}" ]] && [[ -f "${baseline_config}" ]]; then
-        if diff -q "${home_config}" "${baseline_config}" &>/dev/null; then
-            log_ok "config.toml matches baseline"
-        else
-            log_warn "config.toml has drifted from baseline"
-            drift_found=1
-        fi
+        check_file_equal "${home_config}" "${baseline_config}" "home config.toml" || drift_found=1
     elif [[ ! -f "${home_config}" ]]; then
         log_error "config.toml missing at ${home_config}"
         drift_found=1
     fi
 
-    # Check 3: Skills are linked
+    # Check 3: default.rules matches baseline (sha256)
+    local home_rules="${HOME_KANTORKU}/rules/default.rules"
+    local baseline_rules="${BASELINE_DIR}/home-default.rules"
+
+    if [[ -f "${home_rules}" ]] && [[ -f "${baseline_rules}" ]]; then
+        check_file_equal "${home_rules}" "${baseline_rules}" "home default.rules" || drift_found=1
+    fi
+
+    # Check 4: Models cache policy (codex-skill integration)
+    check_models_cache_policy || drift_found=1
+
+    # Check 5: Skills are linked
     local home_skills="${HOME_KANTORKU}/skills"
     if [[ -L "${home_skills}" ]]; then
         local target
@@ -79,14 +212,14 @@ cmd_doctor() {
         drift_found=1
     fi
 
-    # Check 4: Approval rules exist
+    # Check 6: Approval rules exist
     if [[ -f "${BASELINE_DIR}/home-default.rules" ]]; then
         log_ok "Approval rules present"
     else
         log_warn "Approval rules not found"
     fi
 
-    # Check 5: MEMORY.md exists
+    # Check 7: MEMORY.md exists
     if [[ -f "${KANTORKU_DIR}/memory/MEMORY.md" ]]; then
         log_ok "MEMORY.md exists"
     else
@@ -94,7 +227,7 @@ cmd_doctor() {
         drift_found=1
     fi
 
-    # Check 6: Required skill directories
+    # Check 8: Required skill directories
     for skill in library office debug evolve deploy; do
         if [[ -d "${KANTORKU_DIR}/skills/${skill}" ]]; then
             log_ok "Skill '${skill}' directory present"
@@ -103,6 +236,15 @@ cmd_doctor() {
             drift_found=1
         fi
     done
+
+    # Check 9: arg0 wrapper (codex-skill integration)
+    local arg0_dir="${HOME_KANTORKU}/tmp/arg0/codex-arg0GInYml"
+    local wrapper="${arg0_dir}/codex-wrapper"
+    if [ -x "$wrapper" ]; then
+        pass "arg0 wrapper exists"
+    else
+        warn "arg0 wrapper missing or not executable: $wrapper"
+    fi
 
     echo ""
     if [[ ${drift_found} -eq 0 ]]; then
@@ -148,7 +290,17 @@ cmd_repair() {
         fi
     fi
 
-    # Repair 3: Re-link skills
+    # Repair 3: Restore default.rules from baseline
+    local home_rules="${HOME_KANTORKU}/rules/default.rules"
+    local baseline_rules="${BASELINE_DIR}/home-default.rules"
+
+    if [[ -f "${baseline_rules}" ]]; then
+        mkdir -p "$(dirname "${home_rules}")"
+        cp "${baseline_rules}" "${home_rules}"
+        pass "restored home default.rules"
+    fi
+
+    # Repair 4: Re-link skills
     local home_skills="${HOME_KANTORKU}/skills"
     if [[ -L "${home_skills}" ]]; then
         local target
@@ -170,7 +322,7 @@ cmd_repair() {
         log_ok "Skills symlink created"
     fi
 
-    # Repair 4: Restore MEMORY.md if missing
+    # Repair 5: Restore MEMORY.md if missing
     local memory_file="${KANTORKU_DIR}/memory/MEMORY.md"
     if [[ ! -f "${memory_file}" ]]; then
         log_info "Creating MEMORY.md template..."
@@ -179,24 +331,19 @@ cmd_repair() {
 
 ## Context
 KantorKu — AI worker orchestration framework modeling a real digital office.
-14 specialized workers coordinated by a Conductor (CEO) with contract-based workflows.
 
 ## Key Decisions
-<!-- Add decisions here as the project evolves -->
 
 ## Active Tasks
-<!-- Add active tasks here -->
 
 ## Completed Tasks
-<!-- Add completed tasks here -->
 
 ## Learnings
-<!-- Add learnings here -->
 EOF
         log_ok "MEMORY.md template created"
     fi
 
-    # Repair 5: Ensure skill directories exist
+    # Repair 6: Ensure skill directories exist
     for skill in library office debug evolve deploy; do
         local skill_dir="${KANTORKU_DIR}/skills/${skill}"
         if [[ ! -d "${skill_dir}" ]]; then
@@ -205,6 +352,17 @@ EOF
             log_ok "Created ${skill} skill directory"
         fi
     done
+
+    # Repair 7: Refresh arg0 wrapper (codex-skill integration)
+    local setup_script="${KANTORKU_DIR}/skills/setup/scripts/codex-arg0-ensure.sh"
+    if [ -x "$setup_script" ]; then
+        bash "$setup_script"
+        pass "arg0 wrapper refreshed"
+    fi
+
+    # Repair 8: Sanitize models cache (codex-skill integration)
+    sanitize_models_cache
+    pass "models cache sanitized"
 
     echo ""
     log_ok "Repair complete! Run 'guard.sh doctor' to verify."
@@ -251,6 +409,7 @@ cmd_snapshot() {
 
     if [[ -f "${home_config}" ]]; then
         log_info "Capturing current config.toml as new baseline..."
+        mkdir -p "${BASELINE_DIR}"
         cp "${home_config}" "${baseline_config}"
         log_ok "Baseline updated from ${home_config}"
     else
@@ -258,7 +417,15 @@ cmd_snapshot() {
         exit 1
     fi
 
-    # Also snapshot current skill state
+    # Snapshot default.rules
+    local home_rules="${HOME_KANTORKU}/rules/default.rules"
+    local baseline_rules="${BASELINE_DIR}/home-default.rules"
+    if [[ -f "${home_rules}" ]]; then
+        cp "${home_rules}" "${baseline_rules}"
+        pass "baseline default.rules refreshed"
+    fi
+
+    # Snapshot current skill state
     local skill_map="${KANTORKU_DIR}/skills/skill-map.tsv"
     if [[ -f "${skill_map}" ]]; then
         cp "${skill_map}" "${BASELINE_DIR}/skill-map.baseline.tsv"

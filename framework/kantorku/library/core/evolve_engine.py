@@ -77,6 +77,24 @@ class LibraryEvolveEngine:
     Monitors Library health, detects signals of degradation,
     proposes and executes corrective actions with safety guarantees.
 
+    Arch-engine integration (dual-lane evolve):
+    The evolve engine supports a dual-lane pattern where:
+    - Primary lane (arch-engine): Stores structural decisions, feature scores,
+      conflict resolutions, and improvement plans as source-of-truth
+    - Sync lane (skill/memory): Updates skill + MEMORY as downstream from
+      arch-engine decisions
+
+    Strategy presets:
+    - balanced (default): Standard evolve with incremental changes
+    - innovate: Explore breakthrough improvements
+    - harden: Focus on stability and hardening
+    - repair-only: Only fix detected issues, no optimization
+
+    Stagnation handling:
+    - If 2 cycles without positive quality_delta -> stagnation active
+    - During stagnation: mode switches to harden|repair-only
+    - If stagnant after 2 additional interventions -> stop and escalate
+
     Example::
 
         engine = LibraryEvolveEngine(archive, vectors, hot_index, indexer)
@@ -87,6 +105,13 @@ class LibraryEvolveEngine:
     MAX_CONSECUTIVE_REGRESSIONS: int = 2
     MIN_QUALITY_AFTER_ACTION: float = 0.3
 
+    # Strategy presets
+    STRATEGY_BALANCED = "balanced"
+    STRATEGY_INNOVATE = "innovate"
+    STRATEGY_HARDEN = "harden"
+    STRATEGY_REPAIR_ONLY = "repair-only"
+    VALID_STRATEGIES = {STRATEGY_BALANCED, STRATEGY_INNOVATE, STRATEGY_HARDEN, STRATEGY_REPAIR_ONLY}
+
     def __init__(
         self,
         archive: Archive,
@@ -94,6 +119,8 @@ class LibraryEvolveEngine:
         hot_index: HotIndex,
         indexer: Indexer,
         config_path: str = "data/library/evolve_state.json",
+        arch_engine: Any | None = None,
+        strategy: str = "balanced",
     ) -> None:
         """Initialize the EvolveEngine.
 
@@ -103,14 +130,21 @@ class LibraryEvolveEngine:
             hot_index: The HotIndex instance.
             indexer: The Indexer instance.
             config_path: Path for state persistence.
+            arch_engine: Optional arch-engine for dual-lane evolve.
+                When provided, all decisions are first stored in arch-engine
+                as the primary source-of-truth, then synced to skill/memory.
+            strategy: Evolve strategy preset (balanced|innovate|harden|repair-only).
         """
         self._archive = archive
         self._vectors = vectors
         self._hot_index = hot_index
         self._indexer = indexer
         self._config_path = config_path
+        self._arch_engine = arch_engine
+        self._strategy = strategy if strategy in self.VALID_STRATEGIES else self.STRATEGY_BALANCED
         self._state: dict[str, Any] = {}
         self._consecutive_regressions: int = 0
+        self._consecutive_stagnations: int = 0
         self._halted: bool = False
         self._load_state()
 
