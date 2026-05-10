@@ -1,0 +1,5 @@
+[project]
+name = "kantorku-losion"
+version = "0.1.0"
+description = "Losition model training and inference for KantorKu — external package"
+requires-python = ">=3.11"

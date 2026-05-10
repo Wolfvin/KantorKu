@@ -1,0 +1,5 @@
+[project]
+name = "kantorku-gpu"
+version = "0.1.0"
+description = "GPU provider orchestration for KantorKu — external package"
+requires-python = ">=3.11"

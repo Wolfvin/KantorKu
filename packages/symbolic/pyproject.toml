@@ -1,0 +1,5 @@
+[project]
+name = "kantorku-symbolic"
+version = "0.1.0"
+description = "Symbolic perception layer for KantorKu — external package"
+requires-python = ">=3.11"
